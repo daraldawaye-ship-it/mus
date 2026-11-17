@@ -146,7 +146,8 @@ type Row = {
   requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string;
-  compositionSaleUnit1Month: string | null; compositionAvailableUnit1: string | null; saleTimesYear: string;
+  compositionSaleUnit1Month: string | null; compositionAvailableUnit1: string | null;
+  compositionCoverageDays: string | null; saleTimesYear: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
   approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
@@ -180,10 +181,11 @@ const sortOptions = [
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
   ["compositionSaleMonth", "كمية التركيب المباعة في شهر"],
   ["compositionStock", "الكمية المتوفرة للتركيب"],
+  ["compositionCoverage", "الكفاية التقريبية للتركيب"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"],["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"]] as const;
 const planningColumns = ["minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed"] as const;
-const compositionColumns = ["compositionSaleMonth", "compositionStock"] as const;
+const compositionColumns = ["compositionSaleMonth", "compositionStock", "compositionCoverage"] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
@@ -192,21 +194,26 @@ function readVisibleTableColumns(key: string): TableColumn[] {
     // Existing v1 column selections should show the new companion column.
     // A v2 selection is explicit and may intentionally hide either column.
     const current = window.localStorage.getItem(key);
+    const previousV4 = current === null
+      ? window.localStorage.getItem(key.replace(":v5:", ":v4:")) : null;
     const older = current === null
-      ? window.localStorage.getItem(key.replace(":v4:", ":v3:")) ??
-        window.localStorage.getItem(key.replace(":v4:", ":v2:")) ??
-        window.localStorage.getItem(key.replace(":v4:", ":v1:")) : null;
+      ? previousV4 ?? window.localStorage.getItem(key.replace(":v5:", ":v3:")) ??
+        window.localStorage.getItem(key.replace(":v5:", ":v2:")) ??
+        window.localStorage.getItem(key.replace(":v5:", ":v1:")) : null;
     const raw = current ?? older;
     if (!raw) return allTableColumns;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return allTableColumns;
-    const isLegacy = current === null &&
-      window.localStorage.getItem(key.replace(":v4:", ":v3:")) === null &&
-      window.localStorage.getItem(key.replace(":v4:", ":v2:")) === null && older !== null;
+    const isLegacy = current === null && previousV4 === null &&
+      window.localStorage.getItem(key.replace(":v5:", ":v3:")) === null &&
+      window.localStorage.getItem(key.replace(":v5:", ":v2:")) === null && older !== null;
     const valid = allTableColumns.filter(id => parsed.includes(id) ||
       (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")) ||
-      (current === null && planningColumns.includes(id as typeof planningColumns[number])) ||
-      (current === null && compositionColumns.includes(id as typeof compositionColumns[number])));
+      (current === null && previousV4 === null &&
+        planningColumns.includes(id as typeof planningColumns[number])) ||
+      (current === null && previousV4 === null &&
+        compositionColumns.includes(id as typeof compositionColumns[number])) ||
+      (current === null && id === "compositionCoverage"));
     return valid.length ? valid : allTableColumns;
   } catch { return allTableColumns; }
 }
@@ -222,7 +229,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v4:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v5:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -555,7 +562,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       coverageFilterVersion: 2 as const,
       coverageColumnsVersion: 2 as const,
       planningColumnsVersion: 1 as const,
-      compositionColumnsVersion: 1 as const,
+      compositionColumnsVersion: 2 as const,
       visibleColumns: [...visibleColumns],
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -601,7 +608,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       const restoredColumns = allTableColumns.filter(id =>
         values.visibleColumns?.includes(id) ||
         (values.planningColumnsVersion !== 1 && planningColumns.includes(id as typeof planningColumns[number])) ||
-        (values.compositionColumnsVersion !== 1 && compositionColumns.includes(id as typeof compositionColumns[number])) ||
+        (values.compositionColumnsVersion === undefined && compositionColumns.includes(id as typeof compositionColumns[number])) ||
+        (values.compositionColumnsVersion !== 2 && id === "compositionCoverage") ||
         (values.coverageColumnsVersion !== 2 && id === "coverageWithReserve" &&
           values.visibleColumns?.includes("coverage")));
       if (restoredColumns.length) {
@@ -1288,6 +1296,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <div style={hiddenColumnStyle("compositionStock")} className="item-options-mobile-stat">
                 <span>المتوفر للتركيب</span><bdi>{row.compositionAvailableUnit1 === null ? "—" : formatAmountGroup(row.compositionAvailableUnit1)}</bdi>
               </div>
+              <div style={hiddenColumnStyle("compositionCoverage")} className="item-options-mobile-stat">
+                <span>الكفاية التقريبية للتركيب/يوم</span><bdi>{row.compositionCoverageDays ?? "—"}</bdi>
+              </div>
                       </div>
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
@@ -1321,6 +1332,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {visibleColumns.includes("purchaseFactorCoverage") && <col className="item-options-factor-coverage-col" />}
             {visibleColumns.includes("compositionSaleMonth") && <col className="item-options-month-quantity-col" />}
             {visibleColumns.includes("compositionStock") && <col className="item-options-stock-col" />}
+            {visibleColumns.includes("compositionCoverage") && <col className="item-options-coverage-col" />}
           </colgroup>
           <thead><tr>
             <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
@@ -1348,6 +1360,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
             {sortHeader("compositionSaleMonth", "كمية التركيب المباعة في شهر (الوحدة الأولى)")}
             {sortHeader("compositionStock", "المتوفر للتركيب (الوحدة الأولى)")}
+            {sortHeader("compositionCoverage", "الكفاية التقريبية للتركيب (يوم)")}
           </tr></thead>
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}
@@ -1388,6 +1401,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("compositionSaleMonth")}><bdi>{row.compositionSaleUnit1Month === null ? "—" : formatAmountGroup(row.compositionSaleUnit1Month)}</bdi></td>
               <td style={hiddenColumnStyle("compositionStock")}><bdi>{row.compositionAvailableUnit1 === null ? "—" : formatAmountGroup(row.compositionAvailableUnit1)}</bdi></td>
+              <td style={hiddenColumnStyle("compositionCoverage")}><bdi>{row.compositionCoverageDays ?? "—"}</bdi></td>
             </tr>)}
             {!result.rows.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
@@ -1411,6 +1425,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
          قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
          «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية وخصم كمية الاحتياط من المتوفر.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
+         «الكفاية التقريبية للتركيب» بلا خصم احتياط: المتوفر المخزن للتركيب ÷ متوسط مبيعاته اليومي المخزن.
+         تعتمد 30 يومًا لمبيعات الشهر، وإذا كانت أقل من وحدتين تعتمد 120 يومًا لمبيعات الأربعة أشهر؛
+         وعند انعدام المبيعات تعرض 9999 يومًا، كما في كفاية الصنف بدون الاحتياط.
       </small>
     </Card>
     <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أصناف المسودة مع الكمية المطلوبة بالوحدة الأولى">
