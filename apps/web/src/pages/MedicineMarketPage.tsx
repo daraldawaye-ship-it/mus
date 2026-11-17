@@ -1715,12 +1715,12 @@ export function MedicineMarketPage({
                       />{" "}
                       {card.likes} إعجاب
                     </Button>
-                    <span>
+                    {!card.statistics && <span>
                       <Star size={15} />{" "}
                       {card.ratingCount
                         ? `${Number(card.ratingAverage ?? 0).toFixed(1)} / 5 · ${card.ratingCount} تقييم`
                         : "لم يُقيّم بعد"}
-                    </span>
+                    </span>}
                     {permissions?.canContribute && (
                       <Select
                         label="تقييمك"
