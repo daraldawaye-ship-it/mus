@@ -2,6 +2,10 @@
 -- opens, approved comments, likes, and relationship counters.
 -- Keep historical ratings in medicine_market_reactions as the source of truth.
 -- Prevent a rating write from interleaving between backfill and trigger install.
+-- Initial backfill of the existing market is allowed the same bounded migration
+-- window as the original card statistics build.
+SET LOCAL statement_timeout='60s';
+SET LOCAL lock_timeout='10s';
 LOCK TABLE medicine_market_reactions IN SHARE ROW EXCLUSIVE MODE;
 
 ALTER TABLE market_card_statistics
