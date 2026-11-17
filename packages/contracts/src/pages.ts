@@ -668,6 +668,16 @@ page(
   { type: "report", keywords: ["قائمة", "الأصناف", "المتوفر", "المبيعات", "المرات", "الكفاية", "الاحتياطي"] },
 );
 page(
+  "company.item-order-levels",
+  "متابعة حدود طلب الأصناف الخاصة",
+  "الأصناف والمخزون",
+  "/companies/:companyId/item-order-levels",
+  { view: permission("items.view", "commerce.view", "inventory.view") },
+  "كل صنف محدد له حد طلب، مع المتوفر دون المرتجعات، مبيعات الشهر، حد الطلب، والأصناف التي وصلت إلى الحد.",
+  { parentKey: "company.item-options-list", type: "report",
+    keywords: ["حد الطلب", "كمية الطلب", "الأصناف الخاصة", "تنبيه كمية الطلب", "مبيعات", "متوفر"] },
+);
+page(
   "company.public-requests",
   "طلب الجمهور",
   "المبيعات",
