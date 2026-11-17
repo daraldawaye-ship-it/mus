@@ -211,6 +211,8 @@ export interface MarketMeta {
 export interface MarketCardStatistics {
   opens: number;
   comments: number;
+  ratingAverage: number | null;
+  ratingCount: number;
   relations: Partial<Record<"medicines" | "compositions" | "scientificNames" | "agents" | "manufacturers", number>>;
 }
 export interface MarketCard {
