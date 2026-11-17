@@ -8296,6 +8296,19 @@ a.notification-quick-title:hover { text-decoration: underline; }
   display: flex; flex-direction: column; gap: 4px; flex: 1 1 260px;
 }
 .item-order-drafts-group-actions select { width: 100%; min-height: 36px; }
+.item-order-drafts-review-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.item-order-drafts-review-filter .button {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
 .item-order-drafts-filters {
   display: grid;
   grid-template-columns: minmax(220px,2fr) minmax(155px,1fr) minmax(130px,1fr);
