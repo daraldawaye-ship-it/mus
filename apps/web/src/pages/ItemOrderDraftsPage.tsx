@@ -580,6 +580,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
             <option value="price">سعر الشراء</option>
             <option value="value">قيمة المطلوب</option>
             <option value="option">اسم الخيارات</option>
+            <option value="coverage">الكفاية بدون الاحتياط (يوم)</option>
+            <option value="coverageWithReserve">الكفاية مع الاحتياط (يوم)</option>
+            <option value="compositionCoverage">الكفاية التقريبية للتركيب (يوم)</option>
           </select>
         </label>
         <Button variant="secondary" disabled={!sortKey}
@@ -598,6 +601,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         <span className="item-order-drafts-bulk-total">
           <strong>إجمالي جميع المسودات:</strong> {grandTotalDisplay}
         </span>
+        <Button type="button" variant="secondary" size="compact" onClick={() => {
+          setEditingColumns([...visibleColumns]); setColumnsDialogOpen(true);
+        }}>الأعمدة ({visibleColumns.length}/{draftColumnOptions.length})</Button>
         <Button type="button" variant="secondary" disabled={!visibleActiveIds.length}
           onClick={() => selectVisible(!allVisibleSelected)}>
           {allVisibleSelected ? "إلغاء تحديد الظاهر" : "تحديد الظاهر"}
@@ -607,69 +613,113 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         <Button type="button" variant="danger" disabled={!selectedActiveIds.length || groupBusy}
           onClick={deleteSelected}>حذف المحدد ({selectedActiveIds.length})</Button>
       </div>
+      {columnsDialogOpen && <div className="item-order-drafts-columns-backdrop"
+        role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) setColumnsDialogOpen(false);
+        }}>
+        <div className="item-order-drafts-columns-dialog" role="dialog"
+          aria-modal="true" aria-labelledby="order-draft-columns-title"
+          onKeyDown={event => { if (event.key === "Escape") setColumnsDialogOpen(false); }}>
+          <h3 id="order-draft-columns-title">الأعمدة الظاهرة</h3>
+          <p className="muted">حدد الأعمدة المطلوبة ثم اضغط «موافق». تُحفظ على هذا الجهاز لهذا المستخدم والشركة.</p>
+          <div className="item-order-drafts-columns-choices">
+            {draftColumnOptions.map(([key, label]) => <label key={key}>
+              <input type="checkbox" checked={editingColumns.includes(key)}
+                onChange={event => setEditingColumns(previous => event.target.checked
+                  ? [...previous, key] : previous.filter(id => id !== key))} />
+              <span>{label}</span>
+            </label>)}
+          </div>
+          {!editingColumns.length && <Notice tone="warning">اختر عمودًا واحدًا على الأقل.</Notice>}
+          <div className="form-actions">
+            <Button size="compact" variant="secondary"
+              onClick={() => setEditingColumns(draftColumnOptions.map(([key]) => key))}>إظهار الكل</Button>
+            <Button size="compact" variant="secondary"
+              onClick={() => setEditingColumns([...defaultDraftColumns])}>الافتراضي</Button>
+            <Button size="compact" variant="secondary"
+              onClick={() => setColumnsDialogOpen(false)}>إلغاء</Button>
+            <Button size="compact" disabled={!editingColumns.length} onClick={applyColumns}>موافق</Button>
+          </div>
+        </div>
+      </div>}
       {metricsLoading && <small className="muted" role="status">جارٍ تحديث مؤشرات المبيعات والسعر والقيمة…</small>}
       {metricsError && <Notice tone="error">تعذر تحميل مؤشرات الأصناف: {errorMessage(metricsError)}</Notice>}
       {!drafts.drafts.length && <Notice>لا توجد مسودات محفوظة على هذا الجهاز حاليًا. أنشئ مسودة أو اختر تجميعًا أعلاه.</Notice>}
       {!!drafts.drafts.length && <div className="table-scroll item-order-drafts-table-scroll" role="region"
         aria-label="قائمة أصناف جميع المسودات">
-        <table className="item-order-drafts-table">
+        <table className={"item-order-drafts-table" +
+          (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
+          style={defaultColumnLayout ? undefined :
+            { minWidth: Math.max(650, visibleColumns.length * 105) + "px" }}>
           <thead><tr>
-            <th className="item-order-drafts-select-col">
+            <th className="item-order-drafts-select-col" style={columnStyle("select")}>
               <input type="checkbox" aria-label="اختيار جميع أصناف الصفحة غير المحذوفة"
                 disabled={!visibleActiveIds.length} checked={allVisibleSelected}
                 onChange={event => selectVisible(event.target.checked)} />
             </th>
             {sortHeader("quantity", "الكمية المطلوبة (و1)")}
             {sortHeader("name", "اسم الصنف")}
-            <th scope="col" aria-label="إظهار التفاصيل">⋯</th>
+            <th scope="col" aria-label="إظهار التفاصيل" style={columnStyle("details")}>⋯</th>
             {sortHeader("stock", "المتوفر دون المرتجعات (و1)")}
             {sortHeader("sold", "الكمية المباعة في شهر (و1)")}
             {sortHeader("month", "المبيعات مرات في شهر")}
             {sortHeader("year", "المبيعات مرات في سنة")}
             {sortHeader("price", "سعر الشراء")}
             {sortHeader("value", "قيمة المطلوب")}
-            <th>الإجراء</th>
+            <th style={columnStyle("action")}>الإجراء</th>
             {sortHeader("option", "اسم الخيارات")}
+            {sortHeader("coverage", "الكفاية بدون الاحتياط (يوم)")}
+            {sortHeader("coverageWithReserve", "الكفاية مع الاحتياط (يوم)")}
+            {sortHeader("compositionCoverage", "الكفاية التقريبية للتركيب (يوم)")}
           </tr></thead>
           <tbody>{visible.map(row => {
             const info = metricsById.get(row.item.id);
             return <Fragment key={row.draftId + ":" + row.item.id}>
               <tr className={row.item.deleted ? "item-order-draft-deleted" : undefined}>
-              <td data-label="اختيار">
+              <td data-label="اختيار" style={columnStyle("select")}>
                 <input type="checkbox" aria-label={"اختيار " + row.item.name}
                   disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
                   onChange={event => selectItem(row.item.id, event.target.checked)} />
               </td>
-              <td data-label="الكمية المطلوبة">
+              <td data-label="الكمية المطلوبة" style={columnStyle("quantity")}>
                 <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
               </td>
-              <td data-label="اسم الصنف">
+              <td data-label="اسم الصنف" style={columnStyle("name")}>
                 <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </td>
-              <td data-label="إظهار التفاصيل">{moreButton(row)}</td>
-              <td data-label="المتوفر دون المرتجعات">
+              <td data-label="إظهار التفاصيل" style={columnStyle("details")}>{moreButton(row)}</td>
+              <td data-label="المتوفر دون المرتجعات" style={columnStyle("stock")}>
                 <span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span>
               </td>
-              <td data-label="المباع في شهر">
+              <td data-label="المباع في شهر" style={columnStyle("sold")}>
                 <span className="item-order-drafts-sold-quantity"><bdi>{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi></span>
               </td>
-              <td data-label="مرات شهر"><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
-              <td data-label="مرات سنة"><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
-              <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
-              <td data-label="قيمة المطلوب"><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
-              <td data-label="الإجراء">
+              <td data-label="مرات شهر" style={columnStyle("month")}><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
+              <td data-label="مرات سنة" style={columnStyle("year")}><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
+              <td data-label="سعر الشراء" style={columnStyle("price")}><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
+              <td data-label="قيمة المطلوب" style={columnStyle("value")}><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
+              <td data-label="الإجراء" style={columnStyle("action")}>
                 <div className="item-order-draft-inline-actions">{action(row)}</div>
               </td>
-              <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
+              <td data-label="اسم الخيارات" style={columnStyle("option")} title={"مسودة " + row.draftId}>{optionName(row)}</td>
+              <td data-label="الكفاية بدون الاحتياط" style={columnStyle("coverage")}>
+                <bdi>{formatNumber(info?.approximateCoverageDays)}</bdi>
+              </td>
+              <td data-label="الكفاية مع الاحتياط" style={columnStyle("coverageWithReserve")}>
+                <bdi>{formatNumber(info?.coverageAfterReserveDays)}</bdi>
+              </td>
+              <td data-label="الكفاية التقريبية للتركيب" style={columnStyle("compositionCoverage")}>
+                <bdi>{formatNumber(info?.compositionCoverageDays)}</bdi>
+              </td>
               </tr>
               {expandedItemId === row.item.id && <tr className="item-order-draft-expanded-row">
-                <td colSpan={12}>{planningControls(row, info)}</td>
+                <td colSpan={visibleColumns.length}>{planningControls(row, info)}</td>
               </tr>}
             </Fragment>;
           })}
-          {!filtered.length && <tr><td colSpan={12}>لا توجد أصناف مطابقة للبحث.</td></tr>}
+          {!filtered.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف مطابقة للبحث.</td></tr>}
           </tbody>
         </table>
       </div>}
