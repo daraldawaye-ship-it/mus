@@ -8336,6 +8336,37 @@ a.notification-quick-title:hover { text-decoration: underline; }
   font-size: 13px;
 }
 .item-order-drafts-mobile-sticky-summary { display: none; }
+/* Match the purchase-comparison page: two-thirds for the draft list and
+   one-third for the selected item's purchase history and available alternatives.
+   Keep the detail region reserved until a row is selected. */
+.item-order-drafts-split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  direction: rtl;
+  align-items: start;
+  gap: 12px;
+}
+.item-order-drafts-split-layout > * { min-width: 0; }
+.item-order-drafts-detail-pane {
+  min-width: 0;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.item-order-drafts-detail-pane .card { padding: 8px; }
+.item-order-drafts-table .item-order-draft-detail-selected > td,
+.item-order-drafts-mobile-card.item-order-draft-detail-selected {
+  background: color-mix(in srgb, var(--accent, #6aa9e9) 15%, transparent);
+}
+@media (max-width: 900px) {
+  .item-order-drafts-split-layout { grid-template-columns: minmax(0, 1fr); }
+  .item-order-drafts-detail-pane {
+    max-height: none;
+    overflow: visible;
+    scroll-margin-top: 88px;
+  }
+  .item-order-drafts-detail-pane:empty { display: none; }
+}
 .item-order-drafts-table-scroll { max-width: 100%; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
 /* Optional draft columns: default keeps the original compact twelve-column grid.
