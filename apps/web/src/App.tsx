@@ -279,6 +279,9 @@ const ItemOptionsListPage = lazy(() =>
 const ItemOrderLevelsPage = lazy(() =>
   import("./pages/ItemOrderLevelsPage").then(m=>({default:m.ItemOrderLevelsPage})),
 );
+const ExpiryAlertFollowUpPage = lazy(() =>
+  import("./pages/ExpiryAlertFollowUpPage").then(m=>({default:m.ExpiryAlertFollowUpPage})),
+);
 const OrderDraftExportsPage = lazy(() => import("./pages/OrderDraftExportsPage").then(m=>({default:m.OrderDraftExportsPage})));
 const PublicRequestsPage = lazy(() => import("./pages/PublicRequestsPage").then(m=>({default:m.PublicRequestsPage})));
 const ItemOrderDraftsPage = lazy(() =>
@@ -409,6 +412,8 @@ const companySections = [
   "sales-time-report",
   "item-options-list",
   "item-order-levels",
+  "expired-items-follow-up",
+  "expiring-items-follow-up",
   "item-order-drafts",
   "order-draft-exports",
   "purchase-comparison",
@@ -511,6 +516,8 @@ function Navigation({
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-options-list": <ListTree size={17} />,
     "company.item-order-levels": <Bell size={17} />,
+    "company.expired-items-follow-up": <Bell size={17} />,
+    "company.expiring-items-follow-up": <Bell size={17} />,
     "company.purchase-comparison": <TableProperties size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
@@ -881,6 +888,14 @@ function CompanyContent({
     case "item-order-levels":
       return <Suspense fallback={<Notice>جارٍ تحميل متابعة حدود طلب الأصناف الخاصة…</Notice>}>
         <ItemOrderLevelsPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "expired-items-follow-up":
+      return <Suspense fallback={<Notice>جارٍ تحميل متابعة الأصناف المنتهية…</Notice>}>
+        <ExpiryAlertFollowUpPage key={context.company.id + ":expired"} context={context} kind="expired"/>
+      </Suspense>;
+    case "expiring-items-follow-up":
+      return <Suspense fallback={<Notice>جارٍ تحميل متابعة الأصناف القريبة من الانتهاء…</Notice>}>
+        <ExpiryAlertFollowUpPage key={context.company.id + ":expiring"} context={context} kind="expiring-30"/>
       </Suspense>;
     case "order-draft-exports":
       return <Suspense fallback={<Notice>جارٍ تحميل سجل الطلبيات…</Notice>}><OrderDraftExportsPage context={context}/></Suspense>;
