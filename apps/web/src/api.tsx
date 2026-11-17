@@ -44,6 +44,10 @@ export async function api<T>(
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const mutation = method !== "GET" && method !== "HEAD";
+  // An offline-selected employee must not reuse their old server cookie.
+  // Public medicine-market GETs are safe to fetch anonymously instead.
+  const anonymousMarketRead = freshOnlineLoginRequired &&
+    method === "GET" && (path === "/medicine-market" || path.startsWith("/medicine-market/"));
   const preview=readEmployeePreview();
   // Client and server both enforce read-only preview. It never reuses any
   // offline owner cache or saves fetched employee data for offline use.
@@ -68,7 +72,9 @@ export async function api<T>(
   }
   // A disconnected employee may switch locally, but the old employee\'s
   // server cookie must never issue reads or writes on their behalf.
-  if (freshOnlineLoginRequired && path !== "/auth/login" && path !== "/auth/register" && path !== "/auth/login-link/redeem") {
+  if (freshOnlineLoginRequired && !anonymousMarketRead &&
+      path !== "/auth/login" && path !== "/auth/register" &&
+      path !== "/auth/login-link/redeem" && path !== "/auth/visitor/enter") {
     const saved = await fallbackRead();
     if (saved !== undefined) return saved;
     throw new TypeError("يرجى تسجيل الدخول عبر الإنترنت لاستعادة الاتصال ومزامنة العمليات.");
@@ -82,7 +88,7 @@ export async function api<T>(
   try {
     response = await fetch(`/api${path}`, {
       method,
-      credentials: "same-origin",
+      credentials: anonymousMarketRead ? "omit" : "same-origin",
       cache: path.startsWith("/auth/") ? "no-store" : "default",
       signal: options.signal,
       headers: {
@@ -240,12 +246,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLoading(false);
     return true;
   }
+  async function restoreVisitorOnThisDevice(result: SessionResponse): Promise<SessionResponse> {
+    if(result.user || isOfflineNow()) return result;
+    try {
+      const resumed=await api<SessionResponse & {status:string}>("/auth/visitor/enter",{
+        method:"POST",body:{resume:true},
+      });
+      if(resumed.status==="authenticated" && resumed.user && resumed.csrf)
+        return {user:resumed.user,csrf:resumed.csrf,visitorOnly:true};
+    }catch { /* A missing/expired device credential is an ordinary guest visit. */ }
+    return result;
+  }
   const reloadSession = async () => {
     if (freshOnlineLoginRequired) throw new Error("يلزم تسجيل الدخول عبر الإنترنت لإتمام التبديل");
     const request = ++epoch.current;
     try {
       const result = await api<SessionResponse>("/auth/session");
-      await applyLiveSession(result, request);
+      await applyLiveSession(await restoreVisitorOnThisDevice(result), request);
     } catch (error) {
       if (!(await recoverOffline(error, request))) throw error;
     }
@@ -257,6 +274,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const locked = await offlineLoginRequired().catch(() => true);
       if (controller.signal.aborted || epoch.current !== request) return;
       if (locked) {
+        // An old local offline-login lock must not trap an existing public
+        // visitor behind an employee-password screen.
+        if(!isOfflineNow()){
+          const recovered=await restoreVisitorOnThisDevice({user:null,csrf:null});
+          if(recovered.user && recovered.csrf) {
+            await setOfflineLoginRequired(false).catch(()=>{});
+            freshOnlineLoginRequired=false;
+            await applyLiveSession(recovered,request);
+            return;
+          }
+        }
         freshOnlineLoginRequired = true;
         const last = await readOfflineSession().catch(() => null);
         if (controller.signal.aborted || epoch.current !== request) return;
@@ -273,7 +301,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       try {
         const result = await api<SessionResponse>("/auth/session", { signal: controller.signal });
-        await applyLiveSession(result, request);
+        await applyLiveSession(await restoreVisitorOnThisDevice(result), request);
       } catch (error) {
         if (controller.signal.aborted || epoch.current !== request) return;
         if (await recoverOffline(error, request)) return;
