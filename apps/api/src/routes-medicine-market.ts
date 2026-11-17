@@ -1,7 +1,7 @@
 import { marketCardCoverage } from "./market/card-coverage.ts";
 import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
-  startMarketImageBackfill, marketImageBackfillStatus } from "./market/image-variants.ts";
+  startMarketImageBackfill, marketImageBackfillStatus, downloadPublicImage, validateModernProductImageUrl } from "./market/image-variants.ts";
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -541,6 +541,18 @@ const contributionSchema = z
   })
   .strict();
 
+// Owner enrichment deliberately excludes prices, accounting mappings and names.
+const ownerContributionFields = [
+  "image", "compositionId", "dosageFormId", "agentId", "manufacturerId",
+  "ingredients", "englishName", "keywords", "country", "countryCode",
+] as const;
+const ownerContributionsBatchSchema = z.object({
+  items: z.array(contributionSchema.extend({
+    cardId: z.number().int().positive().max(2147483647),
+    fieldKey: z.enum(ownerContributionFields),
+  }).strict()).min(1).max(50),
+}).strict();
+
 const reviewContributionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),
@@ -590,14 +602,28 @@ const marketImageUploadSchema=z.object({
   dataUrl:z.string().min(50).max(700000),
   cropWhitespace:z.boolean().default(false),
 }).strict();
+const ownerImagesBatchSchema = z.object({
+  items: z.array(z.union([
+    marketImageUploadSchema.extend({
+      cardId: z.number().int().positive().max(2147483647),
+    }).strict(),
+    z.object({
+      cardId: z.number().int().positive().max(2147483647),
+      sourceUrl: z.string().max(2000).regex(/^https:\/\/modernpharmaye\.com\/upload\/products\/packs\/original\/[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif|avif)$/i),
+      cropWhitespace: z.boolean().default(true),
+    }).strict(),
+  ])).min(1).max(10),
+}).strict().describe("Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field.");
 const backfillMarketImagesSchema = z.object({ retryFailed: z.boolean().default(false) }).strict();
 
 export const mcpBodySchemas = {
   marketImageUploadSchema,
+  ownerImagesBatchSchema,
   backfillMarketImagesSchema,
   createCardSchema,
   prescriptionCreateSchema,
   contributionSchema,
+  ownerContributionsBatchSchema,
   reviewContributionSchema,
   pointPolicySchema,
   archiveMarketCardSchema,
@@ -789,6 +815,44 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     res.status(201).json(result);
   }));
 
+  async function prepareImageUpload(input: z.infer<typeof marketImageUploadSchema>, kind: string) {
+    let image=validateMarketImage(input.dataUrl, kind==='prescription'?'prescription':'medicine');
+    const cropped=input.cropWhitespace?await buildMarketImageVariants(image.bytes,{cropWhitespace:true}):null;
+    if(cropped)image={bytes:cropped.preview,width:cropped.previewWidth,height:cropped.previewHeight};
+    const variants=stagingIsolated?(cropped??await buildMarketImageVariants(image.bytes)):null;
+    return { image, variants };
+  }
+  async function saveImageUpload(
+    db: Database, user: User, cardId: number,
+    input: Pick<z.infer<typeof marketImageUploadSchema>, "cropWhitespace"> & { sourceUrl?: string },
+    prepared: Awaited<ReturnType<typeof prepareImageUpload>>,
+  ) {
+    const { image, variants } = prepared;
+    const assetId = randomUUID();
+    const card=await getCard(db,cardId,user);
+    if(card.archived||card.status==="rejected"||
+       (card.status!=="published" && card.created_by!==user.id && !perms(user).canModerate))missing();
+    if(!findType(card.kind).fields.some(f=>f.key==="image"))
+      throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
+    // Limit stored unreviewed uploads by one participant without burdening sales.
+    if(!user.owner){
+      const count=await db.query(
+        "SELECT count(*)::integer AS total FROM market_image_uploads WHERE uploaded_by=$1 AND created_at>now()-interval '24 hours'",
+        [user.id],
+      );
+      if(Number(count.rows[0]?.total??0)>=100)
+        throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
+    }
+    await db.query(
+      "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)",
+      [assetId,cardId,user.id,image.bytes.length,image.bytes,image.width,image.height],
+    );
+    if(variants)await storeMarketImageVariants(db,marketImagePath(assetId),variants);
+    await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height,cropWhitespace:input.cropWhitespace,...(input.sourceUrl?{sourceUrl:input.sourceUrl}:{})});
+    return {url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,
+      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",mainUrl:marketImagePath(assetId),iconBytes:variants.icon.length,mainBytes:variants.preview.length}:{})};
+  }
+
   // Market uploads are isolated from all pharmacy/company images and ledgers.
   router.post(root+"/cards/:cardId/images",handler(async(req,res)=>{
     const user=(await viewer(pool,req,true))!;
@@ -800,35 +864,42 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     if(isMarketAdministrativeKind(cardPreview.kind)&&!perms(user).canConfigure)deny();
     if(!findType(cardPreview.kind).fields.some(field=>field.key==="image"))
       throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
-    let image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');
-    const cropped=input.cropWhitespace?await buildMarketImageVariants(image.bytes,{cropWhitespace:true}):null;
-    if(cropped)image={bytes:cropped.preview,width:cropped.previewWidth,height:cropped.previewHeight};
-    const variants=stagingIsolated?(cropped??await buildMarketImageVariants(image.bytes)):null;
-    const assetId=randomUUID();
-    await transaction(pool,async db=>{
-      const card=await getCard(db,cardId,user);
-      if(card.archived||card.status==="rejected"||
-         (card.status!=="published" && card.created_by!==user.id && !perms(user).canModerate))missing();
-      if(!findType(card.kind).fields.some(f=>f.key==="image"))
-        throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
-      // Limit stored unreviewed uploads by one participant without burdening sales.
-      if(!user.owner){
-        const count=await db.query(
-          "SELECT count(*)::integer AS total FROM market_image_uploads WHERE uploaded_by=$1 AND created_at>now()-interval '24 hours'",
-          [user.id],
-        );
-        if(Number(count.rows[0]?.total??0)>=100)
-          throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
+    const prepared = await prepareImageUpload(input, cardPreview.kind);
+    const result = await transaction(pool, db => saveImageUpload(db, user, cardId, input, prepared));
+    res.status(201).json(result);
+  }));
+  router.post(root + "/owner/images-batch", handler(async (req, res) => {
+    const input = parse(ownerImagesBatchSchema, req.body);
+    if (Buffer.byteLength(JSON.stringify(req.body), "utf8") > 768 * 1024)
+      throw new HttpError(413, "image_batch_size", "حجم دفعة الصور يتجاوز 768 كيلوبايت");
+    for (const item of input.items) if ("sourceUrl" in item) validateModernProductImageUrl(item.sourceUrl);
+    const result = await transaction(pool, async db => {
+      const user = await viewer(db, req, true);
+      if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
+      await enabled(db, req, "medicine-market", true);
+      const cardIds = [...new Set(input.items.map(item => item.cardId))].sort((a, b) => a - b);
+      await db.query("SELECT id FROM medicine_market_cards WHERE id=ANY($1::integer[]) ORDER BY id FOR UPDATE", [cardIds]);
+      const items = [];
+      for (const item of input.items) {
+        const card = await getCard(db, item.cardId, user);
+        if (card.kind !== "medicine")
+          throw new HttpError(400, "image_batch_kind", "دفعات الصور مخصصة لكروت الأصناف فقط");
+        // Sequential preparation keeps batch processing within the existing
+        // global transform limit; any decode/store failure rolls back all rows.
+        let prepared: Awaited<ReturnType<typeof prepareImageUpload>>;
+        if ("sourceUrl" in item) {
+          let bytes: Buffer;
+          try { bytes = await downloadPublicImage(item.sourceUrl, validateModernProductImageUrl); }
+          catch { throw new HttpError(400, "image_source", "تعذر تنزيل صورة المنتج الأصلية من مودرن فارما"); }
+          const variants = await buildMarketImageVariants(bytes, { cropWhitespace: item.cropWhitespace });
+          prepared = { image: { bytes: variants.preview, width: variants.previewWidth, height: variants.previewHeight },
+            variants: stagingIsolated ? variants : null };
+        } else prepared = await prepareImageUpload(item, card.kind);
+        items.push({ cardId: item.cardId, ...await saveImageUpload(db, user, item.cardId, item, prepared) });
       }
-      await db.query(
-        "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        [assetId,cardId,user.id,image.bytes.length,image.bytes,image.width,image.height],
-      );
-      if(variants)await storeMarketImageVariants(db,marketImagePath(assetId),variants);
-      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height,cropWhitespace:input.cropWhitespace});
+      return { items };
     });
-    res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,
-      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",mainUrl:marketImagePath(assetId),iconBytes:variants.icon.length,mainBytes:variants.preview.length}:{})});
+    res.status(201).json(result);
   }));
   router.get(root+"/images/:imageId",handler(async(req,res)=>{
     await enabled(pool,req);
@@ -1095,6 +1166,122 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       res.status(201).json(result);
     }),
   );
+  async function saveContribution(
+    db: Database, req: Request, u: User, cardId: number,
+    input: z.infer<typeof contributionSchema>,
+  ) {
+    const p = perms(u),
+      card = await getCard(db, cardId, u, true),
+      field = findField(card.kind, input.fieldKey);
+    if (isMarketAdministrativeKind(card.kind) && !p.canConfigure)
+      deny("لا يمكن للمستخدمين تعديل الكروت الإدارية المرجعية");
+    if (!isShownOnMarketCard(card.kind, field, p)) deny();
+    const value = normalizeValue(field, input.value),
+      expected = normalizeValue(
+        { ...field, key: field.key === "name" ? "oldName" : field.key },
+        input.expectedValue,
+      );
+    const old = (
+      await db.query(
+        "SELECT id,card_id,field_key,proposed_value,previous_value,source FROM medicine_market_contributions WHERE author_id=$1 AND idempotency_key=$2",
+        [u.id, input.idempotencyKey],
+      )
+    ).rows[0];
+    if (old) {
+      if (
+        old.card_id !== card.id ||
+        old.field_key !== field.key ||
+        !same(old.proposed_value, value) ||
+        !same(old.previous_value, expected) ||
+        old.source !== input.source
+      )
+        throw conflict("مفتاح الطلب مرتبط بمساهمة مختلفة");
+      return {
+        contribution: contributionOutput(
+          await contributionById(db, old.id),
+        ),
+        card: cardOutput(card, p),
+      };
+    }
+    await enabled(db, req, "medicine-market", true);
+    if (card.archived || card.status === "rejected")
+      deny("هذا الكرت مؤرشف أو مرفوض");
+    const previous =
+      field.key === "name" ? card.name : (card.data[field.key] ?? null);
+    if (!same(previous, expected)) throw conflict();
+    if (same(previous, value))
+      throw new HttpError(400, "unchanged", "لم تتغير قيمة الحقل");
+    if (
+      field.key === "name" &&
+      norm(previous as string) === norm(value as string)
+    )
+      throw new HttpError(400, "unchanged", "التعديل شكلي ولا يغيّر الاسم");
+    await validateReferences(db, field, value);
+    const pendingPrescriptionDraft =
+      card.kind === "prescription" && card.status === "pending" &&
+      (field.key === "image" || field.key === "prescriptionLines") &&
+      (card.created_by === u.id || p.canModerate);
+    const published = pendingPrescriptionDraft ||
+      (trusted(u) && (u.owner || !field.price) && card.status === "published" &&
+       !(card.kind==="prescription" && field.key==="image"));
+    // Owner's published contributions are final immediately, not queued for review.
+    // Prescription images and pending prescription publication retain photo checks.
+    const ownerApproved = u.owner && published &&
+      !(card.kind==="prescription" && field.key==="image");
+    const contribution = (
+      await db.query(
+        "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
+        " VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $9='approved' THEN now() ELSE NULL END,$11) RETURNING id",
+        [
+          card.id,
+          field.key,
+          json(previous),
+          json(value),
+          input.source,
+          u.id,
+          input.idempotencyKey,
+          published,
+          ownerApproved ? "approved" : "pending",
+          ownerApproved ? u.id : null,
+          ownerApproved ? "مساهمة المالك معتمدة تلقائيًا" : "",
+        ],
+      )
+    ).rows[0];
+    if(published) {
+      await applyField(db,card,field,value);
+      if(pendingPrescriptionDraft && field.key==="image" &&
+         typeof previous==="string" && previous.startsWith("/api/medicine-market/images/")){
+        // Once a pending prescription is corrected, remove the replaced
+        // original image bytes so unredacted copies are not retained.
+        const oldId=previous.split("/").at(-1);
+        await db.query(
+          "DELETE FROM market_image_uploads WHERE id=$1 AND card_id=$2",
+          [oldId,card.id],
+        );
+      }
+    }
+    const protectedValue = field.visibility !== "public";
+    await auditMarket(
+      db,
+      u,
+      "contribute",
+      card.id,
+      { field: field.key, value: protectedValue ? "[محمي]" : previous },
+      {
+        contributionId: contribution.id,
+        field: field.key,
+        value: protectedValue ? "[محمي]" : value,
+        published,
+      },
+    );
+    return {
+      contribution: contributionOutput(
+        await contributionById(db, contribution.id),
+      ),
+      card: cardOutput(await getCard(db, card.id, u), p),
+    };
+  }
+
   router.post(
     root + "/cards/:cardId/contributions",
     handler(async (req, res) => {
@@ -1108,122 +1295,43 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           "validation",
           "قيمة الحقل وقيمته السابقة مطلوبتان",
         );
-      const result = await transaction(pool, async (db) => {
-        const u = (await viewer(db, req, true))!,
-          p = perms(u),
-          card = await getCard(db, id(req.params.cardId), u, true),
-          field = findField(card.kind, input.fieldKey);
-        if (isMarketAdministrativeKind(card.kind) && !p.canConfigure)
-          deny("لا يمكن للمستخدمين تعديل الكروت الإدارية المرجعية");
-        if (!isShownOnMarketCard(card.kind, field, p)) deny();
-        const value = normalizeValue(field, input.value),
-          expected = normalizeValue(
-            { ...field, key: field.key === "name" ? "oldName" : field.key },
-            input.expectedValue,
-          );
-        const old = (
-          await db.query(
-            "SELECT id,card_id,field_key,proposed_value,previous_value,source FROM medicine_market_contributions WHERE author_id=$1 AND idempotency_key=$2",
-            [u.id, input.idempotencyKey],
-          )
-        ).rows[0];
-        if (old) {
-          if (
-            old.card_id !== card.id ||
-            old.field_key !== field.key ||
-            !same(old.proposed_value, value) ||
-            !same(old.previous_value, expected) ||
-            old.source !== input.source
-          )
-            throw conflict("مفتاح الطلب مرتبط بمساهمة مختلفة");
-          return {
-            contribution: contributionOutput(
-              await contributionById(db, old.id),
-            ),
-            card: cardOutput(card, p),
-          };
-        }
-        await enabled(db, req, "medicine-market", true);
-        if (card.archived || card.status === "rejected")
-          deny("هذا الكرت مؤرشف أو مرفوض");
-        const previous =
-          field.key === "name" ? card.name : (card.data[field.key] ?? null);
-        if (!same(previous, expected)) throw conflict();
-        if (same(previous, value))
-          throw new HttpError(400, "unchanged", "لم تتغير قيمة الحقل");
-        if (
-          field.key === "name" &&
-          norm(previous as string) === norm(value as string)
-        )
-          throw new HttpError(400, "unchanged", "التعديل شكلي ولا يغيّر الاسم");
-        await validateReferences(db, field, value);
-        const pendingPrescriptionDraft =
-          card.kind === "prescription" && card.status === "pending" &&
-          (field.key === "image" || field.key === "prescriptionLines") &&
-          (card.created_by === u.id || p.canModerate);
-        const published = pendingPrescriptionDraft ||
-          (trusted(u) && (u.owner || !field.price) && card.status === "published" &&
-           !(card.kind==="prescription" && field.key==="image"));
-        // Owner's published contributions are final immediately, not queued for review.
-        // Prescription images and pending prescription publication retain photo checks.
-        const ownerApproved = u.owner && published &&
-          !(card.kind==="prescription" && field.key==="image");
-        const contribution = (
-          await db.query(
-            "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
-            " VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $9='approved' THEN now() ELSE NULL END,$11) RETURNING id",
-            [
-              card.id,
-              field.key,
-              json(previous),
-              json(value),
-              input.source,
-              u.id,
-              input.idempotencyKey,
-              published,
-              ownerApproved ? "approved" : "pending",
-              ownerApproved ? u.id : null,
-              ownerApproved ? "مساهمة المالك معتمدة تلقائيًا" : "",
-            ],
-          )
-        ).rows[0];
-        if(published) {
-          await applyField(db,card,field,value);
-          if(pendingPrescriptionDraft && field.key==="image" &&
-             typeof previous==="string" && previous.startsWith("/api/medicine-market/images/")){
-            // Once a pending prescription is corrected, remove the replaced
-            // original image bytes so unredacted copies are not retained.
-            const oldId=previous.split("/").at(-1);
-            await db.query(
-              "DELETE FROM market_image_uploads WHERE id=$1 AND card_id=$2",
-              [oldId,card.id],
-            );
-          }
-        }
-        const protectedValue = field.visibility !== "public";
-        await auditMarket(
-          db,
-          u,
-          "contribute",
-          card.id,
-          { field: field.key, value: protectedValue ? "[محمي]" : previous },
-          {
-            contributionId: contribution.id,
-            field: field.key,
-            value: protectedValue ? "[محمي]" : value,
-            published,
-          },
-        );
-        return {
-          contribution: contributionOutput(
-            await contributionById(db, contribution.id),
-          ),
-          card: cardOutput(await getCard(db, card.id, u), p),
-        };
-      });
+      const result = await transaction(pool, async (db) =>
+        saveContribution(db, req, (await viewer(db, req, true))!, id(req.params.cardId), input),
+      );
       res.status(201).json(result);
     }),
   );
+  router.post(root + "/owner/contributions-batch", handler(async (req, res) => {
+    const input = parse(ownerContributionsBatchSchema, req.body);
+    if (input.items.some(item => !Object.hasOwn(item, "value") || !Object.hasOwn(item, "expectedValue")))
+      throw new HttpError(400, "validation", "قيمة الحقل وقيمته السابقة مطلوبتان");
+    const result = await transaction(pool, async db => {
+      const u = await viewer(db, req, true);
+      if (!u?.owner || u.suspended || u.archived) deny("هذه العملية لمالك الموقع فقط");
+      await enabled(db, req, "medicine-market", true);
+      // Acquire every target lock in a fixed order before writing any field.
+      // Separate fields on the same card still compare their own expected value.
+      const cardIds = [...new Set(input.items.map(item => item.cardId))].sort((a, b) => a - b);
+      await db.query("SELECT id FROM medicine_market_cards WHERE id=ANY($1::integer[]) ORDER BY id FOR UPDATE", [cardIds]);
+      const items = [];
+      for (const item of input.items) {
+        const saved = await saveContribution(db, req, u, item.cardId, item);
+        items.push({
+          cardId: saved.card.id, contributionId: saved.contribution.id,
+          published: saved.contribution.published, status: saved.contribution.status,
+        });
+      }
+      const cards = [];
+      for (const cardId of cardIds) {
+        const card = cardOutput(await getCard(db, cardId, u), perms(u));
+        cards.push({ id: card.id, kind: card.kind, name: card.name, data: card.data,
+          status: card.status, archived: card.archived, revision: card.revision });
+      }
+      return { items, cards };
+    });
+    res.status(201).json(result);
+  }));
+
   router.get(
     root + "/contributions",
     handler(async (req, res) => {

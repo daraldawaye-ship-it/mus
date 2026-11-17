@@ -10282,5 +10282,146 @@
       "additionalProperties": false
     },
     "source": "routes-legal-cases.ts"
+  },
+  "POST /medicine-market/owner/contributions-batch": {
+    "queryFields": [],
+    "bodyContract": "ownerContributionsBatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "items": {
+          "minItems": 1,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fieldKey": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "compositionId",
+                  "dosageFormId",
+                  "agentId",
+                  "manufacturerId",
+                  "ingredients",
+                  "englishName",
+                  "keywords",
+                  "country",
+                  "countryCode"
+                ]
+              },
+              "value": {},
+              "expectedValue": {},
+              "source": {
+                "default": "",
+                "type": "string",
+                "maxLength": 1000
+              },
+              "idempotencyKey": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "cardId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "fieldKey",
+              "value",
+              "expectedValue",
+              "source",
+              "idempotencyKey",
+              "cardId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-medicine-market.ts"
+  },
+  "POST /medicine-market/owner/images-batch": {
+    "queryFields": [],
+    "bodyContract": "ownerImagesBatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "items": {
+          "minItems": 1,
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "dataUrl": {
+                    "type": "string",
+                    "minLength": 50,
+                    "maxLength": 700000
+                  },
+                  "cropWhitespace": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "cardId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": [
+                  "dataUrl",
+                  "cropWhitespace",
+                  "cardId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "cardId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "sourceUrl": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "pattern": "^https:\\/\\/modernpharmaye\\.com\\/upload\\/products\\/packs\\/original\\/[A-Za-z0-9_-]+\\.(?:jpe?g|png|webp|gif|avif)$"
+                  },
+                  "cropWhitespace": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "cardId",
+                  "sourceUrl",
+                  "cropWhitespace"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field."
+    },
+    "source": "routes-medicine-market.ts"
   }
 }

@@ -152,9 +152,20 @@ export function validateExternalImageUrl(source: string): URL {
   if (isIP(url.hostname) && !isPublicImageAddress(url.hostname)) throw new Error("image_source");
   return url;
 }
-async function downloadPublicImage(source: string): Promise<Buffer> {
+/** Narrow source used by the owner-requested Modern Pharma import. */
+export function validateModernProductImageUrl(source: string): URL {
+  let url: URL;
+  try { url = validateExternalImageUrl(source); }
+  catch { throw new HttpError(400, "image_source", "استخدم رابط صورة منتج أصلي من موقع مودرن فارما"); }
+  if (url.hostname !== "modernpharmaye.com" || url.search || url.hash ||
+      !/^\/upload\/products\/packs\/original\/[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif|avif)$/i.test(url.pathname))
+    throw new HttpError(400, "image_source", "استخدم رابط صورة منتج أصلي من موقع مودرن فارما");
+  return url;
+}
+export async function downloadPublicImage(source: string, validateSource?: (source: string) => unknown): Promise<Buffer> {
   let current = source;
   for (let redirect = 0; redirect < 4; redirect++) {
+    validateSource?.(current); // Re-apply narrow source rules before every redirect request.
     const url = validateExternalImageUrl(current);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const addresses = await Promise.race([
