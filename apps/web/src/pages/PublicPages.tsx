@@ -166,7 +166,6 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const [visitorMode, setVisitorMode] = useState(!requiresOnlineLogin);
   const [visitorPhone, setVisitorPhone] = useState(() => savedLoginIdentifier().includes("@") ? "" : savedLoginIdentifier());
   const [visitorName, setVisitorName] = useState("");
-  const [visitorNeedsName, setVisitorNeedsName] = useState(false);
 
   const allowPasswordAutofill = allowPasswordAutofillOnDevice();
   const desktopTextSecret = compactDesktopTextSecret(
@@ -181,7 +180,6 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setPasswordReady(false);
     setVisitorMode(!requiresOnlineLogin);
     setProtectedAccountLogin(false);
-    setVisitorNeedsName(false);
     setVisitorName("");
     setVisitorPhone(savedLoginIdentifier().includes("@") ? "" : savedLoginIdentifier());
   }, [mode, requiresOnlineLogin]);
@@ -239,7 +237,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setError("");
   }
 
-  async function enterVisitor(event: FormEvent<HTMLFormElement>, name?: string) {
+  async function enterVisitor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -251,18 +249,17 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
         csrf?: string;
       }>("/auth/visitor/enter", {
         method: "POST",
-        body: { phone: visitorPhone, ...(name ? { name } : {}) },
+        body: { phone: visitorPhone, ...(visitorName.trim() ? { name:visitorName.trim() } : {}) },
         signal: guard.signal,
       });
       if (!guard.isCurrent()) return;
       if (response.status === "name_required") {
-        setVisitorNeedsName(true);
+        setError("تعذر إنشاء حساب السوق. أعد المحاولة.");
       } else if (response.status === "password_required") {
-        setVisitorNeedsName(false);
         setLoginId(visitorPhone);
         setProtectedAccountLogin(true);
         setVisitorMode(false);
-        setError("هذا الرقم مرتبط بحساب له نشاط أو صلاحيات؛ يرجى الدخول بكلمة المرور.");
+        setError("هذا الرقم يخص موظفًا في شركة؛ الدخول إلى حساب الموظف يتطلب كلمة المرور.");
       } else {
         if (!response.user || !response.csrf)
           throw new Error("لم تكتمل جلسة الدخول");
@@ -284,12 +281,15 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   if (visitorMode) return (
     <div className="auth-page">
       <PageHeader title="الدخول إلى السوق الرئيسي"
-        description="أدخل رقم هاتفك للبدء. الحسابات التي لها مشاركات أو ارتباطات سابقة تبقى محمية." />
+        description="أدخل رقم الهاتف فقط. الاسم اختياري، ولا تحتاج كلمة مرور لاستخدام السوق." />
       <Card>
         <form className="form-grid" onSubmit={(event) => void enterVisitor(event)} aria-busy={busy}>
           <Field label="رقم الهاتف" type="tel" dir="ltr"
             autoComplete="tel" value={visitorPhone} required maxLength={40} disabled={busy}
             onChange={(event) => {setVisitorPhone(event.target.value);setError("");}} />
+          <Field label="الاسم (اختياري)" name="visitor-name" autoComplete="name"
+            value={visitorName} maxLength={120} disabled={busy}
+            onChange={(event) => setVisitorName(event.target.value)} />
           {error && <Notice tone="error">{error}</Notice>}
           <div className="actions form-full">
             <Button type="submit" disabled={busy}>
@@ -303,21 +303,6 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           </div>
         </form>
       </Card>
-      <Dialog open={visitorNeedsName} title="أهلًا بك في السوق الرئيسي"
-        onClose={() => !busy && setVisitorNeedsName(false)}>
-        <form className="form-grid" onSubmit={(event) => void enterVisitor(event, visitorName)}>
-          <p className="muted">الرقم جديد. أدخل اسمك فقط لإنشاء حسابك والبدء بالمشاركة.</p>
-          <Field label="الاسم" name="visitor-name" autoComplete="name"
-            value={visitorName} required maxLength={120} disabled={busy}
-            onChange={(event) => setVisitorName(event.target.value)} />
-          {error && <Notice tone="error">{error}</Notice>}
-          <div className="actions form-full">
-            <Button type="submit" disabled={busy || !visitorName.trim()}>
-              {busy ? "جارٍ إنشاء الحساب…" : "إنشاء الحساب والدخول"}
-            </Button>
-          </div>
-        </form>
-      </Dialog>
     </div>
   );
 
