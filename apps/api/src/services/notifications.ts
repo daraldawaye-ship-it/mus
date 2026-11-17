@@ -131,14 +131,9 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
  ))
  -- Inventory order-level messages follow the user's CURRENT position,
  -- even when a recipient was previously allowed to see an older notification.
- AND (n.code<>'ITEM_ORDER_LEVEL' OR EXISTS(
-   SELECT 1 FROM users permitted
-   LEFT JOIN employees sales_employee
-     ON sales_employee.user_id=permitted.id
-    AND sales_employee.company_id=n.company_id AND sales_employee.active
-   WHERE permitted.id=$1 AND NOT permitted.archived
-    AND (permitted.owner OR 'sales'=ANY(COALESCE(sales_employee.position_keys,'{}'::text[])))
- ))
+ -- The special-order monitor honors the current explicitly configured
+ -- employee recipients (including purchase entry/cashier), not only sales.
+ AND (n.code<>'ITEM_ORDER_LEVEL' OR $4::boolean OR ${selectedEmployee})
  AND (n.code NOT IN ${cashboxCodesSql} OR ${selectedEmployee} OR ($4::boolean AND COALESCE(s.notify_owner,false)))`;
 export const companyOnlyInboxFilter = inboxFilter + " AND n.company_id=$2::integer";
 
@@ -243,6 +238,12 @@ export async function emitNotification(
 ) {
   const template = await effectiveTemplate(client, input.companyId, input.code);
   if (!template?.implemented || !template.enabled || (input.refreshOnly && !template.latestOnly)) return;
+  // The three stock monitors always maintain one active summary per recipient,
+  // regardless of the generic "show latest" card setting. Their cadence is
+  // controlled by stock_alert_group_scans, not by individual item incidents.
+  const groupedSummary = ["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(input.code)
+    && input.subjectKey === "aggregate:" + input.code;
+  const latestOnly = template.latestOnly || groupedSummary;
   let recipients: number[] = [];
   if (input.companyId !== null) {
     if (
@@ -317,13 +318,17 @@ export async function emitNotification(
   const groupId = isGroupChat ? /^chat-group:([0-9]+):message:[0-9]+$/.exec(input.subjectKey)?.[1] : undefined;
   const matchingKey = groupId ? "group:" + groupId : streamKey;
   for (const userId of recipients) {
-    if (template.latestOnly || template.minIntervalHours)
+    if (latestOnly || template.minIntervalHours)
       await lockDelivery(client, input.companyId, input.code, userId);
-    const blocked = !!input.refreshOnly || await insideDeliveryWindow(client, input.companyId, input.code, userId, template.minIntervalHours);
-    if (blocked && !template.latestOnly) continue;
+    // For grouped stock reports, one durable per-company scan lock already
+    // enforces the card's hour interval. Avoid an additional delivery window
+    // that could silently suppress the notification by milliseconds.
+    const blocked = !!input.refreshOnly || (!groupedSummary &&
+      await insideDeliveryWindow(client, input.companyId, input.code, userId, template.minIntervalHours));
+    if (blocked && !latestOnly) continue;
     let readAt: Date | null = null, snoozedUntil: Date | null = null;
     let deliveryId: number | null = null;
-    if (template.latestOnly) {
+    if (latestOnly) {
       const scope = [input.companyId ?? 0, input.code, userId];
       const duplicate = await client.query(
         "SELECT 1 FROM notifications WHERE COALESCE(company_id,0)=$1 AND code=$2 AND recipient_user_id=$3 AND event_key=$4",
