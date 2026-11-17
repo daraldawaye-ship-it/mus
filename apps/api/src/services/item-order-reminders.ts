@@ -121,7 +121,7 @@ export async function scanDailyItemOrderReminders(
         message:"رصيد الصنف «" + itemName + "» دون مخازن المرتجعات " +
           item.available_unit1 + " بالوحدة الأولى، وكمية الطلب المحددة " +
           item.threshold + ".",
-        href:`/companies/${companyId}/items/${item.id}`,
+        href:`/companies/${companyId}/item-order-levels?itemId=${item.id}`,
       });
     }
   }
