@@ -518,6 +518,8 @@ export function itemOptionsListRoutes(pool: Pool): Router {
    * by the browser, but names, lot factors, sales and prices come from the
    * authorized company tables. Does not change drafts, inventory or accounts. */
   const draftReviewSchema = z.object({
+    includeCoverage: z.boolean().optional().default(false),
+    includeCompositionCoverage: z.boolean().optional().default(false),
     items: z.array(z.object({
       id: z.number().int().min(1).max(2147483647),
       requiredQuantity: z.string().regex(/^[1-9]\d{0,15}$/).nullable(),
@@ -566,6 +568,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
            GROUP BY activity.item_id
          )
          SELECT i.id AS "itemId",
+           i.composition_id AS "compositionId",
            i.revision AS "revision",i.reserve_quantity::text AS "reserveQuantity",
            i.order_alert_quantity::text AS "orderAlertQuantity",
            i.order_stopped_until::text AS "orderStoppedUntil",
@@ -607,7 +610,51 @@ export function itemOptionsListRoutes(pool: Pool): Router {
           id:item.id, required_quantity:item.requiredQuantity,
         })))],
       );
-      return response.rows;
+      // Extra metrics are read only when shown or requested for sorting.
+      const coverageRows = input.includeCoverage ? await addItemCoverageToPage(
+        client, companyId, response.rows.map(row => ({ id: Number(row.itemId) })),
+      ) : [];
+      const coverageById = new Map(coverageRows.map(row => [row.id, row]));
+      const compositionIds = input.includeCompositionCoverage
+        ? [...new Set(response.rows.map(row => row.compositionId)
+          .filter((value): value is number => typeof value === "number"))]
+        : [];
+      // Read materialized 'all' projections only; never raw invoices or stock.
+      const compositionRows = compositionIds.length ? (await client.query(
+        `WITH sales AS (
+           SELECT d.composition_id,
+             COALESCE(SUM(d.sale_unit1) FILTER (WHERE d.document_date >=
+               ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date),0) AS month_sales,
+             COALESCE(SUM(d.sale_unit1),0) AS four_month_sales
+           FROM item_composition_daily_statistics d
+           WHERE d.company_id=$1 AND d.composition_id=ANY($3::integer[])
+             AND d.group_key='all' AND d.document_date BETWEEN
+               ($2::date-INTERVAL '4 months'+INTERVAL '1 day')::date AND $2::date
+           GROUP BY d.composition_id
+         )
+         SELECT s.composition_id,
+           ${compositionCoverageDaysSql("s.available_unit1", "sales.month_sales", "sales.four_month_sales")}::text
+             AS coverage_days
+         FROM item_composition_statistics s
+         LEFT JOIN sales ON sales.composition_id=s.composition_id
+         WHERE s.company_id=$1 AND s.composition_id=ANY($3::integer[])
+           AND s.group_key='all'`,
+        [companyId, today, compositionIds],
+      )).rows : [];
+      const compositionById = new Map(compositionRows.map(row => [
+        Number(row.composition_id), row.coverage_days == null
+          ? null : String(row.coverage_days),
+      ] as const));
+      return response.rows.map(row => {
+        const coverage = coverageById.get(Number(row.itemId));
+        return {
+          ...row,
+          approximateCoverageDays: coverage?.approximateCoverageDays ?? null,
+          coverageAfterReserveDays: coverage?.coverageAfterReserveDays ?? null,
+          compositionCoverageDays: row.compositionId == null ? null
+            : compositionById.get(Number(row.compositionId)) ?? null,
+        };
+      });
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.json({items:rows});
