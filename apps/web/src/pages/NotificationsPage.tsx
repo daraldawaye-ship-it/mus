@@ -965,6 +965,8 @@ export function NotificationTemplatesPage({
             </div>
             <fieldset className="notification-recipients">
               <legend>المستلمون وصلاحية المتابعة</legend>
+              <CheckField label="إرسال التنبيه للمالك" checked={draft.notifyOwner}
+                onChange={notifyOwner => setDraft({...draft, notifyOwner})} />
               {!["CASHBOX_ELECTRONIC_TRANSFER","CASHBOX_POUCH_TRANSFER","CASHBOX_CLOSED"].includes(draft.code) && <>
               <CheckField
                 label={companyId ? "المديرون العامون" : "إدارة المنصة"}
@@ -973,8 +975,6 @@ export function NotificationTemplatesPage({
                   setDraft({ ...draft, notifyManagers })
                 }
               />
-              <CheckField label="إرسال التنبيه للمالك" checked={draft.notifyOwner}
-                onChange={notifyOwner => setDraft({...draft, notifyOwner})} />
               <CheckField
                 label={
                   companyId
@@ -990,6 +990,11 @@ export function NotificationTemplatesPage({
               </>}
               {companyId && (
                 <>
+                  <p className="muted">
+                    اختيار حساب المالك من «موظفون محددون» يُرسل له هذا التنبيه حتى إذا كان
+                    «إرسال التنبيه للمالك» غير مفعّل؛ أما الخيار المستقل فيشترك به المالك
+                    دون الحاجة إلى اختياره بالاسم.
+                  </p>
                   <p className="muted">
                     من يستلم التنبيه يستطيع قراءته وإنجاز متابعته؛ التأجيل
                     والتكرار حسب إعداد الكرت. المدير يستطيع إسناد المتابعة لموظف
