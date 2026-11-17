@@ -134,13 +134,14 @@ export function setSessionCookie(
   res: Response,
   token: string,
   secure: boolean,
+  visitorOnly = false,
 ): void {
   res.cookie("tijara_session", token, {
     httpOnly: true,
     sameSite: "lax",
     secure,
     path: "/",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: (visitorOnly ? 365 : 30) * 24 * 60 * 60 * 1000,
   });
 }
 export function clearSessionCookie(res: Response, secure: boolean): void {
