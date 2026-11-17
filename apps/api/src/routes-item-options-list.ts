@@ -15,6 +15,17 @@ import { stagedDailyActivitySql, activityColumns } from "./services/staged-activ
 import { assertItemSaleRankingsReady } from "./services/item-sale-ranking.ts";
 import { searchPattern } from "./services/lists.ts";
 
+// Match itemCoverageJoin exactly: one-month sales unless < 2, then
+// four-month sales; 30/120-day rates, 9999 for no net sales.
+// Both sales values come from stored daily composition projections only.
+const compositionCoverageDaysSql = (available: string, month: string, fourMonths: string) => `
+  CASE WHEN ${available} IS NULL THEN NULL::numeric
+    WHEN COALESCE(${month},0) < 2 THEN
+      CASE WHEN COALESCE(${fourMonths},0) <= 0 THEN 9999::numeric
+        ELSE ROUND(${available} * 120 / ${fourMonths},2) END
+    ELSE ROUND(${available} * 30 / ${month},2)
+  END`;
+
 const optionalNumber = z.preprocess(
   value => value === "" ? undefined : value,
   z.string().regex(/^-?\d{1,15}(?:\.\d{1,6})?$/, "أدخل عددًا صالحًا حتى 6 منازل عشرية").optional(),
@@ -49,7 +60,7 @@ const querySchema = z.object({
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   // The former useReserve request parameter is ignored if supplied by old links.
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "compositionCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -151,6 +162,7 @@ async function filteredItems(
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
     month: "f.sale_times_month", saleQuantityMonth: "f.sale_quantity_month",
     compositionSaleMonth: "f.composition_sale_unit1_month", compositionStock: "f.composition_available_unit1",
+    compositionCoverage: "f.composition_coverage_days",
     purchasePrice: "f.purchase_price",
     requiredPurchaseQuantity: "f.order_quantity_first_unit",
     requiredPurchaseValue: "f.order_value",
@@ -163,10 +175,11 @@ async function filteredItems(
   };
   const draftUsesDerivedSort = unselectedForDraft &&
     ["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired",
-      "compositionSaleMonth", "compositionStock"].includes(options.sortBy);
+      "compositionSaleMonth", "compositionStock", "compositionCoverage"].includes(options.sortBy);
   const compositionSort = !unselectedForDraft &&
-    (options.sortBy === "compositionSaleMonth" || options.sortBy === "compositionStock");
-  const order = `${draftUsesDerivedSort ? "f.code" : orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${["previousYear", "compositionSaleMonth", "compositionStock"].includes(options.sortBy) ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
+    ["compositionSaleMonth", "compositionStock", "compositionCoverage"].includes(options.sortBy);
+  const compositionCoverageSort = !unselectedForDraft && options.sortBy === "compositionCoverage";
+  const order = `${draftUsesDerivedSort ? "f.code" : orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${["previousYear", "compositionSaleMonth", "compositionStock", "compositionCoverage"].includes(options.sortBy) ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
   // Draft export deliberately ignores list pagination; its entire filtered
   // company-wide complement is fetched in ONE authorized query. Never quietly
   // return only the first 50/100 or truncate a large result.
@@ -293,11 +306,15 @@ async function filteredItems(
     )
     ${compositionSort ? `,
     composition_sale_sort AS MATERIALIZED (
-      SELECT d.composition_id, SUM(d.sale_unit1) AS sale_unit1_month
+      SELECT d.composition_id,
+        ${compositionCoverageSort ? `COALESCE(SUM(d.sale_unit1) FILTER (
+          WHERE d.document_date>=($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date),0)`
+        : "SUM(d.sale_unit1)"} AS sale_unit1_month
+        ${compositionCoverageSort ? ", COALESCE(SUM(d.sale_unit1),0) AS sale_unit1_four_months" : ""}
       FROM item_composition_daily_statistics d
       WHERE d.company_id=$1 AND d.group_key='all'
         AND d.document_date BETWEEN
-          ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date AND $2::date
+          ($2::date-INTERVAL '${compositionCoverageSort ? "4" : "1"} months'+INTERVAL '1 day')::date AND $2::date
         AND d.composition_id IN (SELECT DISTINCT composition_id FROM eligible
           WHERE composition_id IS NOT NULL)
       GROUP BY d.composition_id
@@ -307,6 +324,9 @@ async function filteredItems(
         CASE WHEN f.composition_id IS NULL THEN NULL::numeric
           ELSE COALESCE(cs.sale_unit1_month,0) END AS composition_sale_unit1_month,
         st.available_unit1 AS composition_available_unit1
+        ${compositionCoverageSort
+          ? `, ${compositionCoverageDaysSql("st.available_unit1", "cs.sale_unit1_month", "cs.sale_unit1_four_months")} AS composition_coverage_days`
+          : ""}
       FROM eligible f
       LEFT JOIN composition_sale_sort cs ON cs.composition_id=f.composition_id
       LEFT JOIN item_composition_statistics st ON st.company_id=$1
@@ -390,21 +410,31 @@ async function filteredItems(
   const compositionIds = [...new Set(selected.map(row => row.compositionId)
     .filter((value): value is number => value !== null))];
   const compositionRows = compositionIds.length ? (await client.query(
-    `SELECT s.composition_id, s.available_unit1::text AS available_unit1,
-        COALESCE(SUM(d.sale_unit1),0)::text AS sale_unit1_month
+    `WITH sales AS (
+        SELECT d.composition_id,
+          COALESCE(SUM(d.sale_unit1) FILTER (
+            WHERE d.document_date >=
+              ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date),0) AS sale_unit1_month,
+          COALESCE(SUM(d.sale_unit1),0) AS sale_unit1_four_months
+        FROM item_composition_daily_statistics d
+        WHERE d.company_id=$1 AND d.composition_id=ANY($3::integer[])
+          AND d.group_key='all' AND d.document_date BETWEEN
+            ($2::date-INTERVAL '4 months'+INTERVAL '1 day')::date AND $2::date
+        GROUP BY d.composition_id
+      )
+      SELECT s.composition_id, s.available_unit1::text AS available_unit1,
+        COALESCE(sales.sale_unit1_month,0)::text AS sale_unit1_month,
+        ${compositionCoverageDaysSql("s.available_unit1", "sales.sale_unit1_month", "sales.sale_unit1_four_months")}::text AS coverage_days
       FROM item_composition_statistics s
-      LEFT JOIN item_composition_daily_statistics d
-        ON d.company_id=s.company_id AND d.composition_id=s.composition_id
-        AND d.group_key='all' AND d.document_date BETWEEN
-          ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date AND $2::date
+      LEFT JOIN sales ON sales.composition_id=s.composition_id
       WHERE s.company_id=$1 AND s.composition_id=ANY($3::integer[])
-        AND s.group_key='all'
-      GROUP BY s.composition_id,s.available_unit1`,
+        AND s.group_key='all'`,
     [companyId,asOf,compositionIds],
   )).rows : [];
   const compositionValues = new Map(compositionRows.map(row => [
     Number(row.composition_id),
-    {saleUnit1Month:String(row.sale_unit1_month),availableUnit1:String(row.available_unit1)},
+    {saleUnit1Month:String(row.sale_unit1_month),availableUnit1:String(row.available_unit1),
+      coverageDays:row.coverage_days == null ? null : String(row.coverage_days)},
   ] as const));
   const enriched = needsCoverageJoin ? selected
     : await addItemCoverageToPage(client, companyId, selected);
@@ -420,6 +450,8 @@ async function filteredItems(
         : compositionValues.get(row.compositionId)?.saleUnit1Month ?? null,
       compositionAvailableUnit1: row.compositionId === null ? null
         : compositionValues.get(row.compositionId)?.availableUnit1 ?? null,
+      compositionCoverageDays: row.compositionId === null ? null
+        : compositionValues.get(row.compositionId)?.coverageDays ?? null,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
       minOrderQuantity: row.minOrderQuantity, reviewed: row.reviewed,
