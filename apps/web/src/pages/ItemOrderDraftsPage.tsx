@@ -265,6 +265,13 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const rows = useMemo<DraftRow[]>(() => drafts.drafts.flatMap(draft =>
     draft.items.map(item => ({ draftId: draft.id,
       draftOptionName: draft.sourceOptionName, item }))), [drafts.drafts]);
+  // A local draft can expire or be deleted while the page is open. Avoid
+  // keeping an inspection pane pointed at an item no longer in any draft.
+  useEffect(() => {
+    if (sidePanel && !rows.some(row => row.item.id === sidePanel.itemId)) {
+      setSidePanel(null);
+    }
+  }, [rows, sidePanel?.itemId]);
   const activeCount = rows.filter(row => !row.item.deleted).length;
   const removedCount = rows.length - activeCount;
   const filtered = useMemo(() => {
