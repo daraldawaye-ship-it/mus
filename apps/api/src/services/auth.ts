@@ -34,13 +34,14 @@ export async function passwordMatches(
   const actual = (await scrypt(password, salt, 64)) as Buffer;
   return timingSafeEqual(actual, Buffer.from(hex, "hex"));
 }
-export async function createSession(db: Database, userId: number) {
+export async function createSession(db: Database, userId: number, visitorOnly = false) {
   const token = randomBytes(32).toString("base64url"),
     csrf = randomBytes(32).toString("base64url");
   await db.query("DELETE FROM sessions WHERE expires_at <= now()");
   await db.query(
-    "INSERT INTO sessions(token_hash,user_id,csrf,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
-    [tokenHash(token), userId, csrf],
+    "INSERT INTO sessions(token_hash,user_id,csrf,expires_at,visitor_only) " +
+    "VALUES($1,$2,$3,now()+($4::int*interval '1 day'),$5)",
+    [tokenHash(token), userId, csrf, visitorOnly ? 365 : 30, visitorOnly],
   );
   // A login in the public site or any company is an authenticated visit too.
   // Presence is advisory; never prevent login if telemetry is unavailable.
