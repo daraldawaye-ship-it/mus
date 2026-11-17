@@ -115,15 +115,15 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         : compareQuantity(left, right);
       return (sort.descending ? -order : order) || a.itemId - b.itemId;
     });
-  const scrollArea = useRef<HTMLDivElement>(null);
-  const headerDrag = useRef<{ pointerId: number; x: number; left: number } | null>(null);
+  const headerDrag = useRef<{ label: HTMLElement; pointerId: number; x: number; left: number } | null>(null);
   const dragged = useRef(false);
   const heading = (column: ComparisonColumn) => {
     const active = sort?.column === column;
     return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
-      <button type="button" style={{ width: "100%", border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "grab", whiteSpace: "nowrap", userSelect: "none" }}
+      <button type="button" title={comparisonColumns[column]} style={{ display: "inline-flex", alignItems: "center", gap: 2, padding: 0, border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "grab", whiteSpace: "nowrap", userSelect: "none" }}
         onClick={() => setSort(current => ({ column, descending: current?.column === column && !current.descending }))}>
-        {comparisonColumns[column]} <span aria-hidden="true">{active ? (sort.descending ? "▼" : "▲") : "↕"}</span>
+        <span data-column-label style={{ display: "block", maxWidth: column === "itemName" ? "6em" : "3.4em", overflowX: "auto", scrollbarWidth: "none", overscrollBehaviorX: "contain" }}>{comparisonColumns[column]}</span>
+        <span aria-hidden="true">{active ? (sort.descending ? "▼" : "▲") : "↕"}</span>
       </button>
     </th>;
   };
@@ -162,23 +162,24 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         <Notice>جارٍ تحميل حالة المراجعة لجميع الأصناف لتطبيق الفلتر…</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
-        <div ref={scrollArea} className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
+        <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
           <thead
             onPointerDown={event => {
               dragged.current = false;
-              if (event.pointerType !== "mouse" || event.button !== 0 || !scrollArea.current) return;
+              if (event.pointerType !== "mouse" || event.button !== 0) return;
               const button = (event.target as Element).closest("button");
-              if (!button) return;
+              const label = button?.querySelector<HTMLElement>("[data-column-label]");
+              if (!button || !label) return;
               button.setPointerCapture(event.pointerId);
-              headerDrag.current = { pointerId: event.pointerId, x: event.clientX, left: scrollArea.current.scrollLeft };
+              headerDrag.current = { label, pointerId: event.pointerId, x: event.clientX, left: label.scrollLeft };
             }}
             onPointerMove={event => {
               const start = headerDrag.current;
-              if (!start || start.pointerId !== event.pointerId || !scrollArea.current) return;
+              if (!start || start.pointerId !== event.pointerId) return;
               const delta = event.clientX - start.x;
               if (!dragged.current && Math.abs(delta) < 5) return;
               dragged.current = true;
-              scrollArea.current.scrollLeft = start.left - delta;
+              start.label.scrollLeft = start.left - delta;
             }}
             onLostPointerCapture={() => { headerDrag.current = null; }}
             onClickCapture={event => {
