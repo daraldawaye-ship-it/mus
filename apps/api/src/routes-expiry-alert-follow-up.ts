@@ -15,6 +15,11 @@ const querySchema = z.object({
   pageSize: z.coerce.number().int().min(20).max(100).default(50),
 }).strip();
 
+/** One record per item, using the explicitly saved nearest expiry on its card.
+ * Stock is the NET available quantity (showroom + non-return warehouses),
+ * not a sum of positive lots without offsetting negative lots.
+ * Detail by batch remains in the separate stock balances view.
+ */
 export function expiryAlertFollowUpRoutes(pool: Pool): Router {
   const router = Router();
   router.get("/companies/:companyId/expiry-alert-follow-up/:kind",handler(async(req,res)=>{
@@ -34,36 +39,33 @@ export function expiryAlertFollowUpRoutes(pool: Pool): Router {
       const day = String((await client.query(
         "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
       )).rows[0].today);
-      // Match the notification monitor and inventory's positive-batch rule.
+      // These predicates intentionally match the group notification scanner.
       const eligible = kind === "expired"
-        ? "b.batch_key < $2::text"
-        : "b.batch_key >= $2::text AND b.batch_key <= ($2::date + 30)::text";
-      const from = `FROM stock_balances b
-        JOIN items i ON i.company_id=b.company_id AND i.id=b.item_id
-          AND i.active AND i.has_expiry
-        JOIN locations l ON l.company_id=b.company_id AND l.id=b.location_id AND l.active
-        JOIN branches br ON br.company_id=l.company_id AND br.id=l.branch_id AND br.active
-        WHERE b.company_id=$1 AND b.quantity_smallest>0 AND b.batch_key<>''
+        ? "i.nearest_expiry_date < $2::date"
+        : "i.nearest_expiry_date >= $2::date AND i.nearest_expiry_date <= ($2::date + 30)";
+      const base = `FROM items i
+        JOIN item_statistics stats ON stats.company_id=i.company_id AND stats.item_id=i.id
+        WHERE i.company_id=$1 AND i.active AND i.has_expiry
+          AND i.nearest_expiry_date IS NOT NULL
+          AND COALESCE(stats.stock_showroom,0)+COALESCE(stats.stock_warehouse,0)>0
           AND (${eligible})`;
-      const stats=(await client.query<{ batches:number; items:number }>(
-        `SELECT COUNT(*)::integer AS batches, COUNT(DISTINCT b.item_id)::integer AS items
-          ${from}`,[companyId,day],
-      )).rows[0] ?? {batches:0,items:0};
       const term = query.q ? searchPattern(query.q,true) : "";
       const order: Record<typeof query.sortBy,string> = {
         expiry: "x.expiry_date", name: "x.name",
-        quantity: "x.quantity_unit1", location: "x.location_name",
+        quantity: "x.quantity_unit1", location: "x.name",
       };
-      const sort = `${order[query.sortBy]} ${query.sortDir === "desc" ? "DESC" : "ASC"},x.item_id ASC,x.balance_id ASC`;
+      const sort = `${order[query.sortBy]} ${query.sortDir === "desc" ? "DESC" : "ASC"},x.item_id ASC`;
       const params=[companyId,day,term,query.pageSize,(query.page-1)*query.pageSize];
       const entries=await client.query(
         `WITH entries AS MATERIALIZED (
-           SELECT b.id AS balance_id,b.item_id,i.code,i.name,
-             l.name AS location_name,b.batch_key AS expiry_date,
-             ROUND(b.quantity_smallest::numeric/
+           SELECT i.id AS item_id,i.code,i.name,
+             i.nearest_expiry_date::text AS expiry_date,
+             i.unit1_name AS unit1_name,
+             ROUND((COALESCE(stats.stock_showroom,0)+COALESCE(stats.stock_warehouse,0))::numeric/
                GREATEST(i.factor2::numeric*i.factor3::numeric,1),4) AS quantity_unit1
-           ${from}
-           AND ($3::text='' OR i.name ILIKE $3 OR i.code ILIKE $3 OR l.name ILIKE $3)
+           ${base}
+           AND ($3::text='' OR i.name ILIKE $3 OR i.code ILIKE $3
+             OR i.english_name ILIKE $3)
          )
          SELECT counts.total,x.*
          FROM (SELECT COUNT(*)::integer AS total FROM entries) counts
@@ -71,14 +73,17 @@ export function expiryAlertFollowUpRoutes(pool: Pool): Router {
            SELECT * FROM entries x ORDER BY ${sort} LIMIT $4 OFFSET $5
          ) x ON TRUE`,params,
       );
+      const summary=(await client.query<{ items:number }>(
+        `SELECT COUNT(*)::integer AS items ${base}`,[companyId,day],
+      )).rows[0] ?? {items:0};
       return {
-        kind, asOf:day, page:query.page, pageSize:query.pageSize,
+        kind,asOf:day,page:query.page,pageSize:query.pageSize,
         total:Number(entries.rows[0]?.total??0),
-        summary: {items:stats.items,batches:stats.batches},
-        items:entries.rows.filter(x=>x.balance_id!=null).map(x=>({
-          balanceId:Number(x.balance_id),itemId:Number(x.item_id),
-          code:String(x.code),name:String(x.name),locationName:String(x.location_name),
-          expiryDate:String(x.expiry_date),quantityUnit1:String(x.quantity_unit1),
+        summary:{items:summary.items},
+        items:entries.rows.filter(x=>x.item_id!=null).map(x=>({
+          itemId:Number(x.item_id),code:String(x.code),
+          name:String(x.name),expiryDate:String(x.expiry_date),
+          quantityUnit1:String(x.quantity_unit1),unit1Name:String(x.unit1_name),
         })),
       };
     });
