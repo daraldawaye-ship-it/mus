@@ -224,7 +224,7 @@ function AvailableAlternatives({ companyId, userId, itemId }: {
     },
     getNextPageParam: page => {
       // Peers are ordered by descending stock in unit 1, so positive balances come first.
-      if (page.canViewStock && page.relation === "identicalAlternative" &&
+      if (page.canViewStock && page.composition?.active && page.relation !== "nonInterchangeable" &&
           page.page * page.pageSize < page.total && Number(page.peers.at(-1)?.stockSmallest) > 0) {
         return page.page + 1;
       }
@@ -233,7 +233,7 @@ function AvailableAlternatives({ companyId, userId, itemId }: {
     staleTime: 10_000,
   });
   const first = result.data?.pages[0];
-  const available = first?.canViewStock && first.relation === "identicalAlternative"
+  const available = first?.canViewStock && first.composition?.active && first.relation !== "nonInterchangeable"
     ? result.data?.pages.flatMap(page => page.peers.filter(peer => Number(peer.stockSmallest) > 0)) ?? []
     : [];
   return <Card>
@@ -243,12 +243,13 @@ function AvailableAlternatives({ companyId, userId, itemId }: {
     {first && (!first.canViewStock ? <p>تحتاج إلى صلاحية عرض المخزون لمعرفة البدائل المتوفرة.</p>
       : !first.composition ? <p>لا يوجد تركيب مرتبط بالصنف.</p>
       : first.relation === "nonInterchangeable" ? <p>التركيب مسجّل على أنه غير قابل للتبديل.</p>
-      : first.relation !== "identicalAlternative" ? <p>لم يُعتمد هذا التركيب للبدائل المطابقة.</p>
-      : !available.length ? <p>لا توجد بدائل مطابقة برصيد متوفر.</p>
-      : <ul>{available.map(peer => <li key={peer.id}>
+      : !first.composition.active ? <p>كرت التركيب غير نشط.</p>
+      : !available.length ? <p>لا توجد أصناف أخرى متوفرة بنفس التركيب.</p>
+      : <>{first.relation === "sameComposition" && <p>أصناف من نفس التركيب، لم تُعتمد للتبديل.</p>}
+        <ul>{available.map(peer => <li key={peer.id}>
           <Link to={`/companies/${companyId}/items/${peer.id}`}>{peer.name}</Link>
           {" — "}<bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}
-        </li>)}</ul>)}
+        </li>)}</ul></>)}
     {result.hasNextPage && <Button size="compact" variant="secondary" disabled={result.isFetchingNextPage}
       onClick={() => void result.fetchNextPage()}>إظهار المزيد</Button>}
   </Card>;
