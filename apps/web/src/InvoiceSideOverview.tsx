@@ -12,13 +12,15 @@ import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
 type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
 type PledgeActivity = {items:{kind:"add"|"pay"|"receive";customerName:string;details:string;amount:string|null;createdAt:string;accountId:number;documentId:number|null}[];hasMore:boolean};
-type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
+type Transfer = { id: number; kind: "pouch" | "electronic" | "custodyFunding" | "custodyTransfer"; amount: string; notes: string; createdAt: string };
 type Transfers = {
   hasEmployee: boolean;
   transferWindowStartAt: string | null;
   closingWindowStartAt: string | null;
   pouch: { total: string; count: number; items: Transfer[] };
   electronic: { total: string; count: number; items: Transfer[] };
+  custodyFunding?: { total: string; count: number; items: Transfer[] };
+  custodyTransfer?: { total: string; count: number; items: Transfer[] };
   closings: { count: number; shortageTotal: string; surplusTotal: string; items: {
     id: number; countedCash: string; bookBalance: string; difference: string;
     shortage: string; surplus: string; notes: string; createdAt: string;
@@ -87,6 +89,16 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
   });
   const selected = views.find(option => option.value === view)!;
   const section = view === "pouch" || view === "electronic" ? transfers.data?.[view] : null;
+  const pouchRows = view === "pouch"
+    ? [
+      ...(transfers.data?.pouch.items ?? []),
+      ...(transfers.data?.custodyFunding?.items ?? []),
+      ...(transfers.data?.custodyTransfer?.items ?? []),
+    ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id)
+    : (section?.items ?? []);
+  const pouchMovementCount = (transfers.data?.pouch.count ?? 0) +
+    (transfers.data?.custodyFunding?.count ?? 0) +
+    (transfers.data?.custodyTransfer?.count ?? 0);
   const presentRows = (presence.data?.items ?? []).filter(row => row.isPresent);
   return (
     <section className="invoice-empty-panel invoice-side-overview" aria-label="خيارات الصندوق والحضور">
@@ -121,24 +133,39 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
                   آخر 24 ساعة {transfers.data.transferWindowStartAt ? `(من ${invoiceSideDateTime(transfers.data.transferWindowStartAt)})` : ""}
                 </small>
                 <div className="invoice-side-overview-total">
-                  <span>الإجمالي ({section?.count ?? 0} حركة)</span>
+                  <span>{view === "pouch" ? "ترحيلات الحافظة" : "الإجمالي"} ({section?.count ?? 0} حركة)</span>
                   <strong><bdi>{formatWholeMoney(section?.total ?? "0")}</bdi></strong>
                 </div>
-                {section && section.items.length > 0 ? (
+                {view === "pouch" && <>
+                  <div className="invoice-side-overview-total">
+                    <span>تغذية العهدة ({transfers.data?.custodyFunding?.count ?? 0} حركة)</span>
+                    <strong><bdi>{formatWholeMoney(transfers.data?.custodyFunding?.total ?? "0")}</bdi></strong>
+                  </div>
+                  <div className="invoice-side-overview-total">
+                    <span>صرف العهدة، صافي ({transfers.data?.custodyTransfer?.count ?? 0} حركة)</span>
+                    <strong><bdi>{formatWholeMoney(transfers.data?.custodyTransfer?.total ?? "0")}</bdi></strong>
+                  </div>
+                </>}
+                {pouchRows.length > 0 ? (
                   <div className="invoice-side-overview-scroll" role="region" tabIndex={0}
                     aria-label={selected.label}>
                     <table>
                       <thead><tr><th>التاريخ</th><th>المبلغ</th></tr></thead>
-                      <tbody>{section.items.map(entry => (
-                        <tr key={entry.id} title={entry.notes || undefined}>
-                          <td><EventTimestamp value={entry.createdAt} nowMs={clockNow} />{entry.notes &&
-                            <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
+                      <tbody>{pouchRows.map(entry => (
+                        <tr key={`${entry.kind}-${entry.id}`} title={entry.notes || undefined}>
+                          <td><EventTimestamp value={entry.createdAt} nowMs={clockNow} />
+                            {view === "pouch" && <small className="invoice-side-overview-note">
+                              {entry.kind === "custodyFunding" ? "تغذية العهدة" :
+                                entry.kind === "custodyTransfer" ? (entry.amount.startsWith("-") ? "إرجاع إلى العهدة" : "صرف من العهدة") :
+                                  entry.amount.startsWith("-") ? "استلام من الحافظة" : "ترحيل إلى الحافظة"}
+                            </small>}
+                            {entry.notes && <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.amount)}</bdi></td>
                         </tr>
                       ))}</tbody>
                     </table>
-                    {section.count > section.items.length &&
-                      <small>تظهر آخر {section.items.length} حركة؛ الإجمالي يشمل جميع الحركات خلال آخر 24 ساعة.</small>}
+                    {(view === "pouch" ? pouchMovementCount : (section?.count ?? 0)) > pouchRows.length &&
+                      <small>تظهر آخر {pouchRows.length} حركة (حتى 50 لكل نوع)؛ الإجماليات تشمل جميع الحركات خلال آخر 24 ساعة.</small>}
                   </div>
                 ) : !transfers.isLoading && <small>لا توجد ترحيلات في هذه الفترة.</small>}
               </>
