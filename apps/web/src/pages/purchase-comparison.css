@@ -101,3 +101,39 @@
 .purchase-comparison-review-filter .button {
   min-height: 30px;
 }
+
+.comparison-controls, .comparison-controls nav, .comparison-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.comparison-controls {
+  overflow-x: auto;
+  padding-block-end: 3px;
+}
+.comparison-controls > *, .comparison-search small { flex: none; }
+.comparison-controls .purchase-comparison-review-filter { flex-wrap: nowrap; margin: 0; gap: 4px; }
+.comparison-controls .button, .comparison-search .button {
+  white-space: nowrap;
+  min-height: 28px;
+  padding: 3px 7px;
+  font-size: .8rem;
+}
+.comparison-search input { flex: 1; min-width: 0; min-height: 30px; padding-block: 3px; }
+@media screen {
+  .company-report-printable:has(> .purchase-comparison-page) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px;
+  }
+  .company-report-printable > .purchase-comparison-page { display: contents; }
+  .company-report-printable:has(> .purchase-comparison-page) > .company-report-print-toolbar { grid-area: 1 / 2; }
+  .purchase-comparison-page > .page-heading { grid-area: 1 / 1; }
+  .purchase-comparison-page > .purchase-comparison-split-layout { grid-column: 1 / -1; }
+  .purchase-comparison-page .purchase-comparison-scroll {
+    max-height: var(--comparison-height, 58vh);
+    margin-block-start: 3px;
+  }
+  .purchase-comparison-page .purchase-comparison-split-layout > .card { padding: 8px; }
+}
