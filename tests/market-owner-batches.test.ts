@@ -123,7 +123,7 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
   await t.test("catalog exposes both exact strict schemas and non-owners cannot write", async () => {
     for (const [path, schema] of [["contributions-batch", "ownerContributionsBatchSchema"], ["images-batch", "ownerImagesBatchSchema"]] as const) {
       const entry = apiCatalog(router, { operation: `POST /medicine-market/owner/${path}` }).operations[0];
-      assert(entry); assert.deepEqual(entry.bodySchema, z.toJSONSchema(mcpBodySchemas[schema]));
+      assert(entry); assert("bodySchema" in entry); assert.deepEqual(entry.bodySchema, z.toJSONSchema(mcpBodySchemas[schema]));
     }
     const before = await snapshot();
     for (const who of ["member", "visitor", "suspended", "archived", ""]) {
@@ -163,7 +163,7 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
     const composition = saved.data.cards.find((card: any) => card.id === ids.composition);
     assert.equal(composition.data.ingredients[0].strength, "500");
     assert.equal(await count("medicine_market_contributions"), 3); assert.equal(await count("audit_events"), 3);
-    const approvals = (await db.query("SELECT reviewer_id,reviewed_at FROM medicine_market_contributions")).rows;
+    const approvals = (await db.query<{ reviewer_id: number; reviewed_at: Date | null }>("SELECT reviewer_id,reviewed_at FROM medicine_market_contributions")).rows;
     assert(approvals.every(row => row.reviewer_id === owner.id && row.reviewed_at));
     const single = contribution(ids.second!, "keywords", "single path");
     const { cardId, ...body } = single;
@@ -212,7 +212,7 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
     assert.equal(await count("market_image_variants"), before.variants + 2);
     assert.equal(await count("audit_events"), before.audit + 2);
     assert.deepEqual((await snapshot()).cards, before.cards, "upload must not set image fields or revisions");
-    const stored = (await db.query("SELECT preview_bytes,storage_version FROM market_image_variants")).rows;
+    const stored = (await db.query<{ preview_bytes: Uint8Array | null; storage_version: number }>("SELECT preview_bytes,storage_version FROM market_image_variants")).rows;
     assert(stored.every(row => row.preview_bytes === null && row.storage_version === 2), "main+icon only; no third persisted copy");
   });
 });
