@@ -247,6 +247,12 @@ export function UserMenu({
                    dismiss();
                    openItemCardSheet(companyId, itemId);
                  }}
+                onOpenComposition={compositionId => {
+                  if (!companyId) return;
+                  dismiss();
+                  navigate(`/companies/${companyId}/item-compositions?edit=${compositionId}`);
+                }}
+                canViewItemCompositions={canViewPage("company.item-compositions")}
                 canCreateMemo={canCreateMemo}
                 onItemQuickAction={(action: ItemMenuQuickAction, itemId, itemName) => {
                   if (!companyId) return;
