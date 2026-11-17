@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import type { CompanyContext, Page } from "../../../../packages/contracts/src/index.ts";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import type { CompanyContext, ItemCompositionPeers, Page } from "../../../../packages/contracts/src/index.ts";
 import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
 import { signedStockMovementQuantity } from "../stock-movement-display";
 import { api, useSession } from "../api";
@@ -205,9 +205,53 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         </div>
         <PurchaseComparisonItemPanel companyId={companyId} userId={user?.id} itemId={sidePanel.itemId} view={sidePanel.view} />
       </Card>}
+      {sidePanel && <AvailableAlternatives companyId={companyId} userId={user?.id} itemId={sidePanel.itemId} />}
     </aside>
     </div>
   </section>;
+}
+
+function AvailableAlternatives({ companyId, userId, itemId }: {
+  companyId: number; userId?: number; itemId: number;
+}) {
+  const result = useInfiniteQuery({
+    queryKey: ["purchase-comparison-available-alternatives", companyId, userId, itemId],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam, signal }) => {
+      const response = await api<{ peers: ItemCompositionPeers }>(
+        `/companies/${companyId}/items/${itemId}/composition-peers?page=${pageParam}&pageSize=10`, { signal });
+      return response.peers;
+    },
+    getNextPageParam: page => {
+      // Peers are ordered by descending stock in unit 1, so positive balances come first.
+      if (page.canViewStock && page.relation === "identicalAlternative" &&
+          page.page * page.pageSize < page.total && Number(page.peers.at(-1)?.stockSmallest) > 0) {
+        return page.page + 1;
+      }
+    },
+    enabled: !!userId,
+    staleTime: 10_000,
+  });
+  const first = result.data?.pages[0];
+  const available = first?.canViewStock && first.relation === "identicalAlternative"
+    ? result.data?.pages.flatMap(page => page.peers.filter(peer => Number(peer.stockSmallest) > 0)) ?? []
+    : [];
+  return <Card>
+    <strong>بدائل الصنف المتوفرة</strong>
+    {result.isPending && <Notice>جارٍ تحميل البدائل…</Notice>}
+    {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+    {first && (!first.canViewStock ? <p>تحتاج إلى صلاحية عرض المخزون لمعرفة البدائل المتوفرة.</p>
+      : !first.composition ? <p>لا يوجد تركيب مرتبط بالصنف.</p>
+      : first.relation === "nonInterchangeable" ? <p>التركيب مسجّل على أنه غير قابل للتبديل.</p>
+      : first.relation !== "identicalAlternative" ? <p>لم يُعتمد هذا التركيب للبدائل المطابقة.</p>
+      : !available.length ? <p>لا توجد بدائل مطابقة برصيد متوفر.</p>
+      : <ul>{available.map(peer => <li key={peer.id}>
+          <Link to={`/companies/${companyId}/items/${peer.id}`}>{peer.name}</Link>
+          {" — "}<bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}
+        </li>)}</ul>)}
+    {result.hasNextPage && <Button size="compact" variant="secondary" disabled={result.isFetchingNextPage}
+      onClick={() => void result.fetchNextPage()}>إظهار المزيد</Button>}
+  </Card>;
 }
 
 type ComparisonHistoryRow = {
