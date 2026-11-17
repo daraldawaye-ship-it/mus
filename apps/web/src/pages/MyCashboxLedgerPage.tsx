@@ -85,6 +85,8 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   query.set("dateTo", dateTo);
   query.set("page", String(page));
   query.set("pageSize", String(pageSize));
+  // Keep the administrative custody statement newest-first across all pages.
+  if (isCustody) query.set("sort", "documentDate:desc,documentId:desc,lineNumber:desc");
 
   const result = useQuery({
     queryKey: ["finance", user?.id, companyId, isCustody ? "administrative-custody-ledger" : "my-cashbox-ledger", query.toString()],
