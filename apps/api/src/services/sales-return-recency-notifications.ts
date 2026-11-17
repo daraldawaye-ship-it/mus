@@ -60,7 +60,7 @@ export async function notifyReturnWithoutRecentSales(
       eventKey: `sales-return:no-recent-sales:${invoiceId}:${row.item_id}`,
       title: isMonth ? "إرجاع صنف بلا مبيعات خلال شهر" : "إرجاع صنف بلا مبيعات خلال 3 أيام",
       message: `أُرجع الصنف «${row.item_name}» في فاتورة المبيعات رقم ${invoiceNumber}، ولم تُسجل له مبيعات خلال آخر ${period}.${row.last_sale_date ? ` آخر بيع مسجل: ${row.last_sale_date}.` : " لا توجد مبيعات سابقة مسجلة."}`,
-      href: `/companies/${companyId}/invoices`,
+      href: `/companies/${companyId}/invoices/${invoiceId}`,
     });
   }
 }
