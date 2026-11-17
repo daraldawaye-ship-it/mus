@@ -256,7 +256,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   </section>;
 }
 
-function AvailableAlternatives({ companyId, userId, itemId }: {
+export function AvailableAlternatives({ companyId, userId, itemId }: {
   companyId: number; userId?: number; itemId: number;
 }) {
   const result = useInfiniteQuery({
@@ -309,7 +309,7 @@ type ComparisonHistoryRow = {
   isStaged?: boolean;
 };
 
-function PurchaseComparisonItemPanel({ companyId, userId, itemId, view }: {
+export function PurchaseComparisonItemPanel({ companyId, userId, itemId, view }: {
   companyId: number;
   userId: number | undefined;
   itemId: number;
