@@ -678,6 +678,26 @@ page(
     keywords: ["حد الطلب", "كمية الطلب", "الأصناف الخاصة", "تنبيه كمية الطلب", "مبيعات", "متوفر"] },
 );
 page(
+  "company.expired-items-follow-up",
+  "متابعة الأصناف المنتهية الصلاحية",
+  "الأصناف والمخزون",
+  "/companies/:companyId/expired-items-follow-up",
+  { view: permission("items.view","inventory.view") },
+  "دفعات الأصناف المنتهية التي لديها رصيد موجب: الصنف والكمية والموقع وتاريخ الانتهاء.",
+  { parentKey:"company.stock-balances",type:"report",
+    keywords:["صلاحية","منتهي","انتهاء","تنبيه المنتهي","دفعات"] },
+);
+page(
+  "company.expiring-items-follow-up",
+  "متابعة أصناف ستنتهي خلال 30 يوما",
+  "الأصناف والمخزون",
+  "/companies/:companyId/expiring-items-follow-up",
+  { view: permission("items.view","inventory.view") },
+  "دفعات الأصناف التي ستنتهي خلال 30 يوما وبها رصيد موجب، مع موقعها وكميتها وتاريخ انتهائها.",
+  { parentKey:"company.stock-balances",type:"report",
+    keywords:["صلاحية","قريب الانتهاء","30 يوم","تنبيه انتهاء","دفعات"] },
+);
+page(
   "company.public-requests",
   "طلب الجمهور",
   "المبيعات",
