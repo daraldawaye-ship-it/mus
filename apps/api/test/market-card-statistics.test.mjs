@@ -12,6 +12,10 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     "INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,created_by,idempotency_key) VALUES($1,$2,$2,$3,'published',1,$4) RETURNING id",
     [kind,name,JSON.stringify(data),randomUUID()])).id;
   const stats = id => one("SELECT opens::int,comments::int,likes::int,coalesce(relations,market_relation_counts(card_id)) links FROM market_card_statistics WHERE card_id=$1",[id]);
+  const ratings = async id => {
+    const row = await one("SELECT rating_count::int count,rating_total::int total,rating_average::text average FROM market_card_statistics WHERE card_id=$1",[id]);
+    return { count: row.count, total: row.total, average: row.average === null ? null : Number(row.average) };
+  };
   const comment = async (id,status) => (await one("INSERT INTO medicine_market_comments(card_id,author_id,text,status,idempotency_key) VALUES($1,1,'test',$2,$3) RETURNING id",[id,status,randomUUID()])).id;
   const open = async (id,user,key=randomUUID()) => Number((await one("SELECT market_record_open($1,$2,$3) n",[id,user,key])).n);
   const check = async () => one("SELECT market_check_statistics(100)");
@@ -25,9 +29,10 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     const linked={compositionId:comp,agentId:agent,manufacturerId:maker};
     const first = await card("medicine","M1",linked);
     await comment(first,"approved");
-    await db.query("INSERT INTO medicine_market_reactions(card_id,user_id,liked) VALUES($1,1,true)",[first]);
+    await db.query("INSERT INTO medicine_market_reactions(card_id,user_id,liked,rating) VALUES($1,1,true,4)",[first]);
     await db.exec("BEGIN");
     await migrate("20261116_card_statistics.sql");
+    await migrate("20261117_card_rating_statistics.sql");
     await db.exec("COMMIT");
     const second = await card("medicine","M2",linked);
     assert.deepEqual((await stats(comp)).links,{medicines:2,agents:1,manufacturers:1,scientificNames:1});
@@ -35,6 +40,8 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     assert.deepEqual((await stats(sci)).links,{medicines:2,compositions:1});
     assert.deepEqual((await stats(maker)).links,{medicines:2});
     assert.deepEqual(await stats(first),{opens:0,comments:1,likes:1,links:{}});
+    assert.deepEqual(await ratings(first),{count:1,total:4,average:4});
+    assert.deepEqual(await ratings(second),{count:0,total:0,average:null});
     await check();
     const newer = await card("composition","Other");
     await db.query("UPDATE medicine_market_cards SET data=jsonb_set(data,'{compositionId}',$1::jsonb) WHERE id=$2",[String(newer),second]);
@@ -62,6 +69,18 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     assert.equal((await stats(first)).comments,1);
     await db.query("UPDATE medicine_market_reactions SET liked=false WHERE card_id=$1",[first]);
     assert.equal((await stats(first)).likes,0);
+    assert.deepEqual(await ratings(first),{count:1,total:4,average:4},
+      "Unliking never changes a rating");
+    await db.query("INSERT INTO medicine_market_reactions(card_id,user_id,liked,rating) VALUES($1,2,false,2)",[first]);
+    assert.deepEqual(await ratings(first),{count:2,total:6,average:3});
+    await db.query("UPDATE medicine_market_reactions SET rating=5 WHERE card_id=$1 AND user_id=2",[first]);
+    assert.deepEqual(await ratings(first),{count:2,total:9,average:4.5});
+    await db.query("UPDATE medicine_market_reactions SET rating=NULL WHERE card_id=$1 AND user_id=1",[first]);
+    assert.deepEqual(await ratings(first),{count:1,total:5,average:5});
+    await db.query("DELETE FROM medicine_market_reactions WHERE card_id=$1 AND user_id=2",[first]);
+    assert.deepEqual(await ratings(first),{count:0,total:0,average:null});
+    await db.query("INSERT INTO medicine_market_reactions(card_id,user_id,liked,rating) VALUES($1,2,false,3)",[first]);
+    assert.deepEqual(await ratings(first),{count:1,total:3,average:3});
     const firstKey = randomUUID(), suppressed = randomUUID();
     assert.equal(await open(first,1,firstKey),1);
     assert.equal(await open(first,1,firstKey),1);
@@ -72,9 +91,11 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     await db.query("UPDATE market_card_open_events SET opened_at=clock_timestamp()-interval '60 minutes' WHERE card_id=$1 AND user_id=1 AND counted",[first]);
     assert.equal(await open(first,1,suppressed),2);
     assert.equal(await open(first,1),3);
-    await db.query("UPDATE market_card_statistics SET opens=99,comments=99,likes=99,relations='{}',check_after=now() WHERE card_id IN ($1,$2)",[first,agent]);
+    await db.query("UPDATE market_card_statistics SET opens=99,comments=99,likes=99,rating_count=99,rating_total=99,relations='{}',check_after=now() WHERE card_id IN ($1,$2)",[first,agent]);
     await check();
     assert.deepEqual(await stats(first),{opens:3,comments:1,likes:0,links:{}});
+    assert.deepEqual(await ratings(first),{count:1,total:3,average:3},
+      "Seven-day reconciliation restores true rating statistics");
     assert.equal((await stats(agent)).links.compositions,2);
     assert.equal((await one("SELECT count(*)::int n FROM market_card_statistics WHERE check_after<now()+interval '6 days'")).n,0);
   } finally { await db.close(); }
