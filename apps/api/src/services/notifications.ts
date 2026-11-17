@@ -27,9 +27,14 @@ const newerNotification = (sameStream: string) => `SELECT 1 FROM notifications n
 const currentNotification = `(CASE WHEN NOT COALESCE(s.latest_only,t.default_latest_only) THEN true
  WHEN n.code IN ${groupChatCodesSql} THEN NOT EXISTS (${newerNotification(`(${groupChatStream("newer")})=(${groupChatStream("n")})`)})
  ELSE NOT EXISTS (${newerNotification("newer.stream_key=n.stream_key")}) END)`;
+// Employee IDs are explicit opt-ins, including an owner who has an employee
+// record. Position-based alerts alone never subscribe the owner implicitly.
 const selectedEmployee = `EXISTS(SELECT 1 FROM employees selected
+ JOIN users selected_user ON selected_user.id=selected.user_id
  WHERE selected.company_id=n.company_id AND selected.id=$3 AND selected.user_id=$1 AND selected.active
- AND (selected.id=ANY(s.employee_ids) OR selected.position_keys && COALESCE(s.position_keys,t.default_position_keys)))`;
+ AND (selected.id=ANY(COALESCE(s.employee_ids,'{}'::integer[]))
+      OR (NOT selected_user.owner AND
+          selected.position_keys && COALESCE(s.position_keys,t.default_position_keys))))`;
 
 // Missing overrides retain the historical four chat types' click behavior.
 const completeOnClickSetting = `COALESCE(s.complete_on_click,
@@ -272,7 +277,9 @@ export async function emitNotification(
       await client.query(
         `SELECT DISTINCT u.id FROM users u LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
    WHERE NOT u.archived AND NOT u.suspended AND ((($2::boolean AND e.is_general_manager) OR ($3::boolean AND e.id=$4) OR e.id=ANY($5::integer[])
-   OR e.position_keys && $6::text[] OR ($7::boolean AND u.owner)) AND (NOT u.owner OR $7::boolean)) ORDER BY u.id`,
+   OR e.position_keys && $6::text[] OR ($7::boolean AND u.owner))
+   AND (NOT u.owner OR $7::boolean OR e.id=ANY($5::integer[])))
+   ORDER BY u.id`,
         [
           input.companyId,
           template.notifyManagers && !pendingCashboxCodes.includes(input.code),
