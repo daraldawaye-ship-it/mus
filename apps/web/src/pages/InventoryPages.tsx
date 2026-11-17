@@ -449,11 +449,13 @@ function BalancesSummaryList({context}: {context: CompanyContext}) {
       cell:({row})=>exact(String(row.original.locationsCount))},
     {accessorKey:"batchesCount",header:"الدفعات",size:82,
       cell:({row})=>exact(String(row.original.batchesCount))},
-    {id:"batchDetails",header:"التفاصيل",size:130,
+    {id:"batchDetails",header:"التفاصيل",size:130,enableSorting:false,
       cell:({row})=><Link className="button button-secondary"
-        to={`/companies/${companyId}/stock-balances?view=lots&itemId=${row.original.itemId}`}
+        to={`/companies/${companyId}/stock-balances?view=lots&itemId=${row.original.itemId}${
+          params.get("locationId") ? "&locationId="+params.get("locationId") : ""
+        }`}
       >عرض الدفعات</Link>},
-  ],[companyId]);
+  ],[companyId,params]);
   const detailParams=new URLSearchParams(params);
   detailParams.set("view","lots");
   return <>
@@ -488,7 +490,7 @@ function BalancesList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["itemId", "locationId"])
+  for (const key of ["itemId", "locationId", "expiryDate"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<StockBalance>(
     `/companies/${companyId}/stock-balances?${filters}`,
