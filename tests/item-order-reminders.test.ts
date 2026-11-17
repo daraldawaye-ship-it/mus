@@ -49,19 +49,35 @@ test("grouped special-order reminders use the exact first-unit threshold without
   assert.match(worker,/scanDailyItemOrderReminders\(client, companyId\)/);
 });
 
-test("expired and expiring stock alerts use separate positive-balance groups and pages", () => {
+test("expiry monitors and follow-up reports use item-card nearest expiry and net stock once per item", () => {
   const monitor = readFileSync("apps/api/src/services/grouped-stock-alerts.ts","utf8");
   const route = readFileSync("apps/api/src/routes-expiry-alert-follow-up.ts","utf8");
-  assert.match(monitor,/s\.quantity_smallest>0/);
-  assert.match(monitor,/i\.active AND i\.has_expiry/);
-  assert.match(monitor,/s\.batch_key < clock\.today::text/);
-  assert.match(monitor,/s\.batch_key >= clock\.today::text/);
+  for (const source of [monitor,route]) {
+    assert.match(source,/i\.nearest_expiry_date/);
+    assert.match(source,/i\.active AND i\.has_expiry/);
+    assert.match(source,/stats\.stock_showroom,0\)\+COALESCE\(stats\.stock_warehouse,0\)>0/);
+    assert.doesNotMatch(source,/s\.batch_key\s*[<>=]/);
+    assert.doesNotMatch(source,/b\.batch_key\s*[<>=]/);
+  }
+  assert.match(monitor,/i\.nearest_expiry_date < clock\.today/);
+  assert.match(monitor,/i\.nearest_expiry_date >= clock\.today/);
   assert.match(monitor,/scanGroupedStockAlert\(client,companyId,code\)/);
   assert.match(monitor,/expired-items-follow-up/);
   assert.match(monitor,/expiring-items-follow-up/);
-  assert.match(route,/b\.quantity_smallest>0/);
-  assert.match(route,/item_id/);
-  assert.match(route,/batch_key/);
+  assert.match(route,/i\.id AS item_id/);
+  assert.match(route,/i\.nearest_expiry_date::text AS expiry_date/);
+  assert.match(route,/ROUND\(\(COALESCE\(stats\.stock_showroom,0\)/);
+});
+
+test("stock balance summary nets opposite-sign lots without changing detail view", () => {
+  const server = readFileSync("apps/api/src/routes-inventory.ts","utf8");
+  const page = readFileSync("apps/web/src/pages/InventoryPages.tsx","utf8");
+  assert.match(server,/stock-balances\/summary/);
+  assert.match(server,/SUM\(s\.quantity_smallest\)/);
+  assert.match(server,/i\.nearest_expiry_date::text/);
+  assert.match(page,/BalancesSummaryList/);
+  assert.match(page,/params\.get\("view"\) === "lots"/);
+  assert.match(page,/أقرب تاريخ انتهاء \(كرت الصنف\)/);
 });
 
 test("order-level notification inbox follows the recipient card's current positions", () => {
