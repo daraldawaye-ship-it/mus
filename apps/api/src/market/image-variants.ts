@@ -34,7 +34,7 @@ async function exteriorWhitespaceBounds(bytes: Buffer) {
       const at = (y * info.width + x) * 4, alpha = data[at + 3]!;
       // Composite transparent pixels on white for the blank-margin test only.
       const visible = Math.min(data[at]!, data[at + 1]!, data[at + 2]!) * alpha +
-        255 * (255 - alpha) < 248 * 255;
+        255 * (255 - alpha) < 240 * 255;
       if (!visible) continue;
       left = Math.min(left, x); right = Math.max(right, x);
       top = Math.min(top, y); bottom = Math.max(bottom, y);

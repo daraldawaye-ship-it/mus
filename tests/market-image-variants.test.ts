@@ -30,7 +30,7 @@ test("variants preserve aspect ratio and keep icon/preview byte bounds", async (
 test("opt-in whitespace cropping removes exterior margins and retains artwork, small marks and padding", async () => {
   const art = await sharp({ create: { width: 120, height: 60, channels: 3, background: "#183850" } }).png().toBuffer();
   const mark = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#202020" } }).png().toBuffer();
-  const original = await sharp({ create: { width: 300, height: 200, channels: 3, background: "#fcfcfc" } })
+  const original = await sharp({ create: { width: 300, height: 200, channels: 3, background: "#f6f6f6" } })
     .composite([{ input: art, left: 90, top: 70 }, { input: mark, left: 80, top: 65 }])
     .webp({ lossless: true }).toBuffer();
   const unchanged = await buildMarketImageVariants(original);
