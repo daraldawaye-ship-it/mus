@@ -388,7 +388,11 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     likes: Number(row.likes ?? 0),
-    ...(row.opens != null ? { statistics: { opens: Number(row.opens), comments: Number(row.comments), relations: row.relations } } : {}),
+    ...(row.opens != null ? { statistics: {
+      opens: Number(row.opens), comments: Number(row.comments), relations: row.relations,
+      ratingAverage: row.rating_average == null ? null : Number(row.rating_average),
+      ratingCount: Number(row.rating_count ?? 0),
+    } } : {}),
     ratingAverage:
       row.rating_average == null ? null : Number(row.rating_average),
     ratingCount: Number(row.rating_count ?? 0),
@@ -401,9 +405,11 @@ function marketCardSelect(isolated: boolean) {
   const counters = isolated
     ? "s.likes, s.opens, s.comments, COALESCE(s.relations,market_relation_counts(c.id)) relations"
     : "(SELECT count(*) FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.liked) likes";
-  return `SELECT c.*, ${counters},
-    (SELECT avg(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_average,
-    (SELECT count(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_count,
+  const ratings = isolated
+    ? "s.rating_average AS rating_average, s.rating_count AS rating_count"
+    : "(SELECT avg(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_average, " +
+      "(SELECT count(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_count";
+  return `SELECT c.*, ${counters}, ${ratings},
     COALESCE((SELECT r.liked FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1),false) my_liked,
     (SELECT r.rating FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1) my_rating
     FROM medicine_market_cards c ${isolated ? "JOIN market_card_statistics s ON s.card_id=c.id" : ""}`;
