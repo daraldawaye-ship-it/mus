@@ -9,6 +9,13 @@ import { audit } from "./services/audit.ts";
 import { authLimiter, createSession, passwordHash, tokenHash } from "./services/auth.ts";
 import { recordDeviceLogin } from "./services/user-device-activity.ts";
 import { userDTO } from "./repositories/models.ts";
+import type { User } from "../../../packages/contracts/src/index.ts";
+
+/** A phone is not verified ownership. Never advertise higher account roles
+ * to a visitor-only browser session, even if the phone matches such an account. */
+export function publicVisitorUser(user: User): User {
+  return {...user,kind:"member",owner:false,editor:false,monitor:false};
+}
 
 const cookieName = "alraesy_visitor_device";
 const cookiePath = "/api/auth/visitor/enter";
@@ -142,7 +149,7 @@ export function visitorEntryRoutes(pool:Pool,secure:boolean):Router {
     await recordDeviceLogin(pool,req,result.user.id).catch(()=>{});
     setSessionCookie(res,result.token,secure,true);
     setDeviceCookie(res,result.deviceToken,secure);
-    res.json({status:"authenticated",user:result.user,csrf:result.csrf,visitorOnly:true});
+    res.json({status:"authenticated",user:publicVisitorUser(result.user),csrf:result.csrf,visitorOnly:true});
   }));
   return router;
 }
