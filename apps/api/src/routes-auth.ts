@@ -29,16 +29,29 @@ import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordDeviceLogin } from "./services/user-device-activity.ts";
-import { visitorAccountStatus } from "./routes-visitor-entry.ts";
+import { clearVisitorDeviceCookie, visitorAccountStatus } from "./routes-visitor-entry.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
   const router = Router();
   const limitAuth = authLimiter();
   router.get(
     "/auth/session",
-    handler(async (req, res) =>
-      res.json({ user: req.auth?.user ?? null, csrf: req.auth?.csrf ?? null, visitorOnly: Boolean(req.auth?.visitorOnly) }),
-    ),
+    handler(async (req, res) => {
+      // Keep an active market visitor logged in, including across PWA launches.
+      // Employees retain the existing, separately enforced login policy.
+      if (req.auth?.visitorOnly) {
+        await pool.query(
+          "UPDATE sessions SET expires_at=now()+interval '365 days' " +
+          "WHERE token_hash=$1 AND visitor_only AND expires_at>now()",
+          [req.auth.tokenHash],
+        );
+        const token=(req.headers.cookie??"").split(";").map(v=>v.trim())
+          .find(v=>v.startsWith("tijara_session="))?.slice("tijara_session=".length);
+        if (token) setSessionCookie(res,token,secure,true);
+      }
+      res.setHeader("Cache-Control","no-store");
+      res.json({ user: req.auth?.user ?? null, csrf: req.auth?.csrf ?? null, visitorOnly: Boolean(req.auth?.visitorOnly) });
+    }),
   );
   router.post(
     "/auth/register",
@@ -129,14 +142,13 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           await client.query("DELETE FROM sessions WHERE token_hash=$1", [
             req.auth.tokenHash,
           ]);
-        const session=await createSession(client,user.id);
-        if(starter.rows[0]?.default_password_active)
-          await client.query("UPDATE sessions SET visitor_only=true WHERE token_hash=$1",[tokenHash(session.token)]);
-        return { user, ...session, visitorOnly: Boolean(starter.rows[0]?.default_password_active) };
+        const visitorOnly=Boolean(starter.rows[0]?.default_password_active);
+        const session=await createSession(client,user.id,visitorOnly);
+        return { user, ...session, visitorOnly };
       });
       // The login event is distinct from subsequent presence heartbeats.
       await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
-      setSessionCookie(res, result.token, secure);
+      setSessionCookie(res, result.token, secure, result.visitorOnly);
       res.json({ user: result.user, csrf: result.csrf, visitorOnly: result.visitorOnly });
     }),
   );
@@ -183,6 +195,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         await audit(client, user, "auth.logout", "user", user.id, null, null);
       });
       clearSessionCookie(res, secure);
+      clearVisitorDeviceCookie(res, secure);
       res.json({ ok: true });
     }),
   );
