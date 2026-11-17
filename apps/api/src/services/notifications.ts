@@ -137,6 +137,18 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
  AND (n.code NOT IN ${cashboxCodesSql} OR ${selectedEmployee} OR ($4::boolean AND COALESCE(s.notify_owner,false)))`;
 export const companyOnlyInboxFilter = inboxFilter + " AND n.company_id=$2::integer";
 
+// Historical expiry notifications still point to individual stock lots.
+// Resolve them to the dedicated one-row-per-item follow-up screens without
+// rewriting immutable notification identity or source records.
+const expiryFollowUpHref = (r: QueryResultRow): string | null => {
+  if (!r.company_id) return null;
+  if (r.code === "ITEM_EXPIRED")
+    return `/companies/${r.company_id}/expired-items-follow-up`;
+  if (r.code === "ITEM_EXPIRING_30")
+    return `/companies/${r.company_id}/expiring-items-follow-up`;
+  return null;
+};
+
 // Resolve old ITEM_ORDER_LEVEL links without ever changing immutable alert rows.
 const orderLevelReportHref = (r: QueryResultRow): string | null => {
   if (r.code !== "ITEM_ORDER_LEVEL" || !r.company_id) return null;
@@ -173,7 +185,7 @@ export const notificationDTO = (
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
   canAssign: !r.completed_at && general && r.company_id !== null && !memoNotificationCodes.includes(r.code) && !pendingCashboxCodes.includes(r.code),
-  href: orderLevelReportHref(r) ?? r.href ?? null,
+  href: expiryFollowUpHref(r) ?? orderLevelReportHref(r) ?? r.href ?? null,
 });
 export async function nextReminder(
   client: PoolClient,
