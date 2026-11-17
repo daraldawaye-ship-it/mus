@@ -47,6 +47,14 @@ const draftColumnOptions = [
   ["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"],
 ] as const;
 type DraftColumn = (typeof draftColumnOptions)[number][0];
+// Compact laptop widths. The heading text scrolls inside these widths rather
+// than expanding a column or wrapping into a tall table header.
+const draftColumnWidths: Record<DraftColumn, number> = {
+  select: 40, quantity: 150, name: 215, details: 39,
+  stock: 89, sold: 88, month: 83, year: 83,
+  price: 88, value: 96, action: 72, option: 140,
+  coverage: 100, coverageWithReserve: 110, compositionCoverage: 118,
+};
 const defaultDraftColumns: DraftColumn[] = draftColumnOptions.slice(0, 12).map(([key]) => key);
 function readDraftColumns(key: string): DraftColumn[] {
   if (typeof window === "undefined") return [...defaultDraftColumns];
@@ -146,6 +154,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   }, [columnsStorageKey]);
   const columnStyle = (column: DraftColumn) =>
     visibleColumns.includes(column) ? undefined : { display: "none" as const };
+  const headerColumnStyle = (column: DraftColumn) => ({
+    ...columnStyle(column), width: draftColumnWidths[column],
+    minWidth: draftColumnWidths[column], maxWidth: draftColumnWidths[column],
+  });
+  const visibleTableWidth = visibleColumns.reduce(
+    (total, column) => total + draftColumnWidths[column], 0);
   const defaultColumnLayout = visibleColumns.length === defaultDraftColumns.length &&
     defaultDraftColumns.every(column => visibleColumns.includes(column));
   const needsItemCoverage = visibleColumns.includes("coverage") ||
@@ -410,17 +424,23 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const allVisibleSelected = visibleActiveIds.length > 0
     && visibleActiveIds.every(id => selectedIds.has(id));
   const resetPage = () => setPage(1);
+  // Drag the header label horizontally without triggering the sort click.
+  // Normal click and keyboard activation still sort the full draft list.
+  const headerDrag = useRef<{ label: HTMLElement; pointerId: number;
+    x: number; left: number } | null>(null);
+  const headerDragged = useRef(false);
   const sortHeader = (key: DraftSortKey, label: string) =>
-    <th scope="col" style={columnStyle(key)} aria-sort={sortKey === key ?
+    <th scope="col" style={headerColumnStyle(key)} aria-sort={sortKey === key ?
       (sortDir === "asc" ? "ascending" : "descending") : undefined}>
       <button type="button" className="item-order-draft-sort" onClick={() => {
         setSortDir(sortKey === key && sortDir === "asc" ? "desc" : "asc");
         setSortKey(key);
         setSortVersion(version => version + 1);
         setPage(1);
-      }} title={"ترتيب حسب " + label}>
-        {label}<span aria-hidden="true">{sortKey === key ?
-          (sortDir === "asc" ? " ▲" : " ▼") : " ⇵"}</span>
+      }} title={label + " — انقر للترتيب أو اسحب النص لقراءته"}>
+        <span data-column-label className="item-order-draft-sort-label" dir="rtl">{label}</span>
+        <span aria-hidden="true">{sortKey === key ?
+          (sortDir === "asc" ? "▲" : "▼") : "⇵"}</span>
       </button>
     </th>;
 
@@ -712,24 +732,50 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         aria-label="قائمة أصناف جميع المسودات">
         <table className={"item-order-drafts-table" +
           (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
-          style={defaultColumnLayout ? undefined :
-            { minWidth: Math.max(650, visibleColumns.length * 105) + "px" }}>
-          <thead><tr>
-            <th className="item-order-drafts-select-col" style={columnStyle("select")}>
+          style={{ width: visibleTableWidth + "px", minWidth: "100%", tableLayout: "fixed" }}>
+          <thead
+            onPointerDown={event => {
+              headerDragged.current = false;
+              if (event.pointerType !== "mouse" || event.button !== 0) return;
+              const button = (event.target as Element).closest<HTMLButtonElement>(".item-order-draft-sort");
+              const label = button?.querySelector<HTMLElement>("[data-column-label]");
+              if (!button || !label) return;
+              button.setPointerCapture(event.pointerId);
+              headerDrag.current = { label, pointerId: event.pointerId,
+                x: event.clientX, left: label.scrollLeft };
+            }}
+            onPointerMove={event => {
+              const start = headerDrag.current;
+              if (!start || start.pointerId !== event.pointerId) return;
+              const delta = event.clientX - start.x;
+              if (!headerDragged.current && Math.abs(delta) < 5) return;
+              headerDragged.current = true;
+              start.label.scrollLeft = start.left - delta;
+            }}
+            onLostPointerCapture={() => { headerDrag.current = null; }}
+            onClickCapture={event => {
+              if (headerDragged.current && event.detail > 0) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+              headerDragged.current = false;
+            }}>
+            <tr>
+            <th className="item-order-drafts-select-col" style={headerColumnStyle("select")}>
               <input type="checkbox" aria-label="اختيار جميع أصناف الصفحة غير المحذوفة"
                 disabled={!visibleActiveIds.length} checked={allVisibleSelected}
                 onChange={event => selectVisible(event.target.checked)} />
             </th>
             {sortHeader("quantity", "الكمية المطلوبة (و1)")}
             {sortHeader("name", "اسم الصنف")}
-            <th scope="col" aria-label="إظهار التفاصيل" style={columnStyle("details")}>⋯</th>
+            <th scope="col" aria-label="إظهار التفاصيل" style={headerColumnStyle("details")}>⋯</th>
             {sortHeader("stock", "المتوفر دون المرتجعات (و1)")}
             {sortHeader("sold", "الكمية المباعة في شهر (و1)")}
             {sortHeader("month", "المبيعات مرات في شهر")}
             {sortHeader("year", "المبيعات مرات في سنة")}
             {sortHeader("price", "سعر الشراء")}
             {sortHeader("value", "قيمة المطلوب")}
-            <th style={columnStyle("action")}>الإجراء</th>
+            <th style={headerColumnStyle("action")}>الإجراء</th>
             {sortHeader("option", "اسم الخيارات")}
             {sortHeader("coverage", "الكفاية بدون الاحتياط (يوم)")}
             {sortHeader("coverageWithReserve", "الكفاية مع الاحتياط (يوم)")}
