@@ -29,7 +29,7 @@ import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordDeviceLogin } from "./services/user-device-activity.ts";
-import { clearVisitorDeviceCookie, visitorAccountStatus } from "./routes-visitor-entry.ts";
+import { clearVisitorDeviceCookie, publicVisitorUser, visitorAccountStatus } from "./routes-visitor-entry.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
   const router = Router();
@@ -50,7 +50,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         if (token) setSessionCookie(res,token,secure,true);
       }
       res.setHeader("Cache-Control","no-store");
-      res.json({ user: req.auth?.user ?? null, csrf: req.auth?.csrf ?? null, visitorOnly: Boolean(req.auth?.visitorOnly) });
+      res.json({ user: req.auth?.visitorOnly && req.auth.user ? publicVisitorUser(req.auth.user) : (req.auth?.user ?? null), csrf: req.auth?.csrf ?? null, visitorOnly: Boolean(req.auth?.visitorOnly) });
     }),
   );
   router.post(
@@ -149,7 +149,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
       // The login event is distinct from subsequent presence heartbeats.
       await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
       setSessionCookie(res, result.token, secure, result.visitorOnly);
-      res.json({ user: result.user, csrf: result.csrf, visitorOnly: result.visitorOnly });
+      res.json({ user: result.visitorOnly ? publicVisitorUser(result.user) : result.user, csrf: result.csrf, visitorOnly: result.visitorOnly });
     }),
   );
   // The token is transmitted in a same-origin JSON POST body, never a URL
