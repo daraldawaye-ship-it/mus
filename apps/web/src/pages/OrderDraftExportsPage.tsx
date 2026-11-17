@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext, ItemCompositionPeers, Page } from "../../../../packages/contracts/src/index.ts";
@@ -115,10 +115,13 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         : compareQuantity(left, right);
       return (sort.descending ? -order : order) || a.itemId - b.itemId;
     });
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const headerDrag = useRef<{ pointerId: number; x: number; left: number } | null>(null);
+  const dragged = useRef(false);
   const heading = (column: ComparisonColumn) => {
     const active = sort?.column === column;
     return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
-      <button type="button" style={{ width: "100%", border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}
+      <button type="button" style={{ width: "100%", border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "grab", whiteSpace: "nowrap", userSelect: "none" }}
         onClick={() => setSort(current => ({ column, descending: current?.column === column && !current.descending }))}>
         {comparisonColumns[column]} <span aria-hidden="true">{active ? (sort.descending ? "▼" : "▲") : "↕"}</span>
       </button>
@@ -159,8 +162,30 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         <Notice>جارٍ تحميل حالة المراجعة لجميع الأصناف لتطبيق الفلتر…</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
-        <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
-          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("saleQuantityMonth")}{heading("availableUnit1")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
+        <div ref={scrollArea} className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
+          <thead
+            onPointerDown={event => {
+              dragged.current = false;
+              if (event.pointerType !== "mouse" || event.button !== 0 || !scrollArea.current) return;
+              const button = (event.target as Element).closest("button");
+              if (!button) return;
+              button.setPointerCapture(event.pointerId);
+              headerDrag.current = { pointerId: event.pointerId, x: event.clientX, left: scrollArea.current.scrollLeft };
+            }}
+            onPointerMove={event => {
+              const start = headerDrag.current;
+              if (!start || start.pointerId !== event.pointerId || !scrollArea.current) return;
+              const delta = event.clientX - start.x;
+              if (!dragged.current && Math.abs(delta) < 5) return;
+              dragged.current = true;
+              scrollArea.current.scrollLeft = start.left - delta;
+            }}
+            onLostPointerCapture={() => { headerDrag.current = null; }}
+            onClickCapture={event => {
+              if (dragged.current && event.detail > 0) event.stopPropagation();
+              dragged.current = false;
+            }}>
+            <tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("saleQuantityMonth")}{heading("availableUnit1")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
           <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={[index % 2 ? "alternate" : "", sidePanel?.itemId === row.itemId ? "selected" : ""].filter(Boolean).join(" ")}>
             <td><div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
               aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
