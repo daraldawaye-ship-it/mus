@@ -8340,8 +8340,31 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
 /* Optional draft columns: default keeps the original compact twelve-column grid.
    Other selections fill the available space and scroll only when needed. */
-.item-order-drafts-table.item-order-drafts-custom-columns { table-layout: auto; width: 100%; }
-.item-order-drafts-table.item-order-drafts-custom-columns th { width: auto; }
+.item-order-drafts-table.item-order-drafts-custom-columns {
+  table-layout: auto;
+  /* Let the table grow horizontally instead of squeezing a newly shown
+     coverage heading into a one-character-wide column. */
+  width: max-content;
+  min-width: 100%;
+}
+.item-order-drafts-table.item-order-drafts-custom-columns th {
+  width: auto;
+  min-width: 105px;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.item-order-drafts-table.item-order-drafts-custom-columns th:first-child { min-width: 42px; }
+/* Only the three optional sufficiency columns have long Arabic headings. */
+.item-order-drafts-table.item-order-drafts-custom-columns th:nth-child(n+13) {
+  min-width: 160px;
+}
+.item-order-drafts-table.item-order-drafts-custom-columns .item-order-draft-sort {
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-height: 1.25;
+  min-height: 33px;
+}
 .item-order-drafts-columns-backdrop {
   position: fixed; inset: 0; z-index: 1200; display: flex;
   align-items: center; justify-content: center; padding: 12px;
