@@ -2760,23 +2760,28 @@ ul {
   background: var(--surface);
   box-shadow: 0 5px 14px #0004;
 }
-/* Keep the eight sales sidebar choices reachable on shorter screens.
-   Opening the list temporarily uses the lower panel's available height,
-   with its own scroll instead of clipping options below the viewport. */
+/* Scroll the open details element itself: its internal content wrapper
+   does not constrain the choices as a direct flex child. Keep the heading
+   visible while every option remains reachable inside the lower panel. */
 .invoice-side-overview-menu[open] {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-.invoice-side-overview-menu[open] .invoice-side-overview-choices {
-  position: static;
-  inset: auto;
-  flex: 1 1 auto;
+  display: block;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  scrollbar-color: var(--primary) var(--surface);
+  scrollbar-gutter: stable;
+}
+.invoice-side-overview-menu[open] > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.invoice-side-overview-menu[open] .invoice-side-overview-choices {
+  position: static;
+  inset: auto;
 }
 .invoice-side-overview-menu[open] + .invoice-side-overview-content {
   display: none;
