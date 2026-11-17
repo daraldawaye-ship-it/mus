@@ -3928,6 +3928,7 @@
   },
   "GET /companies/:companyId/item-options": {
     "queryFields": [
+      "excludeItemId",
       "type"
     ],
     "source": "routes-items.ts"

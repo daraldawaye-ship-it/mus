@@ -1839,7 +1839,7 @@ function ItemEditor({
               {fields.compositionId&&compositionDetail.data?.composition.active===false&&
                 <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
-            <CompositionAlternativeLookup companyId={companyId}
+            <CompositionAlternativeLookup key={item?.id ?? "new"} companyId={companyId} currentItemId={item?.id}
               compositionId={fields.compositionId} disabled={disabled}
               onSelect={composition=>{
                 edit("compositionId",composition.id);

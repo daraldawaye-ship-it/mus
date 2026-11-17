@@ -64,7 +64,7 @@ export async function masterPage<T>(
   columns: Record<string, string>,
   searchColumns: string[],
   dto: (row: QueryResultRow) => T,
-  filters: Record<string, "boolean" | "id" | readonly string[]>,
+  filters: Record<string, "boolean" | "id" | "exclude-id" | readonly string[]>,
   fallback = "id:asc",
   optionKind?: "item" | "account",
   exactMatchColumns: string[] = [],
@@ -97,7 +97,7 @@ export async function masterPage<T>(
       if (!["true", "false"].includes(value))
         throw new HttpError(400, "invalid_query", "الحالة غير صالحة");
       normalized = value === "true";
-    } else if (allowed === "id") normalized = id(value);
+    } else if (allowed === "id" || allowed === "exclude-id") normalized = id(value);
     else {
       if (!allowed.includes(value))
         throw new HttpError(400, "invalid_query", "الفلتر غير صالح");
@@ -106,7 +106,7 @@ export async function masterPage<T>(
     const column = columns[field];
     if (!column) throw new Error("Missing filter column");
     parameters.push(normalized);
-    filter += ` AND ${column}=$${parameters.length}`;
+    filter += ` AND ${column}${allowed === "exclude-id" ? "<>" : "="}$${parameters.length}`;
   }
   const optionFilter = options?.filter(parameters);
   if (optionFilter) filter += ` AND ${optionFilter}`;

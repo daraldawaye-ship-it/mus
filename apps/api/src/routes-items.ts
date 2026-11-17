@@ -1330,11 +1330,11 @@ export function itemRoutes(pool: Pool): Router {
               "SELECT a.* FROM (SELECT i.id,i.company_id,i.code,i.name,i.english_name,i.search_keys,i.active,to_jsonb(f) AS composition FROM items i JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id WHERE i.active AND f.active) a",
               "FROM (SELECT i.id,i.company_id,i.code,i.name,i.english_name,i.search_keys,i.active,to_jsonb(f) AS composition FROM items i JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id WHERE i.active AND f.active) a",
               "a",
-              {id:"a.id",code:"a.code",name:"a.name",englishName:"a.english_name"},
+              {id:"a.id",excludeItemId:"a.id",code:"a.code",name:"a.name",englishName:"a.english_name"},
               ["a.name","a.english_name","a.code","a.search_keys"],
               row=>({id:row.id,code:row.code,name:row.name,englishName:row.english_name,
                 composition:itemCompositionDTO(row.composition)}),
-              {},"name:asc",
+              {excludeItemId:"exclude-id"},"name:asc",
             );
           if (req.query.type === "compositions")
             return masterPage(

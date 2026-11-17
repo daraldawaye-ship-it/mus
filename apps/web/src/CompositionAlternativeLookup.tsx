@@ -7,8 +7,8 @@ interface CompositionAlternativeItem {
   composition:ItemComposition;
 }
 /** Selecting an alternative supplies its composition; typing never clears the current link. */
-export function CompositionAlternativeLookup({companyId,compositionId,disabled=false,onSelect}:{
-  companyId:number;compositionId:number|null;disabled?:boolean;
+export function CompositionAlternativeLookup({companyId,currentItemId,compositionId,disabled=false,onSelect}:{
+  companyId:number;currentItemId?:number;compositionId:number|null;disabled?:boolean;
   onSelect:(composition:ItemComposition)=>void;
 }){
   const [alternative,setAlternative]=useState<CompositionAlternativeItem|null>(null);
@@ -17,7 +17,7 @@ export function CompositionAlternativeLookup({companyId,compositionId,disabled=f
   },[compositionId]);
   return <ServerLookup<CompositionAlternativeItem>
     companyId={companyId}
-    resource={`/companies/${companyId}/item-options?type=composition-items`}
+    resource={`/companies/${companyId}/item-options?type=composition-items${currentItemId ? "&excludeItemId=" + currentItemId : ""}`}
     label="البحث بصنف بديل"
     value={alternative}
     disabled={disabled}

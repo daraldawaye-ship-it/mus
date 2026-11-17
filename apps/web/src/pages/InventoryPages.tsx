@@ -1691,7 +1691,7 @@ function OperationEditor({
                 display={option => option.arabicName}
                 emptyLabel="ابحث عن التركيب واختره"
               />
-              <CompositionAlternativeLookup companyId={companyId}
+              <CompositionAlternativeLookup key={item?.id ?? "new"} companyId={companyId} currentItemId={item?.id}
                 compositionId={selectedComposition?.id??null} disabled={disabled}
                 onSelect={composition=>{
                   setSelectedComposition(composition);
