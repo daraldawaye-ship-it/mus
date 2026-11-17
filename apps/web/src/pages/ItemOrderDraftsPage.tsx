@@ -522,7 +522,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       description="جميع أصناف المسودات المحفوظة محليًا على هذا الجهاز"
       actions={<><Link className="button button-secondary"
         to={"/companies/" + companyId + "/item-options-list"}>قائمة الأصناف</Link>
-        <Link className="button button-secondary" to={"/companies/" + companyId + "/order-draft-exports"}>الطلبيات المرحلة</Link></>} />
+        <Link className="button button-secondary" to={"/companies/" + companyId + "/order-draft-exports"}>الطلبيات المرحلة</Link>
+        <Link className="button button-secondary" to={"/companies/" + companyId + "/item-order-levels"}>أصناف حد الطلب</Link></>} />
     <p className="muted">الحذف يضع علامة «محذوف» ويمكن إرجاع الصنف. تُستبعد الأصناف المحذوفة من قيمة المطلوب والطباعة، لكنها تبقى في المسودة. المسودات محلية وتنتهي بعد 8 ساعات من إنشائها.</p>
     {drafts.error && <Notice tone="error">{drafts.error}</Notice>}
     <Card title="اختيار تجميع الخيارات المحفوظ">
