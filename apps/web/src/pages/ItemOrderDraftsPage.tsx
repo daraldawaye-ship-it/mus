@@ -1,5 +1,5 @@
 import { formatNumber, formatStockSaleQuantity } from "../order-draft-quantities";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { errorMessage } from "../phase2";
 import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
 import { OrderPlanningFields } from "../OrderPlanningFields";
+import { AvailableAlternatives, PurchaseComparisonItemPanel } from "./OrderDraftExportsPage";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
@@ -63,9 +64,10 @@ type PresetGroupRun = {
   stages: Array<{ presetId: number; name: string; items: OrderDraftItem[] }>;
 };
 
-function DraftQuantityInput({ item, factor, onSave }: {
+function DraftQuantityInput({ item, factor, onSave, onInspect }: {
   item: OrderDraftItem; factor: number | undefined;
   onSave: (quantity: string) => boolean;
+  onInspect: () => void;
 }) {
   const [value, setValue] = useState(item.requiredQuantity ?? "");
   const [error, setError] = useState("");
@@ -101,16 +103,16 @@ function DraftQuantityInput({ item, factor, onSave }: {
     <div className="order-draft-quantity-controls">
       <button type="button" title={"− " + (factor ?? "—")}
         aria-label={"نقص كمية " + item.name + " بمقدار عامل وحدة الشراء"}
-        disabled={!!item.deleted || !lot} onClick={() => step(-1)}>−</button>
+        disabled={!!item.deleted || !lot} onClick={() => { onInspect(); step(-1); }}>−</button>
       <input aria-label={"الكمية المطلوبة للصنف " + item.name} inputMode="numeric"
-        value={value} disabled={!!item.deleted} onChange={event => {
+        value={value} disabled={!!item.deleted} onFocus={onInspect} onChange={event => {
           setValue(event.target.value); setError("");
         }} onBlur={save} onKeyDown={event => {
           if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
         }} placeholder="—" />
       <button type="button" title={"+ " + (factor ?? "—")}
         aria-label={"زيادة كمية " + item.name + " بمقدار عامل وحدة الشراء"}
-        disabled={!!item.deleted || !lot} onClick={() => step(1)}>+</button>
+        disabled={!!item.deleted || !lot} onClick={() => { onInspect(); step(1); }}>+</button>
     </div>
     {error && !item.deleted && <small role="alert">{error}</small>}
   </div>;
@@ -157,6 +159,24 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     version: number; memberKey: string; orderedItemIds: number[];
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [sidePanel, setSidePanel] = useState<{
+    itemId: number; itemName: string; view: "purchase" | "movement";
+  } | null>(null);
+  const revealSidePanel = useRef(false);
+  const showItemDetails = (itemId: number, itemName: string, revealOnMobile = false) => {
+    revealSidePanel.current = revealOnMobile;
+    setSidePanel(current => ({
+      itemId, itemName, view: current?.view ?? "purchase",
+    }));
+  };
+  useEffect(() => {
+    if (!sidePanel || !revealSidePanel.current) return;
+    revealSidePanel.current = false;
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      document.getElementById("item-order-drafts-detail-pane")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [sidePanel]);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
   const [printMode, setPrintMode] = useState<DraftPrintMode>("all");
@@ -436,7 +456,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         setGroupMessage({ error: true, text: "تعذر حفظ التجميع. بقيت المسودات السابقة كما هي؛ راجع مساحة التخزين." });
         return;
       }
-      setSelectedIds(new Set()); setDraftFilter("all"); setStatus("all"); resetPage();
+      setSelectedIds(new Set()); setSidePanel(null);
+      setDraftFilter("all"); setStatus("all"); resetPage();
       setGroupMessage({ error: false,
         text: "تم ترحيل «" + group.name + "» إلى " + saved.drafts +
           " مسودات محلية تضم " + saved.added + " صنفًا، واستُبدلت المسودات السابقة." });
@@ -541,14 +562,19 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       </div>
       {draftActionNotice && <Notice>{draftActionNotice}</Notice>}
     </Card>
+    <div className="item-order-drafts-split-layout">
     <Card title={"المسودات: " + drafts.drafts.length + " — الأصناف الفعالة: " + activeCount + " — المحذوفة: " + removedCount}>
       <div className="item-order-drafts-filters">
         <label>البحث عن صنف أو اسم خيارات
-          <input type="search" value={search} onChange={event => { setSearch(event.target.value); resetPage(); }}
+          <input type="search" value={search} onChange={event => {
+            setSearch(event.target.value); setSidePanel(null); resetPage();
+          }}
             placeholder="اسم الصنف أو اسم الخيارات" />
         </label>
         <label>المسودة
-          <select value={draftFilter} onChange={event => { setDraftFilter(event.target.value); resetPage(); }}>
+          <select value={draftFilter} onChange={event => {
+            setDraftFilter(event.target.value); setSidePanel(null); resetPage();
+          }}>
             <option value="all">كل المسودات</option>
             {drafts.drafts.map(draft => <option key={draft.id} value={draft.id}>
               مسودة الطلبية {draft.id} — {draft.sourceOptionName ?? "خيارات متعددة"}
@@ -556,7 +582,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           </select>
         </label>
         <label>الحالة
-          <select value={status} onChange={event => { setStatus(event.target.value); resetPage(); }}>
+          <select value={status} onChange={event => {
+            setStatus(event.target.value); setSidePanel(null); resetPage();
+          }}>
             <option value="all">الجميع</option>
             <option value="active">غير المحذوفة</option>
             <option value="deleted">المحذوفة</option>
@@ -675,14 +703,21 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           <tbody>{visible.map(row => {
             const info = metricsById.get(row.item.id);
             return <Fragment key={row.draftId + ":" + row.item.id}>
-              <tr className={row.item.deleted ? "item-order-draft-deleted" : undefined}>
+              <tr className={[
+                row.item.deleted ? "item-order-draft-deleted" : "",
+                sidePanel?.itemId === row.item.id ? "item-order-draft-detail-selected" : "",
+              ].filter(Boolean).join(" ")}>
               <td data-label="اختيار" style={columnStyle("select")}>
                 <input type="checkbox" aria-label={"اختيار " + row.item.name}
                   disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
-                  onChange={event => selectItem(row.item.id, event.target.checked)} />
+                  onChange={event => {
+                  selectItem(row.item.id, event.target.checked);
+                  showItemDetails(row.item.id, row.item.name, true);
+                }} />
               </td>
               <td data-label="الكمية المطلوبة" style={columnStyle("quantity")}>
                 <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                  onInspect={() => showItemDetails(row.item.id, row.item.name)}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
               </td>
               <td data-label="اسم الصنف" style={columnStyle("name")}>
@@ -728,14 +763,19 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           const info = metricsById.get(row.item.id);
           return <article className={"item-order-drafts-mobile-card" +
             (row.item.deleted ? " item-order-draft-deleted" : "") +
-            (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
+            (defaultColumnLayout ? "" : " item-order-drafts-custom-columns") +
+            (sidePanel?.itemId === row.item.id ? " item-order-draft-detail-selected" : "")}
             key={row.draftId + ":" + row.item.id}>
             <div className="item-order-drafts-mobile-top">
               <input type="checkbox" style={columnStyle("select")} aria-label={"اختيار " + row.item.name}
                 disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
-                onChange={event => selectItem(row.item.id, event.target.checked)} />
+                onChange={event => {
+                  selectItem(row.item.id, event.target.checked);
+                  showItemDetails(row.item.id, row.item.name, true);
+                }} />
               <div className="item-order-drafts-mobile-quantity" style={columnStyle("quantity")}>
                 <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                  onInspect={() => showItemDetails(row.item.id, row.item.name)}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
               </div>
               <span className="item-order-drafts-mobile-name" style={columnStyle("name")}>
@@ -786,6 +826,38 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           onClick={() => setPage(currentPage + 1)}>التالي</Button>
       </div>}
     </Card>
+    <aside id="item-order-drafts-detail-pane"
+      className="purchase-comparison-detail-pane item-order-drafts-detail-pane"
+      aria-label="مشتريات الصنف وبدائله المتوفرة" aria-live="polite">
+      {sidePanel && <>
+        <Card>
+          <div className="purchase-comparison-side-heading">
+            <strong dir="auto">{sidePanel.itemName}</strong>
+            <button type="button" className="purchase-comparison-close"
+              aria-label="إغلاق تفاصيل الصنف"
+              onClick={() => setSidePanel(null)}>×</button>
+          </div>
+          <div className="purchase-comparison-view-switch" role="group"
+            aria-label="اختيار مشتريات أو حركة الصنف">
+            <Button size="compact" variant={sidePanel.view === "purchase" ? "primary" : "secondary"}
+              aria-pressed={sidePanel.view === "purchase"}
+              onClick={() => setSidePanel(previous => previous && { ...previous, view: "purchase" })}>
+              مشتريات الصنف
+            </Button>
+            <Button size="compact" variant={sidePanel.view === "movement" ? "primary" : "secondary"}
+              aria-pressed={sidePanel.view === "movement"}
+              onClick={() => setSidePanel(previous => previous && { ...previous, view: "movement" })}>
+              حركة الصنف
+            </Button>
+          </div>
+          <PurchaseComparisonItemPanel companyId={companyId} userId={user?.id}
+            itemId={sidePanel.itemId} view={sidePanel.view} />
+        </Card>
+        <AvailableAlternatives companyId={companyId} userId={user?.id}
+          itemId={sidePanel.itemId} />
+      </>}
+    </aside>
+    </div>
     <section className="item-options-print-sheet" dir="rtl"
       aria-label="طباعة أصناف مسودات الطلبيات مع الكميات المطلوبة">
       <div className="item-options-print-columns">
