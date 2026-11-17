@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-export type MyCashboxTransferKind = "pouch" | "electronic";
+export type MyCashboxTransferKind = "pouch" | "electronic" | "custodyFunding" | "custodyTransfer";
 type TransferRow = {
   id: number;
   kind: MyCashboxTransferKind;
@@ -51,7 +51,8 @@ export async function listMyCashboxTransfers(
     hasEmployee: false,
     transferWindowStartAt: null as string | null,
     closingWindowStartAt: null as string | null,
-    pouch: empty(), electronic: empty(), closings: emptyClosings(),
+    pouch: empty(), electronic: empty(), custodyFunding: empty(), custodyTransfer: empty(),
+    closings: emptyClosings(),
   };
 
   const asOf: Date = (await client.query(
@@ -77,6 +78,32 @@ export async function listMyCashboxTransfers(
        FROM employee_cashbox_operations WHERE ${predicate}
      ) recent WHERE rank<=50 ORDER BY kind,"createdAt" DESC,id DESC`,params,
   );
+  // The two custody workflows are separate from the employee pouch ledger.
+  // Only movements created by this signed-in user are shown; no balances or
+  // other employees' operations are exposed by the invoice sidebar.
+  const custodyParams = [companyId, employee.id, userId, transferWindowStartAt, windowEndAt];
+  const custodySources = `
+    SELECT 'custodyFunding'::text AS kind,id,amount,notes,created_at
+    FROM administrative_custody_fundings
+    WHERE company_id=$1 AND employee_id=$2 AND created_by=$3
+      AND created_at >= $4::timestamptz AND created_at <= $5::timestamptz
+    UNION ALL
+    SELECT 'custodyTransfer'::text AS kind,id,amount,notes,created_at
+    FROM administrative_custody_transfers
+    WHERE company_id=$1 AND created_by=$3
+      AND created_at >= $4::timestamptz AND created_at <= $5::timestamptz`;
+  const custodyTotals = await client.query(
+    `SELECT kind,count(*)::int AS count,COALESCE(sum(amount),0)::text AS total
+     FROM (${custodySources}) operations GROUP BY kind`, custodyParams,
+  );
+  const custodyMovements = await client.query(
+    `SELECT id,kind,amount::text AS amount,notes,created_at AS "createdAt"
+     FROM (
+       SELECT id,kind,amount,notes,created_at,
+         row_number() OVER(PARTITION BY kind ORDER BY created_at DESC,id DESC) AS rank
+       FROM (${custodySources}) operations
+     ) recent WHERE rank<=50 ORDER BY kind,"createdAt" DESC,id DESC`, custodyParams,
+  );
   const closingParams = [companyId, employee.id, closingWindowStartAt, windowEndAt];
   const closingPredicate = `company_id=$1 AND employee_id=$2
     AND created_at >= $3::timestamptz AND created_at <= $4::timestamptz
@@ -99,7 +126,8 @@ export async function listMyCashboxTransfers(
      FROM employee_cashbox_operations WHERE ${closingPredicate}
      ORDER BY created_at DESC,id DESC LIMIT 50`,closingParams,
   );
-  const pouch = empty(), electronic = empty(), closings = emptyClosings();
+  const pouch = empty(), electronic = empty(), custodyFunding = empty(),
+    custodyTransfer = empty(), closings = emptyClosings();
   for (const row of totals.rows) {
     const target = row.kind === "pouch" ? pouch : electronic;
     target.count = row.count;
@@ -107,6 +135,18 @@ export async function listMyCashboxTransfers(
   }
   for (const row of movements.rows) {
     const target = row.kind === "pouch" ? pouch : electronic;
+    target.items.push({
+      id: row.id, kind: row.kind, amount: row.amount, notes: row.notes,
+      createdAt: iso(row.createdAt),
+    });
+  }
+  for (const row of custodyTotals.rows) {
+    const target = row.kind === "custodyFunding" ? custodyFunding : custodyTransfer;
+    target.count = row.count;
+    target.total = row.total;
+  }
+  for (const row of custodyMovements.rows) {
+    const target = row.kind === "custodyFunding" ? custodyFunding : custodyTransfer;
     target.items.push({
       id: row.id, kind: row.kind, amount: row.amount, notes: row.notes,
       createdAt: iso(row.createdAt),
@@ -128,6 +168,6 @@ export async function listMyCashboxTransfers(
   return {
     hasEmployee: true,
     transferWindowStartAt, closingWindowStartAt,
-    pouch, electronic, closings,
+    pouch, electronic, custodyFunding, custodyTransfer, closings,
   };
 }
