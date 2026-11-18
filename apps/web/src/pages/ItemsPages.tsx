@@ -998,6 +998,14 @@ function ItemStatisticsCard({
               "يتطلب صلاحية عرض الفواتير."
             )}
           </dd>
+          <dt>مرات الطلب من السوق آخر 30 يوم</dt>
+          <dd>{statistics.marketOrders
+            ? <bdi>{statistics.marketOrders.last30Days}</bdi>
+            : "يتطلب صلاحية عرض الطلبيات المرحلة والمشتريات."}</dd>
+          <dt>مرات الطلب من السوق آخر 30 يوم بعد آخر شراء</dt>
+          <dd>{statistics.marketOrders
+            ? <bdi>{statistics.marketOrders.afterLastPurchase30Days}</bdi>
+            : "يتطلب صلاحية عرض الطلبيات المرحلة والمشتريات."}</dd>
           <dt>آخر تسوية في</dt>
           <dd>
             {statistics.lastAdjustment ? (
