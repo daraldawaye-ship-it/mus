@@ -28,6 +28,18 @@ export async function readItemStatistics(
     allowed("company.sales") &&
     allowed("company.purchases") &&
     allowed("company.invoice");
+  const canViewMarketOrders =
+    allowed("company.order-draft-exports") &&
+    allowed("company.purchases") &&
+    allowed("company.invoice");
+  if (canViewMarketOrders) {
+    // Reconcile the current local day and any late purchase correction before display.
+    // Both counts remain in the separate, rebuildable item_statistics table.
+    await client.query(
+      "SELECT refresh_item_market_order_statistics($1,ARRAY[$2::integer])",
+      [companyId,itemId],
+    );
+  }
   const row = (
     await client.query(
       `SELECT s.*,s.stock_total::text AS stock_total,s.stock_showroom::text AS stock_showroom,s.stock_warehouse::text AS stock_warehouse
@@ -136,6 +148,14 @@ export async function readItemStatistics(
     lastMovement,
     lastSale,
     lastPurchase,
+    marketOrders: canViewMarketOrders
+      ? {
+          last30Days: Number(row.market_order_days_30d),
+          afterLastPurchase30Days: Number(row.market_order_days_after_purchase_30d),
+          lastPurchaseAt: row.market_order_last_purchase_at
+            ? new Date(row.market_order_last_purchase_at).toISOString() : null,
+        }
+      : null,
     adjustmentCounts: canViewStock
       ? {
           allTime: row.adjustments_all_time.toString(),
