@@ -234,7 +234,7 @@ export function invoiceLineGross(quantity: string, unitPrice: string, decimalPla
  * invoice-money micros and physical stock in the smallest unit. The free bonus
  * changes only the denominator, never the amount billed to the supplier. */
 export function netPurchasePriceFirstUnit(
-  netLineTotal: string, netSmallestQuantity: string, smallestPerFirstUnit: number,
+  netLineTotal: string, netSmallestQuantity: string, smallestPerFirstUnit: number | bigint,
 ): string {
   const paid = units(netLineTotal);
   const stock = BigInt(netSmallestQuantity);
