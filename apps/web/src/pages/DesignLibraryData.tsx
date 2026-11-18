@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { ArrowDownUp, Check, ChevronDown, ChevronLeft, ChevronRight, LayoutGrid, List, Table2 } from "lucide-react";
 import { DemoDialog, Example, Group, SectionIntro } from "./DesignLibraryWebartShared";
+import DesignLibraryReorderTable from "./DesignLibraryReorderTable";
 import "./DesignLibraryData.css";
 
 // Original, local demonstrations of table patterns; all values are fictional.
@@ -167,8 +168,11 @@ function WeeklySchedule() {
 export default function DesignLibraryData() {
   const [revision, setRevision] = useState(0);
   return <div className="design-webart design-webart-data">
-    <SectionIntro onReset={() => setRevision(value => value + 1)}>أفكار الجداول من WebArtDevelopers، بصياغة عربية تناسب الأصناف والمقارنات والمتابعة.</SectionIntro>
+    <SectionIntro onReset={() => setRevision(value => value + 1)}>نماذج عربية للفرز والتصفية وتحريك الأعمدة وعرض الأصناف والمقارنات والمتابعة.</SectionIntro>
     <div className="wad-groups" key={revision}>
+      <Group title="ترتيب الأعمدة بالسحب">
+        <Example code="ض-13" title="جدول بأعمدة قابلة للسحب" note="اسحب عنوان العمود قبل أي عمود آخر أو بعده؛ تنتقل بياناته معه. النقرة العادية على العنوان تفرز الصفوف." wide><DesignLibraryReorderTable /></Example>
+      </Group>
       <Group title="الفرز والتصفية والاختيار">
         <Example code="ض-01" title="جدول بفرز مباشر" source={source("excel-bootstrap-table-filter-jquery-plugin")} note="اضغط على عنوان الصنف أو الكمية أو السعر لعكس ترتيب الصفوف."><SortableTable /></Example>
         <Example code="ض-02" title="فلاتر مستقلة داخل الأعمدة" source={source("multifilter")} note="الاسم والمجموعة وأقل كمية تعمل معًا على السجلات نفسها."><ColumnFilters /></Example>
@@ -190,3 +194,4 @@ export default function DesignLibraryData() {
     </div>
   </div>;
 }
+
