@@ -25,7 +25,7 @@
 .wad-reorder .wad-reorder-resizer:is(:hover,:focus-visible,.is-resizing)::after { width:3px; background:var(--primary); }
 .wad-reorder.wad-reorder-resizing,
 .wad-reorder.wad-reorder-resizing * { cursor:col-resize !important; user-select:none; -webkit-user-select:none; }
-.wad-reorder .wad-reorder-ghost { position:absolute; z-index:3; display:flex; align-items:center; gap:5px; min-height:34px; padding:6px 7px; background:var(--surface); color:var(--text); border:1px solid var(--primary); border-radius:4px; box-shadow:0 3px 9px color-mix(in srgb,var(--text) 14%,transparent); font-size:12px; font-weight:600; white-space:nowrap; pointer-events:none; }
+.wad-reorder .wad-reorder-ghost { position:absolute; z-index:3; display:flex; align-items:center; gap:5px; max-width:100%; box-sizing:border-box; min-height:34px; padding:6px 7px; background:var(--surface); color:var(--text); border:1px solid var(--primary); border-radius:4px; box-shadow:0 3px 9px color-mix(in srgb,var(--text) 14%,transparent); font-size:12px; font-weight:600; white-space:nowrap; pointer-events:none; }
 .wad-reorder .wad-reorder-line { position:absolute; z-index:4; width:3px; transform:translateX(-1px); border-radius:2px; background:var(--primary); pointer-events:none; }
 .wad-reorder .wad-reorder-line::before { content:""; position:absolute; top:-3px; left:-2px; width:7px; height:7px; border-radius:50%; background:var(--primary); }
 .wad-reorder .wad-reorder-footer { display:flex; gap:4px 12px; align-items:baseline; flex-wrap:wrap; font-size:11px; }
