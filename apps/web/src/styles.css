@@ -8862,6 +8862,20 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .attendance-approval-copy { flex: 1 1 170px; display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; }
 .attendance-approval-copy strong { font-size: 13px; }
 .attendance-approval-copy span { color: var(--muted); }
+.attendance-approval-copy .attendance-approval-employee,
+.attendance-approval-copy .attendance-approval-kind {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
+  vertical-align: middle;
+}
+.attendance-approval-copy .attendance-approval-employee { background: #598bca; }
+.attendance-approval-copy .attendance-approval-kind-check-in { background: #217e51; }
+.attendance-approval-copy .attendance-approval-kind-check-out { background: #a97818; }
 .attendance-approval-yes,.attendance-approval-no {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   border: 0; border-radius: 7px; min-height: 36px; padding: 5px 10px;
