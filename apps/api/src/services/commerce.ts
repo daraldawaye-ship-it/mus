@@ -1058,7 +1058,7 @@ export async function createInvoice(
           line.item.currency_id !== input.currencyId) continue;
       const effectivePrice = netPurchasePriceFirstUnit(
         moneyString(line.total), line.smallest.toString(),
-        stockUnitMultiplier(line.item, 1));
+        stockUnitMultiplier({factor2:Number(line.item.factor2), factor3:Number(line.item.factor3)}, 1));
       const updated = await client.query(
         `UPDATE items SET purchase_price=$3::numeric,
            revision=revision+1,updated_at=clock_timestamp()
