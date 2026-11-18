@@ -24,20 +24,20 @@
 .numeric-pad-dialog {
   position:fixed; inset:0; margin:auto; box-sizing:border-box;
   border:1px solid var(--border); border-radius:11px;
-  padding:0; width:min(226px,calc(100vw - 18px)); max-width:none;
-  max-height:min(94dvh,420px); overflow-y:auto;
+  padding:0; width:min(186px,calc(100vw - 14px)); max-width:none;
+  max-height:min(94dvh,360px); overflow-y:auto;
   color:var(--text); background:var(--surface);
   box-shadow:0 18px 55px var(--shadow),0 0 0 1px var(--border);
 }
 .numeric-pad-dialog::backdrop { background:rgba(0,0,0,.58); }
-.numeric-pad-shell { padding:9px; display:grid; gap:7px; }
+.numeric-pad-shell { padding:6px; display:grid; gap:5px; }
 .numeric-pad-display {
-  display:flex; align-items:center; gap:5px; padding:4px 5px;
-  min-height:42px; border:1px solid var(--field-border,var(--border));
+  display:flex; align-items:center; gap:3px; padding:3px;
+  min-height:34px; border:1px solid var(--field-border,var(--border));
   background:var(--field-bg,var(--bg)); border-radius:8px;
 }
 .numeric-pad-value {
-  flex:1; min-width:0; text-align:left; font-size:20px;
+  flex:1; min-width:0; text-align:left; font-size:17px;
   font-weight:750; letter-spacing:-.25px; font-variant-numeric:tabular-nums;
   white-space:nowrap; overflow-x:auto; overflow-y:hidden;
   scrollbar-width:none; line-height:1.2;
@@ -45,27 +45,27 @@
 .numeric-pad-value::-webkit-scrollbar { display:none; }
 .numeric-pad-clear {
   display:grid; place-items:center; padding:0;
-  width:23px; height:25px; flex:none; border:0;
+  width:20px; height:23px; flex:none; border:0;
   border-radius:5px; background:transparent; color:var(--muted); cursor:pointer;
 }
 .numeric-pad-clear:hover { color:var(--error-text); background:var(--error-bg); }
 .numeric-pad-sign {
   display:grid; place-items:center; flex:none;
-  width:25px; height:26px; min-height:26px; padding:0;
+  width:22px; height:23px; min-height:23px; padding:0;
   border:1px solid transparent; border-radius:5px;
   font-weight:750; cursor:pointer; transition:background .12s;
 }
-.numeric-pad-sign > span { font-size:18px; line-height:1; }
+.numeric-pad-sign > span { font-size:16px; line-height:1; }
 .numeric-pad-sign.positive { color:var(--success-text); background:var(--success-bg); }
 .numeric-pad-sign.negative { color:var(--error-text); background:var(--error-bg); }
 .numeric-pad-keys {
-  display:grid; grid-template-columns:repeat(3,minmax(0,56px));
-  justify-content:center; gap:6px;
+  display:grid; grid-template-columns:repeat(3,minmax(0,46px));
+  justify-content:center; gap:4px;
 }
 .numeric-pad-keys button {
-  min-width:0; height:46px; padding:2px; border:1px solid var(--button-border,var(--border));
-  border-radius:8px; color:var(--text); background:var(--button-surface,var(--bg));
-  box-shadow:0 1px 3px var(--shadow); font-size:21px;
+  min-width:0; height:40px; padding:1px; border:1px solid var(--button-border,var(--border));
+  border-radius:6px; color:var(--text); background:var(--button-surface,var(--bg));
+  box-shadow:0 1px 2px var(--shadow); font-size:18px;
   font-weight:750; font-variant-numeric:tabular-nums; cursor:pointer;
   touch-action:manipulation;
 }
@@ -74,10 +74,10 @@
 .numeric-pad-keys .numeric-pad-backspace {
   display:grid; place-items:center; color:var(--error-text); background:var(--error-bg);
 }
-.numeric-pad-actions { display:flex; align-items:center; justify-content:center; gap:6px; }
+.numeric-pad-actions { display:flex; align-items:center; justify-content:center; gap:4px; }
 .numeric-pad-actions button {
   display:flex; align-items:center; justify-content:center; gap:5px;
-  flex:0 1 82px; min-height:28px; padding:3px 7px; border-radius:6px;
+  flex:0 1 69px; min-height:26px; padding:2px 5px; border-radius:5px;
   font-size:11px; font-weight:700; cursor:pointer;
 }
 .numeric-pad-cancel { border:1px solid var(--border); background:var(--button-surface,var(--bg)); color:var(--text); }
@@ -86,9 +86,9 @@
 .numeric-pad-confirm svg { width:13px; height:13px; }
 .numeric-pad-error { margin:0; color:var(--error-text); font-size:11px; }
 @media(max-width:420px) {
-  .numeric-pad-dialog { width:min(226px,calc(100vw - 14px)); }
-  .numeric-pad-shell { padding:8px; gap:6px; }
-  .numeric-pad-keys button { height:46px; }
+  .numeric-pad-dialog { width:min(186px,calc(100vw - 12px)); }
+  .numeric-pad-shell { padding:6px; gap:5px; }
+  .numeric-pad-keys button { height:40px; }
 }
 @media(prefers-reduced-motion:reduce) {
   .numeric-pad-sign { transition:none; }
