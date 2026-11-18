@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Calculator, Check, Delete, RotateCcw, X } from "lucide-react";
+import { Calculator, Check, Delete, X } from "lucide-react";
 import "./NumericPadField.css";
 
 /** Normalize Arabic/Persian digits without ever converting through floating point. */
@@ -140,22 +140,21 @@ export function NumericPadField({
       onClose={() => setOpen(false)}
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="numeric-pad-shell">
-        <header className="numeric-pad-heading">
-          <strong>{label}</strong>
-          <button type="button" className="numeric-pad-close" onClick={close} aria-label="إغلاق دون حفظ"><X size={17}/></button>
-        </header>
         <div className="numeric-pad-display" dir="ltr" aria-live="polite">
+          <button type="button" className="numeric-pad-clear"
+            onClick={() => enter("clear")} title="مسح الرقم" aria-label="مسح الرقم">
+            <X size={15} aria-hidden="true"/>
+          </button>
           <span className="numeric-pad-value">{draft || "0"}</span>
-          <button type="button" className="numeric-pad-clear" onClick={() => enter("clear")} title="مسح الرقم"><RotateCcw size={15}/> مسح</button>
+          <button type="button" dir="rtl"
+            className={`numeric-pad-sign ${draft.startsWith("-") ? "negative" : "positive"}`}
+            aria-label={`الإشارة ${draft.startsWith("-") ? "سالبة" : "موجبة"}؛ اضغط للتبديل`}
+            aria-pressed={draft.startsWith("-")} disabled={!allowNegative}
+            onClick={toggleSign} title="تبديل موجب وسالب">
+            <span aria-hidden="true">{draft.startsWith("-") ? "−" : "+"}</span>
+            {draft.startsWith("-") ? "سالب" : "موجب"}
+          </button>
         </div>
-        <button type="button"
-          className={`numeric-pad-sign ${draft.startsWith("-") ? "negative" : "positive"}`}
-          aria-pressed={draft.startsWith("-")} disabled={!allowNegative}
-          onClick={toggleSign} title="تبديل موجب وسالب">
-          <span>{draft.startsWith("-") ? "−" : "+"}</span>
-          {draft.startsWith("-") ? "سالب" : "موجب"}
-          <small>اضغط للتبديل</small>
-        </button>
         <div className="numeric-pad-keys" dir="ltr">
           {["1","2","3","4","5","6","7","8","9"].map(key =>
             <button type="button" key={key} onClick={() => enter(key)}>{key}</button>)}
