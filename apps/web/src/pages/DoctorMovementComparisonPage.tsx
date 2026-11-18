@@ -10,34 +10,74 @@ import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import "./DoctorMovementComparisonPage.css";
 
-type Row = { doctorName:string;currentAmount:string;previousAmount:string;difference:string };
+type Row = {
+  doctorName:string;category:string;department:string;phone:string;
+  currentAmount:string;previousAmount:string;difference:string;
+  paidCurrent:string|null;paidPrevious:string|null;
+  slipsCurrent:string|null;slipsPrevious:string|null;
+};
+const categoryLabels:Record<string,string>={
+  doctor:"طبيب",nurse:"ممرض",entity:"جهة",
+};
+const money=(value:string|null)=>value===null?"—":formatWholeMoney(value);
+const paidKeys:readonly ColumnKey[]=["paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"];
+
 type ColumnKey=keyof Row;
-const defaultColumnKeys:ColumnKey[]=["doctorName","currentAmount","previousAmount","difference"];
+const previousColumnKeys:ColumnKey[]=["doctorName","currentAmount","previousAmount","difference"];
+const defaultColumnKeys:ColumnKey[]=[
+  "doctorName","category","department","phone",
+  "currentAmount","previousAmount","difference",
+  "paidCurrent","paidPrevious","slipsCurrent","slipsPrevious",
+];
 const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
-  {key:"doctorName",label:"الاسم المشترك للطبيب أو الجهة",width:260,sortable:true,
+  {key:"doctorName",label:"الاسم المشترك للطبيب أو الجهة",width:245,sortable:true,
     cell:row=><span>{row.doctorName}</span>},
-  {key:"currentAmount",label:"آخر 168 ساعة",width:148,sortable:true,
+  {key:"category",label:"الفئة",width:85,sortable:true,
+    cell:row=><span>{categoryLabels[row.category]??(row.category||"—")}</span>},
+  {key:"department",label:"الجهة",width:145,sortable:true,
+    cell:row=><span>{row.department||"—"}</span>},
+  {key:"phone",label:"رقم الهاتف",width:132,sortable:true,
+    cell:row=><bdi dir="ltr">{row.phone||"—"}</bdi>},
+  {key:"currentAmount",label:"آخر 168 ساعة",width:142,sortable:true,
     cell:row=><bdi dir="ltr">{formatWholeMoney(row.currentAmount)}</bdi>},
-  {key:"previousAmount",label:"الـ168 ساعة السابقة",width:158,sortable:true,
+  {key:"previousAmount",label:"الـ168 ساعة السابقة",width:154,sortable:true,
     cell:row=><bdi dir="ltr">{formatWholeMoney(row.previousAmount)}</bdi>},
-  {key:"difference",label:"الفارق (+ / −)",width:146,sortable:true,
+  {key:"difference",label:"الفارق (+ / −)",width:138,sortable:true,
     cell:row=><strong><bdi dir="ltr">{signText(row.difference)}</bdi></strong>},
+  {key:"paidCurrent",label:"المسدد له بدون قصاصات — آخر 168 ساعة",width:215,sortable:true,
+    cell:row=><bdi dir="ltr">{money(row.paidCurrent)}</bdi>},
+  {key:"paidPrevious",label:"المسدد له بدون قصاصات — الـ168 السابقة",width:218,sortable:true,
+    cell:row=><bdi dir="ltr">{money(row.paidPrevious)}</bdi>},
+  {key:"slipsCurrent",label:"قصاصات مسددة — آخر 168 ساعة",width:195,sortable:true,
+    cell:row=><bdi dir="ltr">{money(row.slipsCurrent)}</bdi>},
+  {key:"slipsPrevious",label:"قصاصات مسددة — الـ168 السابقة",width:200,sortable:true,
+    cell:row=><bdi dir="ltr">{money(row.slipsPrevious)}</bdi>},
 ];
 function readVisibleColumns(storageKey:string):ColumnKey[]{
   try{
-    const data:unknown=JSON.parse(window.localStorage.getItem(storageKey)??"null");
+    const current=window.localStorage.getItem(storageKey);
+    const isLegacy=current===null;
+    const data:unknown=JSON.parse(current??window.localStorage.getItem(
+      storageKey.replace(":v2:",":v1:"))??"null");
     if(Array.isArray(data)){
-      const keys=defaultColumnKeys.filter(key=>data.includes(key));
-      if(keys.length)return keys;
+      const selected=defaultColumnKeys.filter(key=>data.includes(key));
+      if(isLegacy){
+        // Respect prior hidden columns while making all newly added columns
+        // visible on the first visit after upgrading from the four-column table.
+        const newKeys=defaultColumnKeys.filter(key=>!previousColumnKeys.includes(key));
+        const migrated=defaultColumnKeys.filter(key=>selected.includes(key)||newKeys.includes(key));
+        if(migrated.length)return migrated;
+      }
+      if(selected.length)return selected;
     }
   }catch{ /* Private browsing must not stop the table. */ }
   return [...defaultColumnKeys];
 }
-function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort}:{
+function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort,canViewPayments}:{
   rows:Row[];companyId:number;userId:number|string;sortKey:ColumnKey;sortDir:"asc"|"desc";
-  onSort:(key:ColumnKey)=>void;
+  onSort:(key:ColumnKey)=>void;canViewPayments:boolean;
 }){
-  const storageKey=`alraesy:doctor-movement-columns-visible:v1:${companyId}:${userId}`;
+  const storageKey=`alraesy:doctor-movement-columns-visible:v2:${companyId}:${userId}`;
   const [visibleColumns,setVisibleColumns]=useState<ColumnKey[]>(()=>readVisibleColumns(storageKey));
   const [editingColumns,setEditingColumns]=useState<ColumnKey[]>(visibleColumns);
   const [columnsOpen,setColumnsOpen]=useState(false);
@@ -73,7 +113,9 @@ function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort}:{
     <InteractiveColumnsTable<Row,ColumnKey>
       className="doctor-comparison-draggable-table"
       ariaLabel="مقارنة حركة الأطباء والجهات"
-      columns={comparisonColumns} rows={rows} rowKey={row=>row.doctorName}
+      columns={canViewPayments?comparisonColumns:comparisonColumns.map(column=>
+        paidKeys.includes(column.key)?{...column,sortable:false}:column)}
+      rows={rows} rowKey={row=>row.doctorName}
       storageKey={`alraesy:doctor-movement-layout:v1:${companyId}:${userId}`}
       visibleColumns={visibleColumns}
       sortKey={sortKey} sortDirection={sortDir} onSort={onSort}
@@ -84,7 +126,7 @@ function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort}:{
 
 type Report = {
   untilAt:string;recentFrom:string;previousFrom:string;
-  page:number;pageSize:number;total:number;
+  canViewPayments:boolean;page:number;pageSize:number;total:number;
   totalCurrent:string;totalPrevious:string;totalDifference:string;items:Row[];
 };
 const aden=new Intl.DateTimeFormat("ar-YE",{
@@ -131,6 +173,7 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
     });
   }
   function sortColumn(key:ColumnKey){
+    if(data?.canViewPayments===false&&paidKeys.includes(key))return;
     setParams(previous=>{
       const next=new URLSearchParams(previous);
       const nextDir=sortKey===key?(sortDir==="desc"?"asc":"desc"):
@@ -182,7 +225,8 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
       <Card title="مقارنة كل طبيب أو جهة">
         <ComparisonTable key={`${companyId}:${user?.id??"guest"}`}
           companyId={companyId} userId={user?.id??"guest"}
-          rows={data.items} sortKey={sortKey} sortDir={sortDir} onSort={sortColumn}/>
+          rows={data.items} sortKey={sortKey} sortDir={sortDir}
+          onSort={sortColumn} canViewPayments={data.canViewPayments}/>
         <div className="form-actions">
           <Button variant="secondary" disabled={page<=1||report.isFetching}
             onClick={()=>change("page",String(page-1))}>السابق</Button>
@@ -190,8 +234,11 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
           <Button variant="secondary" disabled={page>=maxPages||report.isFetching}
             onClick={()=>change("page",String(page+1))}>التالي</Button>
         </div>
-        <small className="muted">الأرقام بالعملة الأساسية للشركة مع إخفاء رمز العملة والكسور في العرض فقط.
-          الكروت ذات الاسم المشترك الواحد تُجمع في صف واحد؛ الفارق = الفترة الأحدث ناقص السابقة.</small>
+        <small className="muted">الأرقام بالعملة الأساسية للشركة دون رمز العملة أو الكسور.
+          الفئة والجهة والهاتف من كرت الاسم المشترك، والمبالغ المسددة من صرف العهدة أو السند المباشر.
+          عمولات الطبيب/الممرض منفصلة عن القصاصات، ولا تُكرر قيود السندات.
+          الفارق = الفترة الأحدث ناقص السابقة.
+          {!data.canViewPayments&&" بيانات الصرف محجوبة عن الحسابات غير المخولة بالاطلاع المالي."}</small>
       </Card>
     </>}
   </div>;

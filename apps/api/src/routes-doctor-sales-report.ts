@@ -29,19 +29,24 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       q:z.string().trim().max(120).optional().default(""),
       page:z.coerce.number().int().min(1).max(100000).optional().default(1),
       pageSize:z.coerce.number().int().min(1).max(100).optional().default(50),
-      sortKey:z.enum(["doctorName","currentAmount","previousAmount","difference"]).optional().default("difference"),
+      sortKey:z.enum(["doctorName","category","department","phone","currentAmount","previousAmount","difference","paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"]).optional().default("difference"),
       sortDir:z.enum(["asc","desc"]).optional().default("desc"),
     }).strict(),req.query);
     const result=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const user=await currentActor(client,actor(req),false);
-      await companyAccess(client,user,companyId,"commerce.view");
+      const context=await companyAccess(client,user,companyId,"commerce.view");
+      // Cross-cashbox disbursements are financial data. A commerce-only viewer
+      // keeps the sales comparison but cannot read or sort real payouts.
+      const canViewPayments=context.general||context.permissions.includes("finance.view");
       const page=(await directoryEntries(client,user,companyId))
         .find(entry=>entry.key==="company.doctor-movement-comparison");
       if(!page?.enabled||!page.actionAccess.view)
         throw new HttpError(403,"forbidden","ليست لديك صلاحية مقارنة حركة الأطباء والجهات");
-      const rows=await client.query(sortedDoctorMovementComparisonSql(input.sortKey,input.sortDir),[
-        companyId,searchPattern(input.q),input.pageSize,(input.page-1)*input.pageSize,
+      const rows=await client.query(sortedDoctorMovementComparisonSql(
+        !canViewPayments&&["paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"].includes(input.sortKey)
+          ?"difference":input.sortKey,input.sortDir),[
+        companyId,searchPattern(input.q),input.pageSize,(input.page-1)*input.pageSize,canViewPayments,
       ]);
       const first=rows.rows[0];
       const clock=first?.untilAt ?? (await client.query("SELECT transaction_timestamp() AS at")).rows[0].at;
@@ -50,7 +55,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         untilAt:currentUntil.toISOString(),
         recentFrom:new Date(currentUntil.getTime()-168*3600000).toISOString(),
         previousFrom:new Date(currentUntil.getTime()-336*3600000).toISOString(),
-        page:input.page,pageSize:input.pageSize,
+        page:input.page,pageSize:input.pageSize,canViewPayments,
         total:first?.totalNames??0,
         totalCurrent:first?.totalCurrent??"0",
         totalPrevious:first?.totalPrevious??"0",
