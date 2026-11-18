@@ -45,7 +45,7 @@ export const templateQuery = `SELECT t.*,s.id AS setting_id,s.revision,
  COALESCE(s.repeat_interval,'none') AS repeat_interval,COALESCE(s.notify_managers,t.default_notify_managers) AS notify_managers,
  COALESCE(s.notify_owner,false) AS notify_owner,COALESCE(s.reviewed,false) AS reviewed,
  COALESCE(s.notify_subject,t.code NOT IN ('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED','ATTENDANCE_APPROVAL_REJECTED')) AS notify_subject,
- COALESCE(s.position_keys,t.default_position_keys) AS position_keys,s.min_interval_hours,COALESCE(s.latest_only,t.default_latest_only) AS latest_only,COALESCE(s.employee_ids,'{}'::integer[]) AS employee_ids,
+ COALESCE(s.position_keys,t.default_position_keys) AS position_keys,CASE WHEN s.id IS NULL THEN t.default_min_interval_hours ELSE s.min_interval_hours END AS min_interval_hours,COALESCE(s.latest_only,t.default_latest_only) AS latest_only,COALESCE(s.employee_ids,'{}'::integer[]) AS employee_ids,
  ${completeOnClickSetting} AS complete_on_click
  FROM notification_templates t LEFT JOIN notification_settings s ON s.code=t.code AND s.company_id IS NOT DISTINCT FROM $1::integer`;
 export const templateDTO = (r: QueryResultRow): NotificationTemplate => ({
