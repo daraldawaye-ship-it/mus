@@ -8874,8 +8874,24 @@ a.notification-quick-title:hover { text-decoration: underline; }
   vertical-align: middle;
 }
 .attendance-approval-copy .attendance-approval-employee { background: #598bca; }
-.attendance-approval-copy .attendance-approval-kind-check-in { background: #217e51; }
-.attendance-approval-copy .attendance-approval-kind-check-out { background: #a97818; }
+/* Punch types are small read-only status chips, not action buttons. */
+.attendance-approval-copy .attendance-approval-kind {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  vertical-align: baseline;
+  cursor: default;
+}
+.attendance-approval-copy .attendance-approval-kind-check-in {
+  color: #83deb0;
+  background: rgba(33, 126, 81, .28);
+}
+.attendance-approval-copy .attendance-approval-kind-check-out {
+  color: #eec773;
+  background: rgba(169, 120, 24, .28);
+}
 .attendance-approval-yes,.attendance-approval-no {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   border: 0; border-radius: 7px; min-height: 36px; padding: 5px 10px;
