@@ -8282,6 +8282,15 @@
     "queryFields": [],
     "source": "routes-medicine-market.ts"
   },
+  "GET /medicine-market/cards/:cardId/related-medicines": {
+    "queryFields": [
+      "cursor"
+    ],
+    "pathParams": [
+      "cardId"
+    ],
+    "source": "routes-medicine-market.ts"
+  },
   "POST /medicine-market/cards/:cardId/images": {
     "queryFields": [],
     "bodyContract": "marketImageUploadSchema",
