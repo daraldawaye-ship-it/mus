@@ -188,9 +188,13 @@ export function commerceRoutes(pool: Pool): Router {
                END AS "partyName",
                round(il.smallest_quantity::numeric /
                  (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
-               round(il.unit_price::numeric * CASE il.unit
+               CASE WHEN i.kind='purchase' THEN
+                 round(il.total::numeric / NULLIF(il.smallest_quantity,0) *
+                   (il.factor2::numeric * il.factor3::numeric),4)
+               ELSE round(il.unit_price::numeric * CASE il.unit
                  WHEN 1 THEN 1 WHEN 2 THEN il.factor2
-                 ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
+                 ELSE il.factor2 * il.factor3 END,2)
+               END::text AS "unitPriceFirstUnit",
                i.currency_code AS "currencyCode",
                i.total::text AS "invoiceNet",i.discount::text AS "invoiceDiscount",
                u.display_name AS "byName",
@@ -424,6 +428,8 @@ export function commerceRoutes(pool: Pool): Router {
     const q = req.query.q;
     const sortable = {
       itemName: "l.item_name", quantity: "l.quantity", price: "l.unit_price",
+      netQuantity: "(l.quantity+l.bonus_quantity)",
+      netPrice: "(l.total / NULLIF(l.quantity+l.bonus_quantity,0))",
       lineTotal: "l.total", invoiceNet: "i.total",
       supplier: "i.supplier_account_name", createdAt: "i.created_at",
     } as const;
@@ -456,6 +462,9 @@ export function commerceRoutes(pool: Pool): Router {
         `SELECT l.id, i.id AS "invoiceId", i.number AS "invoiceNumber",
           i.created_at::text AS "createdAt", i.document_date::text AS "documentDate",
           l.item_name AS "itemName", l.quantity::text AS quantity,
+          l.bonus_quantity::text AS "bonusQuantity",
+          (l.quantity+l.bonus_quantity)::text AS "netQuantity",
+          round(l.total::numeric / NULLIF(l.quantity+l.bonus_quantity,0),4)::text AS "netPrice",
           l.unit_price::text AS price, l.total::text AS "lineTotal",
           i.total::text AS "invoiceNet",
           COALESCE(i.supplier_account_name, '') AS supplier
