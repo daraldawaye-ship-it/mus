@@ -61,7 +61,7 @@ const querySchema = z.object({
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   // The former useReserve request parameter is ignored if supplied by old links.
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "compositionCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "compositionCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "marketOrder30Days", "marketOrderAfterPurchase30Days"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -172,6 +172,8 @@ async function filteredItems(
     code: "f.code", name: "f.name", stock: "f.available_unit1",
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
     month: "f.sale_times_month", saleQuantityMonth: "f.sale_quantity_month",
+    marketOrder30Days: "f.market_order_days_30d",
+    marketOrderAfterPurchase30Days: "f.market_order_days_after_purchase_30d",
     compositionSaleMonth: "f.composition_sale_unit1_month", compositionStock: "f.composition_available_unit1",
     compositionCoverage: "f.composition_coverage_days",
     purchasePrice: "f.purchase_price",
@@ -211,6 +213,8 @@ async function filteredItems(
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,i.reviewed,i.order_alert_quantity,i.order_stopped_until::text AS order_stopped_until,
              i.purchase_price AS purchase_price, i.purchase_notes, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
+             COALESCE(stock.market_order_days_30d,0) AS market_order_days_30d,
+             COALESCE(stock.market_order_days_after_purchase_30d,0) AS market_order_days_after_purchase_30d,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
              -- The cached monthly facts remain unchanged. Apply only a verified
              -- legacy unit correction to planning, then convert to first units.
@@ -418,6 +422,8 @@ async function filteredItems(
     availableSmallest: String(row.available_smallest),
     availableUnit1: String(row.available_unit1),
     saleTimesMonth: String(row.sale_times_month),
+    marketOrder30Days: Number(row.market_order_days_30d),
+    marketOrderAfterPurchase30Days: Number(row.market_order_days_after_purchase_30d),
     // Keep exact cached quantity but hide decimal zeros in the display.
     saleQuantityMonth: String(row.sale_quantity_month).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     saleTimesFourMonths: String(row.sale_times_four_months),
@@ -499,6 +505,8 @@ async function filteredItems(
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth, saleQuantityMonth: row.saleQuantityMonth,
+      marketOrder30Days: row.marketOrder30Days,
+      marketOrderAfterPurchase30Days: row.marketOrderAfterPurchase30Days,
       saleTimesFourMonths: row.saleTimesFourMonths, saleTimesYear: row.saleTimesYear,
       saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
