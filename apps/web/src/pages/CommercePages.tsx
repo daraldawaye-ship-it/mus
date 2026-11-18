@@ -623,6 +623,8 @@ interface DraftLine {
   unit: 1 | 2 | 3;
   unitName: string;
   quantity: string;
+  /** Optional free units received with a purchase. */
+  bonusQuantity?: string;
   unitPrice: string;
   expiryDate: string | null;
   expiryManuallyEdited: boolean;
@@ -690,6 +692,7 @@ function emptyLine(returning = false): DraftLine {
     unit: 1,
     unitName: "",
     quantity: returning ? "-1" : "1",
+    bonusQuantity: "0",
     unitPrice: "0",
     expiryDate: null,
     expiryManuallyEdited: false,
@@ -2880,6 +2883,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
             unit: source.unit,
             unitName: source.unitName,
             quantity: "-1",
+            bonusQuantity: "0",
             unitPrice: source.unitPrice,
             expiryDate: kind === "sale" ? null : source.expiryDate,
             expiryManuallyEdited: false,
@@ -2948,6 +2952,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       const nowNegative = /^-\d+$/.test(normalizeDigits(value.trim()));
       updateLine(line.key, {
         quantity: value,
+        ...(nowNegative ? {bonusQuantity: "0"} : {}),
         ...(kind === "sale" && positive
           ? { expiryDate: null, expiryManuallyEdited: false }
           : kind === "sale" && nowNegative && !wasNegative && !line.expiryManuallyEdited
@@ -3195,6 +3200,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           itemId: line.itemId,
           unit: line.unit,
           quantity: line.quantity,
+          ...(kind === "purchase" && !line.originalLineId && line.bonusQuantity && line.bonusQuantity !== "0"
+            ? {bonusQuantity: line.bonusQuantity} : {}),
           unitPrice: line.unitPrice,
           expiryDate: line.expiryDate,
           originalLineId: line.originalLineId,
@@ -3721,6 +3728,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                   <col className="commerce-col-price" />
                   {showExpiry && <col className="commerce-col-expiry" />}
                   <col className="commerce-col-total" />
+                  {kind === "purchase" && <col className="commerce-col-bonus" />}
                   {kind === "sale" && (
                     <>
                       <col className="commerce-col-available" />
@@ -3739,6 +3747,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     </th>
                     {showExpiry && <th scope="col">تاريخ الانتهاء</th>}
                     <th scope="col">إجمالي</th>
+                    {kind === "purchase" && <th scope="col">البونص</th>}
                     {kind === "sale" && (
                       <>
                         <th
@@ -4109,6 +4118,32 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                         <td className="commerce-line-total" data-mobile-label="الإجمالي" aria-live="polite">
                           {amount(lineTotal)}
                         </td>
+                        {kind === "purchase" && (
+                          <td className="commerce-line-bonus" data-mobile-label="البونص">
+                            <Field
+                              id={lineInputId(line, "bonus")}
+                              className="item-cell-field"
+                              label="بونص مجاني"
+                              title="كمية إضافية مجانية لا تزيد قيمة الفاتورة. أدخلها بالماوس أو سهمي اليمين واليسار."
+                              inputMode="numeric"
+                              tabIndex={-1}
+                              disabled={!line.itemId || !!line.originalLineId ||
+                                normalizeDigits(line.quantity.trim()).startsWith("-")}
+                              value={line.bonusQuantity ?? "0"}
+                              onChange={(event) => {
+                                const value = normalizeDigits(event.target.value.trim());
+                                if (!/^\d{0,22}$/.test(value)) return;
+                                updateLine(line.key,{bonusQuantity: value});
+                              }}
+                              onFocus={(event) => event.target.select()}
+                              onBlur={() => updateLine(line.key,{bonusQuantity:
+                                String(BigInt(normalizeDigits(line.bonusQuantity || "0") || "0"))})}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {event.preventDefault(); nextLine(line);}
+                              }}
+                            />
+                          </td>
+                        )}
                         {kind === "sale" && (
                           <>
                             <td
