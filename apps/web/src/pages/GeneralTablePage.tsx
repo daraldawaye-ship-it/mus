@@ -250,7 +250,7 @@ function GeneralTableContent() {
   const columns: ColumnDef<GeneralTableRecord, unknown>[] = [
     { accessorKey:"category",header:"التصنيف",size:150,
       cell:({row})=><ValueCell>{row.original.category || "—"}</ValueCell> },
-    { accessorKey:"title",header:"العنوان",size:230,
+    { accessorKey:"title",header:tableName==="مهام الذكاء الاصطناعي"?"اسم المهمة":"العنوان",size:230,
       cell:({row})=><InlineTitle key={row.original.id+":title"}
         record={row.original} onSave={saveTitle}/> },
     { accessorKey:"number1",header:"الرقم 1",size:140,
@@ -417,7 +417,7 @@ function GeneralTableEditor({
         <Field label="التصنيف (general_table_category)" value={draft.category}
           maxLength={120} disabled={saving}
           onChange={event=>setDraft({...draft,category:event.target.value})}/>
-        <Field className="form-full" label="العنوان (general_table_title)" value={draft.title}
+        <Field className="form-full" label={draft.tableName==="مهام الذكاء الاصطناعي"?"اسم المهمة (general_table_title)":"العنوان (general_table_title)"} value={draft.title}
           maxLength={200} required disabled={saving}
           onChange={event=>setDraft({...draft,title:event.target.value})}/>
         <div className="field form-full">

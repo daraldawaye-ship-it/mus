@@ -9,7 +9,7 @@ type Inquiry = {
  id:number;companyId:number|null;companyName:string|null;requestType:string;requestText:string;
  answerType:string;answerOptions:string[];responseMode:"first"|"all";
  recipientSelection:{userIds:number[];positionKeys:string[]};
- priority:string;dueAt:string|null;linkedTable:string|null;linkedRecordId:number|null;
+ priority:string;dueAt:string|null;taskName:string;linkedTable:string|null;linkedRecordId:number|null;
  followUpAction:string;actionResult:string;status:string;createdAt:string;answeredAt:string|null;
  creatorName:string;createdBy:number;assignedCount:number;answeredCount:number;myStatus:string|null;
  targets:{userId:number;name:string;status:string;answeredAt:string|null}[];
@@ -28,7 +28,7 @@ const when=(v:string|null)=>v?new Date(v).toLocaleString("ar-YE",{dateStyle:"sho
 const fresh=()=>({
  requestType:"question",requestText:"",answerType:"text",answerOptions:["",""],responseMode:"first" as "first"|"all",
  userIds:[] as number[],positionKeys:[] as string[],priority:"normal",dueAt:"",
- linkedTable:"",linkedRecordId:"",followUpAction:""
+ taskName:"",linkedTable:"",linkedRecordId:"",followUpAction:""
 });
 function EnumField({label,value,options,onChange}:{label:string;value:string;options:[string,string][];onChange:(v:string)=>void}) {
  return <label className="field"><span>{label}</span>
@@ -245,6 +245,8 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
       <div className="form-grid">
         <Field label="موعد الإجابة (اختياري)" type="datetime-local" value={draft.dueAt}
           onChange={e=>update("dueAt",e.target.value)}/>
+        <Field label="اسم المهمة (اختياري)" maxLength={200} value={draft.taskName}
+          onChange={e=>update("taskName",e.target.value)}/>
         <Field label="الجدول المرتبط (اختياري)" value={draft.linkedTable}
           onChange={e=>update("linkedTable",e.target.value)}/>
         <Field label="معرف السجل المرتبط" type="number" min={1} value={draft.linkedRecordId}
@@ -265,7 +267,7 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
   <Card>
     <div className="form-grid">
       <Field label="بحث في الاستفسارات" value={search} onChange={e=>setSearch(e.target.value)}
-        placeholder="نص الطلب أو الجدول المرتبط"/>
+        placeholder="اسم المهمة أو نص الطلب أو الجدول المرتبط"/>
       <EnumField label="الحالة" value={filter} onChange={setFilter}
         options={[["","الكل"],["mine","بانتظار ردي"],["open","بانتظار الرد"],["answered","تمت الإجابة"],
           ["in_progress","قيد التنفيذ"],["done","منفذ"],["closed","مغلق"]]}/>
@@ -276,10 +278,11 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     <div className="inquiries-list">
       <table className="inquiries-list-table" role="table">
         <thead><tr>
-          <th>الطلب</th><th>المعنيون</th><th>عدد الردود</th>
+          <th>اسم المهمة</th><th>الطلب</th><th>المعنيون</th><th>عدد الردود</th>
           <th>الإجابة</th><th>الحالة</th><th>التاريخ والوقت</th><th>الإجراء</th>
         </tr></thead>
         <tbody role="rowgroup">{records.map(record=><tr role="row" key={record.id}>
+          <td role="cell" className="inquiry-task-cell"><span className="inquiry-mobile-label" aria-hidden="true">اسم المهمة: </span>{record.taskName||"—"}</td>
           <td role="cell" className="inquiry-request-cell">{record.requestText}</td>
           <td role="cell" className="inquiry-targets-cell">
             <span className="inquiry-mobile-label" aria-hidden="true">المعنيون: </span>
@@ -317,6 +320,7 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
   <section id="inquiry-follow-up" ref={followUp} tabIndex={-1}><Card title={"متابعة الطلب رقم "+selected.id}>
     <p><strong>{selected.requestText}</strong></p>
     <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
+    {selected.taskName&&<p><strong>اسم المهمة:</strong> {selected.taskName}</p>}
     {selected.linkedTable&&<p><strong>الجدول المرتبط:</strong> {selected.linkedTable} #{selected.linkedRecordId??"—"}</p>}
     {selected.followUpAction&&<p><strong>المتابعة المطلوبة:</strong> {selected.followUpAction}</p>}
     {selected.actionResult&&<p><strong>نتيجة التنفيذ:</strong> {selected.actionResult}</p>}

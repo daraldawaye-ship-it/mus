@@ -1,5 +1,6 @@
 .inquiries-list { container: inquiry-results / inline-size; overflow-x: auto; }
-.inquiries-list-table { width: 100%; min-width: 900px; }
+.inquiries-list-table { width: 100%; min-width: 1080px; }
+.inquiry-task-cell { min-width: 155px; max-width: 220px; white-space: normal; overflow-wrap: anywhere; }
 .inquiry-request-cell { max-width: 320px; white-space: normal; overflow-wrap: anywhere; }
 .inquiry-answer-cell { min-width: 210px; white-space: normal; overflow-wrap: anywhere; }
 .inquiry-targets-cell { max-width: 240px; white-space: normal; overflow-wrap: anywhere; }
@@ -28,6 +29,7 @@
     display: block; min-width: 0; max-width: none;
     padding: 2px; white-space: normal; overflow-wrap: anywhere;
   }
+  .inquiries-list-table .inquiry-task-cell,
   .inquiries-list-table .inquiry-request-cell,
   .inquiries-list-table .inquiry-answer-cell { grid-column: 1 / -1; }
   .inquiry-request-cell { font-weight: 600; }

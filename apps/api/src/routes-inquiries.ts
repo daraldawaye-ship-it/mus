@@ -13,6 +13,7 @@ import { syncUnansweredInquiryNotifications } from "./services/inquiry-notificat
 const requestSchema = z.object({
   requestType:z.enum(["question","clarification","information","confirmation","execution"]).default("question"),
   requestText:z.string().trim().min(1).max(4000),
+  taskName:z.string().trim().max(200).default(""),
   answerType:z.enum(["number","number_note","date","yesno","choice","text"]),
   answerOptions:z.array(z.string().trim().min(1).max(300)).max(4).default([]),
   responseMode:z.enum(["first","all"]),
@@ -52,7 +53,7 @@ function managerOnly(manager:boolean) {
 function formatRow(r:QueryResultRow) {
   return {
     id:Number(r.id),companyId:r.company_id,requestType:r.request_type,
-    requestText:r.request_text,answerType:r.answer_type,answerOptions:r.answer_options,
+    requestText:r.request_text,taskName:r.task_name??"",answerType:r.answer_type,answerOptions:r.answer_options,
     responseMode:r.response_mode,recipientSelection:r.recipient_selection,
     priority:r.priority,dueAt:r.due_at,linkedTable:r.linked_table,
     linkedRecordId:r.linked_record_id===null?null:Number(r.linked_record_id),
@@ -126,7 +127,7 @@ export function inquiryRoutes(pool:Pool):Router {
       "SELECT q.*,u.name AS creator_name,c.name AS company_name FROM inquiry_requests q JOIN users u ON u.id=q.created_by LEFT JOIN companies c ON c.id=q.company_id "+
       "WHERE q.company_id IS NOT DISTINCT FROM $1 AND "+
       "($2::boolean OR q.created_by=$3 OR EXISTS(SELECT 1 FROM inquiry_targets t WHERE t.inquiry_id=q.id AND t.user_id=$3)) "+
-      "AND ($4='' OR q.request_text ILIKE '%'||$4||'%' OR q.linked_table ILIKE '%'||$4||'%') "+
+      "AND ($4='' OR q.request_text ILIKE '%'||$4||'%' OR q.linked_table ILIKE '%'||$4||'%' OR q.task_name ILIKE '%'||$4||'%') "+
       "AND ($5='' OR ($5='mine' AND EXISTS(SELECT 1 FROM inquiry_targets t WHERE t.inquiry_id=q.id AND t.user_id=$3 AND t.status='pending')) OR q.status=$5) "+
       "ORDER BY q.id DESC LIMIT 60 OFFSET $6",
       [companyId,canSeeAll,user.id,q,filter,(page-1)*60]);
@@ -186,13 +187,19 @@ export function inquiryRoutes(pool:Pool):Router {
           [companyId,input.linkedTable,input.linkedRecordId,input.requestText]);
         if(duplicate.rowCount)throw new HttpError(409,"duplicate_inquiry","يوجد استفسار مفتوح مطابق لهذا السجل");
       }
+      // Backward-compatible attribution for the legacy invoice follow-up task.
+      // Other inquiries receive the explicit task name supplied by their creator.
+      const legacyTask402 = companyId===2 && input.linkedTable==="invoices" &&
+        input.requestText.startsWith("متابعة فاتورة المبيعات رقم ") &&
+        /(سرنج|سيرنج|إبرة|ابرة|IV Set|موصل|طقم تسريب|تسريب وريدي)/i.test(input.requestText);
+      const taskName=input.taskName || (legacyTask402 ? "متابعة ملحقات الامبولات والمحاليل" : "");
       const inserted=await db.query(
         "INSERT INTO inquiry_requests(company_id,request_type,request_text,answer_type,answer_options,"+
-        "response_mode,recipient_selection,priority,due_at,linked_table,linked_record_id,follow_up_action,created_by,idempotency_key) "+
-        "VALUES($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14) RETURNING id",
+        "response_mode,recipient_selection,priority,due_at,linked_table,linked_record_id,follow_up_action,created_by,idempotency_key,task_name) "+
+        "VALUES($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id",
         [companyId,input.requestType,input.requestText,input.answerType,JSON.stringify(input.answerOptions),
         input.responseMode,JSON.stringify({userIds:selectedUsers,positionKeys:input.positionKeys}),
-        input.priority,input.dueAt,input.linkedTable,input.linkedRecordId,input.followUpAction,user.id,input.idempotencyKey]);
+        input.priority,input.dueAt,input.linkedTable,input.linkedRecordId,input.followUpAction,user.id,input.idempotencyKey,taskName]);
       const requestId=Number(inserted.rows[0].id);
       for(const target of assigned)
         await db.query("INSERT INTO inquiry_targets(inquiry_id,user_id) VALUES($1,$2)",[requestId,target]);
