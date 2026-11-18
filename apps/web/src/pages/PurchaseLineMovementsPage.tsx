@@ -15,7 +15,10 @@ type PurchaseLine = {
   documentDate: string;
   itemName: string;
   quantity: string;
+  bonusQuantity: string;
+  netQuantity: string;
   price: string;
+  netPrice: string | null;
   lineTotal: string;
   invoiceNet: string;
   supplier: string;
@@ -26,7 +29,7 @@ function localToday() {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
 }
-type SortKey = "itemName" | "quantity" | "price" | "lineTotal" | "invoiceNet" | "supplier" | "createdAt";
+type SortKey = "itemName" | "quantity" | "price" | "netQuantity" | "netPrice" | "lineTotal" | "invoiceNet" | "supplier" | "createdAt";
 
 export function PurchaseLineMovementsPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -92,6 +95,7 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
             <table className="data-table purchase-movement-table" dir="rtl">
               <thead><tr>
                 <th>{sortHeader("الصنف", "itemName")}</th><th>{sortHeader("الكمية", "quantity")}</th><th>{sortHeader("السعر", "price")}</th><th>{sortHeader("إجمالي السعر", "lineTotal")}</th>
+                <th>البونص</th><th>{sortHeader("صافي الكمية", "netQuantity")}</th><th>{sortHeader("سعر الشراء الصافي", "netPrice")}</th>
                 <th>{sortHeader("صافي الفاتورة", "invoiceNet")}</th><th>{sortHeader("المورد", "supplier")}</th><th>{sortHeader("التاريخ والوقت", "createdAt")}</th>
               </tr></thead>
               <tbody>
@@ -100,6 +104,9 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
                   <td className="purchase-movement-number" dir="ltr">{item.quantity}</td>
                   <td className="purchase-movement-number" dir="ltr">{money(item.price)}</td>
                   <td className="purchase-movement-number" dir="ltr">{money(item.lineTotal)}</td>
+                  <td className="purchase-movement-number" dir="ltr">{item.bonusQuantity}</td>
+                  <td className="purchase-movement-number" dir="ltr">{money(item.netQuantity)}</td>
+                  <td className="purchase-movement-number" dir="ltr">{item.netPrice === null ? "—" : money(item.netPrice)}</td>
                   <td className="purchase-movement-number" dir="ltr">{money(item.invoiceNet)}</td>
                   <td>{item.supplier || "—"}</td>
                   <td className="purchase-movement-date" title={"تاريخ الفاتورة: " + item.documentDate}>{dateTime(item.createdAt)}</td>
