@@ -9,7 +9,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
-import { doctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
+import { sortedDoctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
 import { audit } from "./services/audit.ts";
 
 const filters = z.object({
@@ -29,6 +29,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       q:z.string().trim().max(120).optional().default(""),
       page:z.coerce.number().int().min(1).max(100000).optional().default(1),
       pageSize:z.coerce.number().int().min(1).max(100).optional().default(50),
+      sortKey:z.enum(["doctorName","currentAmount","previousAmount","difference"]).optional().default("difference"),
+      sortDir:z.enum(["asc","desc"]).optional().default("desc"),
     }).strict(),req.query);
     const result=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -38,7 +40,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         .find(entry=>entry.key==="company.doctor-movement-comparison");
       if(!page?.enabled||!page.actionAccess.view)
         throw new HttpError(403,"forbidden","ليست لديك صلاحية مقارنة حركة الأطباء والجهات");
-      const rows=await client.query(doctorMovementComparisonSql,[
+      const rows=await client.query(sortedDoctorMovementComparisonSql(input.sortKey,input.sortDir),[
         companyId,searchPattern(input.q),input.pageSize,(input.page-1)*input.pageSize,
       ]);
       const first=rows.rows[0];

@@ -6,9 +6,82 @@ import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { formatWholeMoney } from "../format-money";
-import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
+import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
+import "./DoctorMovementComparisonPage.css";
 
 type Row = { doctorName:string;currentAmount:string;previousAmount:string;difference:string };
+type ColumnKey=keyof Row;
+const defaultColumnKeys:ColumnKey[]=["doctorName","currentAmount","previousAmount","difference"];
+const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
+  {key:"doctorName",label:"الاسم المشترك للطبيب أو الجهة",width:260,sortable:true,
+    cell:row=><span>{row.doctorName}</span>},
+  {key:"currentAmount",label:"آخر 168 ساعة",width:148,sortable:true,
+    cell:row=><bdi dir="ltr">{formatWholeMoney(row.currentAmount)}</bdi>},
+  {key:"previousAmount",label:"الـ168 ساعة السابقة",width:158,sortable:true,
+    cell:row=><bdi dir="ltr">{formatWholeMoney(row.previousAmount)}</bdi>},
+  {key:"difference",label:"الفارق (+ / −)",width:146,sortable:true,
+    cell:row=><strong><bdi dir="ltr">{signText(row.difference)}</bdi></strong>},
+];
+function readVisibleColumns(storageKey:string):ColumnKey[]{
+  try{
+    const data:unknown=JSON.parse(window.localStorage.getItem(storageKey)??"null");
+    if(Array.isArray(data)){
+      const keys=defaultColumnKeys.filter(key=>data.includes(key));
+      if(keys.length)return keys;
+    }
+  }catch{ /* Private browsing must not stop the table. */ }
+  return [...defaultColumnKeys];
+}
+function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort}:{
+  rows:Row[];companyId:number;userId:number|string;sortKey:ColumnKey;sortDir:"asc"|"desc";
+  onSort:(key:ColumnKey)=>void;
+}){
+  const storageKey=`alraesy:doctor-movement-columns-visible:v1:${companyId}:${userId}`;
+  const [visibleColumns,setVisibleColumns]=useState<ColumnKey[]>(()=>readVisibleColumns(storageKey));
+  const [editingColumns,setEditingColumns]=useState<ColumnKey[]>(visibleColumns);
+  const [columnsOpen,setColumnsOpen]=useState(false);
+  function commitVisible(){
+    if(!editingColumns.length)return;
+    const selected=defaultColumnKeys.filter(key=>editingColumns.includes(key));
+    setVisibleColumns(selected);
+    try{window.localStorage.setItem(storageKey,JSON.stringify(selected));}catch{/* optional */}
+    setColumnsOpen(false);
+  }
+  return <>
+    <div className="form-actions doctor-comparison-table-actions">
+      <Button variant="secondary" onClick={()=>{
+        setEditingColumns(visibleColumns);setColumnsOpen(true);
+      }}>الأعمدة ({visibleColumns.length}/{defaultColumnKeys.length})</Button>
+    </div>
+    <Dialog open={columnsOpen} title="إظهار وإخفاء أعمدة المقارنة"
+      onClose={()=>setColumnsOpen(false)}>
+      <div className="form-stack">
+        {comparisonColumns.map(column=><label key={column.key} className="doctor-comparison-column-choice">
+          <input type="checkbox" checked={editingColumns.includes(column.key)}
+            onChange={event=>setEditingColumns(previous=>
+              event.target.checked?[...previous,column.key]:previous.filter(k=>k!==column.key))}/>
+          {column.label}
+        </label>)}
+        <div className="form-actions">
+          <Button variant="secondary" onClick={()=>setEditingColumns([...defaultColumnKeys])}>إظهار الكل</Button>
+          <Button onClick={commitVisible} disabled={!editingColumns.length}>موافق</Button>
+          <Button variant="secondary" onClick={()=>setColumnsOpen(false)}>إلغاء</Button>
+        </div>
+      </div>
+    </Dialog>
+    <InteractiveColumnsTable<Row,ColumnKey>
+      className="doctor-comparison-draggable-table"
+      ariaLabel="مقارنة حركة الأطباء والجهات"
+      columns={comparisonColumns} rows={rows} rowKey={row=>row.doctorName}
+      storageKey={`alraesy:doctor-movement-layout:v1:${companyId}:${userId}`}
+      visibleColumns={visibleColumns}
+      sortKey={sortKey} sortDirection={sortDir} onSort={onSort}
+      emptyMessage="لا توجد حركة مطابقة خلال آخر 336 ساعة."
+    />
+  </>;
+}
+
 type Report = {
   untilAt:string;recentFrom:string;previousFrom:string;
   page:number;pageSize:number;total:number;
@@ -34,12 +107,15 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
   const page=Math.max(1,Math.floor(Number(params.get("page"))||1));
   const pageSize=[20,50,100].includes(Number(params.get("pageSize")))?
     Number(params.get("pageSize")):50;
+  const sortKey=defaultColumnKeys.includes(params.get("sortKey") as ColumnKey)
+    ?params.get("sortKey") as ColumnKey:"difference";
+  const sortDir=params.get("sortDir")==="asc"?"asc":"desc";
   const [refreshTick,setRefreshTick]=useState(0);
   useEffect(()=>{
     const timer=window.setInterval(()=>setRefreshTick(t=>t+1),60_000);
     return ()=>window.clearInterval(timer);
   },[]);
-  const filters=new URLSearchParams({q:queryText,page:String(page),pageSize:String(pageSize)});
+  const filters=new URLSearchParams({q:queryText,page:String(page),pageSize:String(pageSize),sortKey,sortDir});
   const report=useQuery({
     queryKey:["doctor-movement-comparison",user?.id,companyId,filters.toString(),refreshTick],
     queryFn:({signal})=>api<{report:Report}>(`/companies/${companyId}/doctor-movement-comparison?${filters}`,{signal}),
@@ -51,6 +127,17 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
       const next=new URLSearchParams(previous);
       if(value)next.set(key,value);else next.delete(key);
       if(key!=="page")next.delete("page");
+      return next;
+    });
+  }
+  function sortColumn(key:ColumnKey){
+    setParams(previous=>{
+      const next=new URLSearchParams(previous);
+      const nextDir=sortKey===key?(sortDir==="desc"?"asc":"desc"):
+        key==="doctorName"?"asc":"desc";
+      next.set("sortKey",key);
+      next.set("sortDir",nextDir);
+      next.delete("page");
       return next;
     });
   }
@@ -93,26 +180,9 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
         </div>
       </Card>
       <Card title="مقارنة كل طبيب أو جهة">
-        <div className="table-scroll" role="region" aria-label="مقارنة حركة الأطباء والجهات"
-          style={{maxHeight:"70vh",overflow:"auto"}}>
-          <table style={{width:"100%",minWidth:570,fontVariantNumeric:"tabular-nums"}}>
-            <thead><tr>
-              <th style={{position:"sticky",top:0,zIndex:1}}>الاسم المشترك للطبيب أو الجهة</th>
-              <th style={{position:"sticky",top:0,zIndex:1}}>آخر 168 ساعة</th>
-              <th style={{position:"sticky",top:0,zIndex:1}}>الـ168 ساعة السابقة</th>
-              <th style={{position:"sticky",top:0,zIndex:1}}>الفارق (+ / −)</th>
-            </tr></thead>
-            <tbody>
-              {data.items.map(row=><tr key={row.doctorName}>
-                <td>{row.doctorName}</td>
-                <td dir="ltr">{formatWholeMoney(row.currentAmount)}</td>
-                <td dir="ltr">{formatWholeMoney(row.previousAmount)}</td>
-                <td dir="ltr"><strong>{signText(row.difference)}</strong></td>
-              </tr>)}
-              {!data.items.length&&<tr><td colSpan={4}>لا توجد حركة مطابقة خلال آخر 336 ساعة.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <ComparisonTable key={`${companyId}:${user?.id??"guest"}`}
+          companyId={companyId} userId={user?.id??"guest"}
+          rows={data.items} sortKey={sortKey} sortDir={sortDir} onSort={sortColumn}/>
         <div className="form-actions">
           <Button variant="secondary" disabled={page<=1||report.isFetching}
             onClick={()=>change("page",String(page-1))}>السابق</Button>

@@ -8748,7 +8748,13 @@
     }
   },
   "GET /companies/:companyId/doctor-movement-comparison": {
-    "queryFields": ["q","page","pageSize"],
+    "queryFields": [
+      "q",
+      "page",
+      "pageSize",
+      "sortKey",
+      "sortDir"
+    ],
     "source": "routes-doctor-sales-report.ts"
   },
   "GET /companies/:companyId/doctor-sales-report": {

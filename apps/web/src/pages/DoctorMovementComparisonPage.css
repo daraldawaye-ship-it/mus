@@ -1,0 +1,4 @@
+.doctor-comparison-table-actions{justify-content:flex-start;margin:0 0 7px;gap:6px}
+.doctor-comparison-draggable-table .interactive-columns-scroll{max-height:70vh}
+.doctor-comparison-column-choice{display:flex;align-items:center;gap:10px;padding:6px 3px;cursor:pointer}
+.doctor-comparison-column-choice input{flex-shrink:0}

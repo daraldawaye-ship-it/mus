@@ -57,3 +57,22 @@ FROM compared
 ORDER BY compared.difference DESC, compared.current_amount DESC, compared.doctor_name ASC
 LIMIT $3 OFFSET $4
 `;
+
+/** Sort only with a hard-coded SQL whitelist. Values remain numeric for ordering. */
+export type DoctorMovementSortKey = "doctorName" | "currentAmount" | "previousAmount" | "difference";
+const sortExpressions: Record<DoctorMovementSortKey, string> = {
+  doctorName: "lower(compared.doctor_name)",
+  currentAmount: "compared.current_amount",
+  previousAmount: "compared.prior_amount",
+  difference: "compared.difference",
+};
+export function sortedDoctorMovementComparisonSql(
+  key: DoctorMovementSortKey, direction: "asc" | "desc",
+): string {
+  const expression = sortExpressions[key];
+  const directionSql = direction === "asc" ? "ASC" : "DESC";
+  return doctorMovementComparisonSql.replace(
+    "ORDER BY compared.difference DESC, compared.current_amount DESC, compared.doctor_name ASC",
+    `ORDER BY ${expression} ${directionSql}, compared.current_amount DESC, compared.doctor_name ASC`,
+  );
+}

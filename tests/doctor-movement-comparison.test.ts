@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { doctorMovementComparisonSql } from "../apps/api/src/services/doctor-movement-comparison.ts";
+import { doctorMovementComparisonSql, sortedDoctorMovementComparisonSql } from "../apps/api/src/services/doctor-movement-comparison.ts";
 
 test("168-hour medical movement comparison groups shared names and signed net amounts", async()=>{
   const db=new PGlite();
@@ -48,5 +48,14 @@ test("168-hour medical movement comparison groups shared names and signed net am
     const query=await db.query<Record<string,unknown>>(doctorMovementComparisonSql,[2,"%المستشفى%",1,0]);
     assert.equal(query.rows.length,1);
     assert.equal(Number(query.rows[0]!.totalCurrent),20);
+    const lowest=await db.query<Record<string,unknown>>(sortedDoctorMovementComparisonSql("difference","asc"),[2,"%",1,0]);
+    assert.equal(lowest.rows[0]!.doctorName,"المستشفى");
+    const previousHigh=await db.query<Record<string,unknown>>(sortedDoctorMovementComparisonSql("previousAmount","desc"),[2,"%",1,0]);
+    assert.equal(previousHigh.rows[0]!.doctorName,"الدكتور أحمد");
+    const alpha=await db.query<Record<string,unknown>>(sortedDoctorMovementComparisonSql("doctorName","asc"),[2,"%",1,0]);
+    assert.equal(alpha.rows[0]!.doctorName,"الدكتور أحمد");
+    // A very large signed number must be ordered by PostgreSQL numeric, not lexicographically.
+    assert.match(sortedDoctorMovementComparisonSql("currentAmount","desc"),/ORDER BY compared.current_amount DESC/);
+
   }finally{await db.close();}
 });
