@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -196,6 +197,36 @@ const marketOrderColumns = ["marketOrder30Days", "marketOrderAfterPurchase30Days
 const compositionColumns = ["compositionSaleMonth", "compositionStock", "compositionCoverage"] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
+const tableColumnWidths: Record<TableColumn, number> = {
+  choice: 48,
+  stock: 65,
+  saleQuantityMonth: 77,
+  name: 185,
+  reserve: 116,
+  purchaseFactor: 116,
+  minOrderQuantity: 140,
+  orderAlertQuantity: 140,
+  orderStoppedUntil: 140,
+  reviewed: 140,
+  month: 67,
+  marketOrder30Days: 67,
+  marketOrderAfterPurchase30Days: 67,
+  fourMonths: 67,
+  allTime: 70,
+  previousYear: 70,
+  requiredPurchaseQuantity: 83,
+  purchasePrice: 84,
+  requiredPurchaseValue: 90,
+  purchaseNotes: 210,
+  coverage: 65,
+  coverageWithReserve: 65,
+  coverageWithRequired: 68,
+  reserveCoverage: 72,
+  purchaseFactorCoverage: 75,
+  compositionSaleMonth: 77,
+  compositionStock: 65,
+  compositionCoverage: 65,
+};
 function readVisibleTableColumns(key: string): TableColumn[] {
   if (typeof window === "undefined") return allTableColumns;
   try {
@@ -240,6 +271,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const columnsStorageKey = `alraesy:item-options-columns:v6:${companyId}:${user?.id ?? "guest"}`;
+  const columnLayoutStorageKey = `alraesy:item-options-table-layout:v1:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -783,7 +815,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reverseSortDirection() {
     change("sortDir", activeDirection === "asc" ? "desc" : "asc");
   }
-  function renderPurchaseNote(row: Row) {
+  function renderPurchaseNote(row: Row, fullText = false) {
     const notes = row.purchaseNotes?.trim() ?? "";
     if (!notes) return <span>—</span>;
     const preview = Array.from(notes).slice(0, 30).join("");
@@ -791,7 +823,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     return <button type="button" className="item-options-purchase-note"
       title={notes} aria-label={`عرض ملاحظات الشراء: ${row.name}`}
       onClick={event => { event.stopPropagation(); setPurchaseNoteDialog({ name: row.name, notes }); }}>
-      {short}
+      {fullText ? notes : short}
     </button>;
   }
   function rememberItem(row: Row) {
@@ -813,20 +845,53 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       return next;
     });
   }
-  function sortHeader(column: SortColumn, label: string) {
-    const selected = activeSort === column;
-    return <th key={column} style={hiddenColumnStyle(column)} aria-sort={selected
-      ? (activeDirection === "asc" ? "ascending" : "descending") : "none"}>
-      <button className="sort-button" type="button"
-        onClick={() => sortByColumn(column)}
-        title={selected ? "اضغط لعكس الترتيب" : "اضغط للترتيب حسب هذا العمود"}>
-        {label}{selected &&
-          <span className="sort-indicator" aria-hidden="true">
-            {activeDirection === "asc" ? " ▲" : " ▼"}
-          </span>}
-      </button>
-    </th>;
-  }
+  const columnCells: Record<TableColumn, (row: Row) => ReactNode> = {
+    choice: row => <><label className="item-options-table-choice">
+                <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
+                  checked={selectedIds.has(row.itemId)}
+                  disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
+                  onChange={event => void temporarySelection.toggle(
+                    { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
+              </label></>,
+    stock: row => <><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></>,
+    saleQuantityMonth: row => <><bdi>{row.saleQuantityMonth}</bdi></>,
+    name: row => <><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</>,
+    reserve: row => <><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
+                itemId={row.itemId} revision={row.revision}
+                reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></>,
+    purchaseFactor: row => <><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
+                 itemId={row.itemId} revision={row.revision}
+                 purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></>,
+    minOrderQuantity: row => <><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></>,
+    orderAlertQuantity: row => <><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></>,
+    orderStoppedUntil: row => <><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></>,
+    reviewed: row => <><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></>,
+    month: row => <><bdi>{row.saleTimesMonth}</bdi></>,
+    marketOrder30Days: row => <><bdi>{row.marketOrder30Days}</bdi></>,
+    marketOrderAfterPurchase30Days: row => <><bdi>{row.marketOrderAfterPurchase30Days}</bdi></>,
+    fourMonths: row => <><bdi>{row.saleTimesFourMonths}</bdi></>,
+    allTime: row => <><bdi>{row.saleTimesAllTime}</bdi></>,
+    previousYear: row => <><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></>,
+    requiredPurchaseQuantity: row => <><bdi>{row.requiredPurchaseQuantity}</bdi></>,
+    purchasePrice: row => <><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    requiredPurchaseValue: row => <><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    purchaseNotes: row => <>{renderPurchaseNote(row, true)}</>,
+    coverage: row => <><bdi>{row.approximateCoverageDays ?? "—"}</bdi></>,
+    coverageWithReserve: row => <><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi></>,
+    coverageWithRequired: row => <><bdi>{row.coverageWithRequiredDays}</bdi></>,
+    reserveCoverage: row => <><bdi>{row.reserveCoverageDays ?? "—"}</bdi></>,
+    purchaseFactorCoverage: row => <><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></>,
+    compositionSaleMonth: row => <><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi></>,
+    compositionStock: row => <><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi></>,
+    compositionCoverage: row => <><bdi>{row.compositionCoverageDays ?? "0"}</bdi></>,
+  };
+  const columns: InteractiveTableColumn<Row, TableColumn>[] = tableColumnOptions.map(([key, label]) => ({
+    key, label, width: tableColumnWidths[key], cell: columnCells[key],
+    sortable: sortOptions.some(([sortKey]) => sortKey === key),
+    className: key === "choice" ? "item-options-choice-cell" :
+      key === "purchaseNotes" ? "item-options-purchase-notes-cell" : undefined,
+  }));
+
 
   return <div className="wallet-page">
     <PageHeader title="قائمة الأصناف"
@@ -1322,116 +1387,21 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
         </div>
-        <div className={`table-scroll item-options-desktop-table${visibleColumns.length < allTableColumns.length ? " item-options-fit-columns" : ""}`} role="region"
-          aria-label="نتائج الأصناف حسب الخيارات">
-        <table style={visibleColumns.length < allTableColumns.length ? { minWidth: 0, width: "100%" } : undefined}>
-          <colgroup>
-            {visibleColumns.includes("choice") && <col className="item-options-choice-col" />}
-            {visibleColumns.includes("stock") && <col className="item-options-stock-col" />}
-            {visibleColumns.includes("saleQuantityMonth") && <col className="item-options-month-quantity-col" />}
-            {visibleColumns.includes("name") && <col className="item-options-name-col" />}
-            {visibleColumns.includes("reserve") && <col className="item-options-reserve-col" />}
-            {visibleColumns.includes("purchaseFactor") && <col className="item-options-purchase-factor-col" />}
-            {visibleColumns.includes("minOrderQuantity") && <col className="item-options-planning-col" />}
-{visibleColumns.includes("orderAlertQuantity") && <col className="item-options-planning-col" />}
-{visibleColumns.includes("orderStoppedUntil") && <col className="item-options-planning-col" />}
-{visibleColumns.includes("reviewed") && <col className="item-options-planning-col" />}
-{visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
-            {visibleColumns.includes("marketOrder30Days") && <col className="item-options-month-times-col" />}
-            {visibleColumns.includes("marketOrderAfterPurchase30Days") && <col className="item-options-month-times-col" />}
-            {visibleColumns.includes("fourMonths") && <col className="item-options-four-months-col" />}
-            {visibleColumns.includes("allTime") && <col className="item-options-all-time-col" />}
-            {visibleColumns.includes("previousYear") && <col className="item-options-previous-year-col" />}
-            {visibleColumns.includes("requiredPurchaseQuantity") && <col className="item-options-required-quantity-col" />}
-            {visibleColumns.includes("purchasePrice") && <col className="item-options-purchase-price-col" />}
-            {visibleColumns.includes("requiredPurchaseValue") && <col className="item-options-required-value-col" />}
-            {visibleColumns.includes("purchaseNotes") && <col className="item-options-purchase-notes-col" />}
-            {visibleColumns.includes("coverage") && <col className="item-options-coverage-col" />}
-            {visibleColumns.includes("coverageWithReserve") && <col className="item-options-coverage-col" />}
-            {visibleColumns.includes("coverageWithRequired") && <col className="item-options-coverage-with-required-col" />}
-            {visibleColumns.includes("reserveCoverage") && <col className="item-options-reserve-coverage-col" />}
-            {visibleColumns.includes("purchaseFactorCoverage") && <col className="item-options-factor-coverage-col" />}
-            {visibleColumns.includes("compositionSaleMonth") && <col className="item-options-month-quantity-col" />}
-            {visibleColumns.includes("compositionStock") && <col className="item-options-stock-col" />}
-            {visibleColumns.includes("compositionCoverage") && <col className="item-options-coverage-col" />}
-          </colgroup>
-          <thead><tr>
-            <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
-            {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
-            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (الوحدة الأولى)")}
-            {sortHeader("name", "اسم الصنف")}
-            {sortHeader("reserve", "كمية احتياط")}
-            {sortHeader("purchaseFactor", "عامل وحدة الشراء (الوحدة الأولى)")}
-            <th scope="col" style={hiddenColumnStyle("minOrderQuantity")}>أقل كمية طلب</th>
-<th scope="col" style={hiddenColumnStyle("orderAlertQuantity")}>كمية الطلب</th>
-<th scope="col" style={hiddenColumnStyle("orderStoppedUntil")}>إيقاف</th>
-<th scope="col" style={hiddenColumnStyle("reviewed")}>مراجع</th>
-{sortHeader("month", "مبيعات مرات في شهر")}
-            {sortHeader("marketOrder30Days", "مرات الطلب من السوق آخر 30 يوم")}
-            {sortHeader("marketOrderAfterPurchase30Days", "مرات الطلب من السوق آخر 30 يوم بعد آخر شراء")}
-            {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
-            {sortHeader("allTime", "مبيعات مرات منذ البداية")}
-            {sortHeader("previousYear", "مرات عام السابق")}
-            {sortHeader("requiredPurchaseQuantity", "الكمية المطلوبة (الوحدة الأولى)")}
-            {sortHeader("purchasePrice", "سعر الشراء الافتراضي (الوحدة الأولى)")}
-            {sortHeader("requiredPurchaseValue", "قيمة المطلوب")}
-            <th scope="col" style={hiddenColumnStyle("purchaseNotes")}>ملاحظات عند الشراء</th>
-            {sortHeader("coverage", "الكفاية بدون الاحتياط (يوم)")}
-            {sortHeader("coverageWithReserve", "الكفاية مع الاحتياط (يوم)")}
-            {sortHeader("coverageWithRequired", "الكفاية مع المطلوب (يوم)")}
-            {sortHeader("reserveCoverage", "كفاية كمية الاحتياط وحدها (يوم)")}
-            {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
-            {sortHeader("compositionSaleMonth", "كمية التركيب المباعة في شهر (الوحدة الأولى)")}
-            {sortHeader("compositionStock", "المتوفر للتركيب (الوحدة الأولى)")}
-            {sortHeader("compositionCoverage", "الكفاية التقريبية للتركيب (يوم)")}
-          </tr></thead>
-          <tbody>
-            {result.rows.map(row => <tr key={row.itemId}
-              className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}
-              onClick={() => rememberItem(row)}>
-              <td style={hiddenColumnStyle("choice")} className="item-options-choice-cell"><label className="item-options-table-choice">
-                <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
-                  checked={selectedIds.has(row.itemId)}
-                  disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
-                  onChange={event => void temporarySelection.toggle(
-                    { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
-              </label></td>
-              <td style={hiddenColumnStyle("stock")}><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
-              <td style={hiddenColumnStyle("saleQuantityMonth")}><bdi>{row.saleQuantityMonth}</bdi></td>
-              <td style={hiddenColumnStyle("name")}><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
-              <td style={hiddenColumnStyle("reserve")}><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
-                itemId={row.itemId} revision={row.revision}
-                reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></td>
-              <td style={hiddenColumnStyle("purchaseFactor")}><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
-                 itemId={row.itemId} revision={row.revision}
-                 purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
-              <td style={hiddenColumnStyle("minOrderQuantity")}><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></td>
-<td style={hiddenColumnStyle("orderAlertQuantity")}><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></td>
-<td style={hiddenColumnStyle("orderStoppedUntil")}><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></td>
-<td style={hiddenColumnStyle("reviewed")}><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></td>
-<td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
-              <td style={hiddenColumnStyle("marketOrder30Days")}><bdi>{row.marketOrder30Days}</bdi></td>
-              <td style={hiddenColumnStyle("marketOrderAfterPurchase30Days")}><bdi>{row.marketOrderAfterPurchase30Days}</bdi></td>
-              <td style={hiddenColumnStyle("fourMonths")}><bdi>{row.saleTimesFourMonths}</bdi></td>
-              <td style={hiddenColumnStyle("allTime")}><bdi>{row.saleTimesAllTime}</bdi></td>
-              <td style={hiddenColumnStyle("previousYear")}><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("requiredPurchaseQuantity")}><bdi>{row.requiredPurchaseQuantity}</bdi></td>
-              <td style={hiddenColumnStyle("purchasePrice")}><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
-              <td style={hiddenColumnStyle("requiredPurchaseValue")}><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
-              <td style={hiddenColumnStyle("purchaseNotes")} className="item-options-purchase-notes-cell">{renderPurchaseNote(row)}</td>
-              <td style={hiddenColumnStyle("coverage")}><bdi>{row.approximateCoverageDays ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("coverageWithReserve")}><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("coverageWithRequired")}><bdi>{row.coverageWithRequiredDays}</bdi></td>
-              <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("compositionSaleMonth")}><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi></td>
-              <td style={hiddenColumnStyle("compositionStock")}><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi></td>
-              <td style={hiddenColumnStyle("compositionCoverage")}><bdi>{row.compositionCoverageDays ?? "0"}</bdi></td>
-            </tr>)}
-            {!result.rows.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
-          </tbody>
-        </table>
-        </div>
+        <InteractiveColumnsTable<Row, TableColumn>
+          key={columnLayoutStorageKey}
+          className="item-options-desktop-table"
+          ariaLabel="نتائج الأصناف حسب الخيارات"
+          columns={columns} rows={result.rows} rowKey={row => row.itemId}
+          visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey}
+          sortKey={activeSort} sortDirection={activeDirection}
+          onSort={column => {
+            const option = sortOptions.find(([key]) => key === column);
+            if (option) sortByColumn(option[0]);
+          }}
+          rowClassName={row => selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}
+          onRowClick={rememberItem}
+          emptyMessage="لا توجد أصناف تطابق الخيارات الحالية."
+        />
       </>}
       {result && <div className="form-actions">
         <Button variant="secondary" disabled={resultQuery.isFetching || page <= 1}
@@ -1468,3 +1438,4 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     </section>
   </div>;
 }
+

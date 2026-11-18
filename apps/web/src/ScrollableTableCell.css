@@ -1,0 +1,45 @@
+.table-cell-scroll-shell {
+  position: relative;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+.table-cell-scroll {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+}
+.table-cell-scroll::-webkit-scrollbar { display: none; }
+.table-cell-scroll-content {
+  display: inline-block;
+  inline-size: max-content;
+  min-inline-size: 100%;
+  vertical-align: middle;
+}
+/* The item-note action stays clickable while its full text scrolls in the cell. */
+.table-cell-scroll-content > .item-options-purchase-note {
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.table-cell-scroll:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: -1px; }
+@media (pointer: fine) {
+  .table-cell-scroll[data-overflow="true"] { cursor: grab; }
+}
+.table-cell-scroll[data-grabbing="true"] { cursor: grabbing; user-select: none; }
+.table-cell-scroll-shell[data-hint="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 15px;
+  box-shadow: inset 9px 0 9px -9px var(--muted, currentColor);
+  pointer-events: none;
+}
