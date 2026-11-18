@@ -50,18 +50,20 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
       if (Number(existing.rows[0]?.count ?? 0) !== unique.length)
         throw new HttpError(409, "items_changed", "أحد الأصناف لم يعد موجودًا بالشركة؛ لم يتم حفظ ترحيل ناقص");
       const rows = await client.query(
-        `WITH requested AS (
+        `WITH stamped AS (SELECT clock_timestamp() AS saved_at),
+        requested AS (
           SELECT id,required_quantity FROM jsonb_to_recordset($2::jsonb)
           AS row(id integer,required_quantity numeric)
         ), inserted AS (
           INSERT INTO company_order_draft_exports
-            (company_id,item_id,item_name,required_quantity,available_quantity,export_date,created_by)
+            (company_id,item_id,item_name,required_quantity,available_quantity,export_date,exported_at,created_by)
           SELECT $1,i.id,i.name,r.required_quantity,
             round((COALESCE(s.stock_showroom,0)+COALESCE(s.stock_warehouse,0))
               / greatest(i.factor2::numeric*i.factor3::numeric,1),4),
-            (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date,$3
+            (stamped.saved_at AT TIME ZONE 'Asia/Aden')::date,stamped.saved_at,$3
           FROM requested r JOIN items i ON i.company_id=$1 AND i.id=r.id
           LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
+          CROSS JOIN stamped
           ON CONFLICT(company_id,item_id,export_date) DO NOTHING
           RETURNING id
         ) SELECT count(*)::integer AS added FROM inserted`,
