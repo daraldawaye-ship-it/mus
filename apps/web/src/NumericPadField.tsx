@@ -21,8 +21,11 @@ export function numericPadValid(
   const [whole, fraction = ""] = unsigned.split(".");
   return whole.length <= maxIntegerDigits && fraction.length <= maxDecimals;
 }
-export function numericPadCommit(raw: string): string {
+export function numericPadCommit(raw: string, allowEmpty = false): string {
   const value = numericPadDigits(raw).trim();
+  // Clearing is a legitimate value for optional fields. Required numeric
+  // fields defer the zero fallback until the user explicitly confirms.
+  if (value === "" || value === "-") return allowEmpty ? "" : "0";
   const negative = value.startsWith("-");
   const unsigned = (negative ? value.slice(1) : value).replace(/^\./, "0.");
   const [whole = "", fraction] = unsigned.split(".");
@@ -42,6 +45,8 @@ export type NumericPadFieldProps = {
   readOnly?: boolean;
   allowNegative?: boolean;
   allowDecimal?: boolean;
+  /** Preserve an empty result on confirmation; otherwise empty commits as 0. */
+  allowEmpty?: boolean;
   maxIntegerDigits?: number;
   maxDecimals?: number;
   confirmText?: string;
@@ -53,7 +58,7 @@ export type NumericPadFieldProps = {
  * cancel/backdrop/Escape do not commit anything to the external field. */
 export function NumericPadField({
   label, value, onChange, id, placeholder = "0", disabled = false,
-  readOnly = false, allowNegative = true, allowDecimal = true,
+  readOnly = false, allowNegative = true, allowDecimal = true, allowEmpty = false,
   maxIntegerDigits = 18, maxDecimals = 4, confirmText = "موافق",
   openButtonLabel = "فتح لوحة الأرقام", className = "",
 }: NumericPadFieldProps) {
@@ -82,22 +87,22 @@ export function NumericPadField({
   const launch = () => {
     const initial = numericPadDigits(value).trim();
     setDraft(numericPadValid(initial, allowDecimal, allowNegative, maxIntegerDigits, maxDecimals)
-      ? initial || "0" : "0");
+      ? initial : "");
     setError("");
     setOpen(true);
   };
   const enter = (key: string) => {
     setError("");
-    if (key === "clear") { setDraft("0"); return; }
+    if (key === "clear") { setDraft(""); return; }
     if (key === "delete") {
       setDraft(current => current.length <= 1 || (current.length === 2 && current.startsWith("-"))
-        ? "0" : current.slice(0, -1));
+        ? "" : current.slice(0, -1));
       return;
     }
     setDraft(current => {
       if (key === ".") {
         if (!allowDecimal || current.includes(".") || maxDecimals === 0) return current;
-        return current + ".";
+        return (current || "0") + ".";
       }
       const next = current === "0" ? key : current === "-0" ? "-" + key : current + key;
       return numericPadValid(next, allowDecimal, allowNegative, maxIntegerDigits, maxDecimals)
@@ -106,13 +111,13 @@ export function NumericPadField({
   };
   const toggleSign = () => {
     if (!allowNegative) return;
-    setDraft(current => current.startsWith("-") ? current.slice(1) || "0" : "-" + (current || "0"));
+    setDraft(current => current.startsWith("-") ? current.slice(1) : "-" + current);
   };
   const accept = () => {
     if (!numericPadValid(draft, allowDecimal, allowNegative, maxIntegerDigits, maxDecimals)) {
       setError("قيمة غير صالحة"); return;
     }
-    onChange(numericPadCommit(draft));
+    onChange(numericPadCommit(draft, allowEmpty));
     close();
   };
 
@@ -145,7 +150,7 @@ export function NumericPadField({
             onClick={() => enter("clear")} title="مسح الرقم" aria-label="مسح الرقم">
             <X size={15} aria-hidden="true"/>
           </button>
-          <span className="numeric-pad-value">{draft || "0"}</span>
+          <span className="numeric-pad-value">{draft}</span>
           <button type="button" dir="rtl"
             className={`numeric-pad-sign ${draft.startsWith("-") ? "negative" : "positive"}`}
             aria-label={`الإشارة ${draft.startsWith("-") ? "سالبة" : "موجبة"}؛ اضغط للتبديل`}
