@@ -64,7 +64,7 @@ export function AttendanceApprovalBanner({ companyId }: { companyId: number }) {
     <aside className="attendance-approval-banner" role="status" aria-live="polite"
       aria-label="طلب مصادقة الحضور والانصراف">
       <div className="attendance-approval-copy">
-        <strong>قام {current.employeeName} بتسجيل {kindName}</strong>
+        <strong>قام <span className="attendance-approval-employee">{current.employeeName}</span>{" "}بتسجيل{" "}<span className={`attendance-approval-kind ${current.kind === "check-in" ? "attendance-approval-kind-check-in" : "attendance-approval-kind-check-out"}`}>{kindName}</span></strong>
         <span>{new Intl.DateTimeFormat("ar-YE", {
           timeZone: "Asia/Aden", dateStyle: "short", timeStyle: "short",
         }).format(new Date(current.requestedAt))} · بانتظار المصادقة
