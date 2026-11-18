@@ -45,19 +45,6 @@
 .medicine-market .market-section-error { display: grid; justify-items: start; gap: 6px; }
 .medicine-market .medicine-market-detail-top { scroll-margin-top: 90px; }
 .medicine-market .market-related-medicines { margin-block-start: 12px; }
-.medicine-market .market-related-list { list-style: none; margin: 0; padding: 0; }
-.medicine-market .market-related-list > li { min-width: 0; }
-.medicine-market .market-related-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; height: 100%; min-height: 40px;
-  padding: 6px 10px; text-align: start; font: inherit; color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer;
-}
-.medicine-market .market-related-item:hover { background: var(--hover); border-color: var(--focus); }
-.medicine-market .market-related-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.medicine-market .market-related-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.medicine-market .market-related-item strong { display: block; font-size: 13px; }
-.medicine-market .market-related-item small { display: block; font-size: 11px; color: var(--muted); }
-.medicine-market .market-related-item > svg { flex-shrink: 0; color: var(--muted); }
 /* Compact the catalog shell only; detail forms and moderation keep their existing layout. */
 .medicine-market.medicine-market-directory .medicine-market-heading { gap: 8px; margin-bottom: 8px; }
 .medicine-market.medicine-market-directory .medicine-market-brand h1 { font-size: 20px; margin: 0; }

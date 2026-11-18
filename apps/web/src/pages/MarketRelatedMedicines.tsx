@@ -1,11 +1,10 @@
 import { useEffect, useId, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { ChevronLeft, Pill } from "lucide-react";
-import type { MarketCard, MarketKind, MarketRelatedMedicinesPage } from "../../../../packages/contracts/src/medicine-market";
+import type { MarketCard, MarketKind, MarketMeta, MarketReferenceEntry, MarketRelatedMedicinesPage } from "../../../../packages/contracts/src/medicine-market";
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Notice } from "../ui";
-import "./MarketCatalogSections.css";
+import { MarketCompactCard } from "./MarketCatalogSections";
 
 const titles: Partial<Record<MarketKind, string>> = {
   agent: "أصناف الوكيل",
@@ -14,8 +13,10 @@ const titles: Partial<Record<MarketKind, string>> = {
   medicine: "بدائل نفس التركيب",
 };
 
-export function MarketRelatedMedicines({ card, onOpen }: {
+export function MarketRelatedMedicines({ card, medicineType, references, onOpen }: {
   card: MarketCard;
+  medicineType?: MarketMeta["types"][number];
+  references: MarketReferenceEntry[];
   onOpen: (id: number) => void;
 }) {
   const { user } = useSession();
@@ -68,24 +69,10 @@ export function MarketRelatedMedicines({ card, onOpen }: {
           </p>
         )}
         {items.length > 0 && (
-          <ul className="market-compact-list market-related-list">
-            {items.map(item => {
-              const englishName = item.englishName?.trim();
-              return (
-                <li key={item.id}>
-                  <button type="button" className="market-related-item" onClick={() => onOpen(item.id)}>
-                    <Pill size={16} aria-hidden="true" />
-                    <span>
-                      <strong dir="auto">{item.name}</strong>
-                      {englishName && englishName.toLowerCase() !== item.name.trim().toLowerCase() &&
-                        <small dir="ltr" lang="en">{englishName}</small>}
-                    </span>
-                    <ChevronLeft size={15} aria-hidden="true" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="market-compact-list">
+            {items.map(item => <MarketCompactCard key={item.id} item={item}
+              type={medicineType} references={references} onOpen={onOpen} />)}
+          </div>
         )}
         {hasNextPage && (
           <div ref={loadMore} className="market-catalog-section-footer">

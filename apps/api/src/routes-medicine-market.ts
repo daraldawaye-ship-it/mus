@@ -1098,6 +1098,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     root + "/cards/:cardId/related-medicines",
     handler(async (req, res) => {
       const user = await viewer(pool, req);
+      const permissions = perms(user);
       await enabled(pool, req);
       const source = await getCard(pool, id(req.params.cardId), user);
       const cursor = req.query.cursor === undefined
@@ -1114,18 +1115,19 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       // The isolated market uses the existing partial relation indexes.
       const relation = `c.data->>'${field}'`;
       const relationFilter = stagingIsolated
-        ? `market_ref(${relation})=$1::integer` : `${relation}=$1::text`;
+        ? `market_ref(${relation})=$2::integer` : `${relation}=$2::text`;
       const pageSize = 20;
-      const { rows } = await pool.query<MarketRelatedMedicinesPage["items"][number]>(
-        `SELECT c.id,c.name,
-          CASE WHEN jsonb_typeof(c.data->'englishName')='string' THEN c.data->>'englishName' END AS "englishName"
-        FROM medicine_market_cards c
-        WHERE c.kind='medicine' AND c.status='published' AND NOT c.archived
-          AND ${relationFilter} AND c.id<>$2 AND ($3::integer IS NULL OR c.id<$3)
-        ORDER BY c.id DESC LIMIT $4`,
-        [relationId, source.id, cursor, pageSize + 1],
+      const { rows } = await pool.query(
+        `${cardSelect} WHERE c.kind='medicine' AND c.status='published' AND NOT c.archived
+          AND ${relationFilter} AND c.id<>$3 AND ($4::integer IS NULL OR c.id<$4)
+          ORDER BY c.id DESC LIMIT $5`,
+        [user?.id ?? null, relationId, source.id, cursor, pageSize + 1],
       );
-      const items = rows.slice(0, pageSize);
+      const items = rows.slice(0, pageSize).map(row => {
+        const card = cardOutput(row, permissions);
+        const { englishName } = card.data;
+        return { ...card, englishName: typeof englishName === "string" ? englishName : null };
+      });
       res.json({
         items,
         nextCursor: rows.length > pageSize ? items[pageSize - 1]!.id : null,

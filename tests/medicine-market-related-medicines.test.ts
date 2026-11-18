@@ -36,9 +36,11 @@ test("related market medicines page by exact relation and omit hidden cards and 
   const manufacturerOnly = await add("medicine", "Manufacturer alone", { manufacturerId: manufacturer });
   const anotherForm = await add("medicine", "Other form", { compositionId: otherComposition });
   const related = [];
+  const image = "https://example.test/item.webp";
   for (let i = 0; i < 41; i++) {
     related.unshift(await add("medicine", `Item ${i}`, {
       ...links, agentId: String(agent), englishName: `Medicine ${i}`,
+      image, purchasePrice: "600",
       accountingMappings: [{ system: "test", identifier: "private" }],
     }));
   }
@@ -46,6 +48,13 @@ test("related market medicines page by exact relation and omit hidden cards and 
   await add("medicine", "Pending", links, "pending");
   await add("medicine", "Rejected", links, "rejected");
   await add("manufacturer", "Not a medicine", links);
+  const sampleId = related[0]!;
+  await db.query("INSERT INTO medicine_market_reactions(card_id,user_id,liked,rating) VALUES($1,1,true,4)", [sampleId]);
+  await db.query(
+    "INSERT INTO medicine_market_comments(card_id,author_id,text,status,idempotency_key) VALUES($1,1,'Comment','approved',$2)",
+    [sampleId, randomUUID()],
+  );
+  await db.query("SELECT market_record_open($1,1,$2)", [sampleId, randomUUID()]);
 
   const app = express();
   app.use(medicineMarketRoutes(db as unknown as Pool, {
@@ -60,8 +69,8 @@ test("related market medicines page by exact relation and omit hidden cards and 
   t.after(() => { server.closeAllConnections(); server.close(); });
   const address = server.address();
   assert(address && typeof address !== "string");
-  const request = (id: number, query = "") =>
-    fetch(`http://127.0.0.1:${address.port}/medicine-market/cards/${id}/related-medicines${query}`);
+  const root = `http://127.0.0.1:${address.port}/medicine-market/cards`;
+  const request = (id: number, query = "") => fetch(`${root}/${id}/related-medicines${query}`);
   async function get(id: number, cursor?: number) {
     const response = await request(id, cursor === undefined ? "" : `?cursor=${cursor}`);
     assert.equal(response.status, 200);
@@ -79,7 +88,18 @@ test("related market medicines page by exact relation and omit hidden cards and 
     return [...first.items, ...second.items, ...last.items].map(item => item.id);
   }
 
-  assert.deepEqual((await get(agent)).items[0], { id: related[0], name: "Item 40", englishName: "Medicine 40" });
+  const { englishName, ...card } = (await get(agent)).items[0]!;
+  const catalog = await fetch(`${root}?kind=medicine&q=${sampleId}`);
+  assert.equal(catalog.status, 200);
+  assert.deepEqual(card, (await catalog.json()).items[0]);
+  assert.equal(englishName, "Medicine 40");
+  assert.equal(card.data.image, image);
+  assert.equal(card.data.purchasePrice, "600");
+  assert.equal(card.data.accountingMappings, undefined);
+  assert.equal(card.likes, 1);
+  assert.equal(card.statistics?.comments, 1);
+  assert.equal(card.statistics?.opens, 1);
+  assert.equal(card.statistics?.ratingAverage, 4);
   assert.deepEqual(await all(agent), [...related, agentOnly]);
   assert.deepEqual(await all(manufacturer), [...related, manufacturerOnly]);
   assert.deepEqual(await all(composition), [...related, medicine]);

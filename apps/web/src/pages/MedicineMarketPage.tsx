@@ -1945,11 +1945,13 @@ export function MedicineMarketPage({
             </>
           )}
           {selected && card && (
-            <MarketRelatedMedicines key={card.id} card={card} onOpen={id => {
-              openCard(id);
-              detailTop.current?.focus({ preventScroll: true });
-              detailTop.current?.scrollIntoView({ block: "start" });
-            }} />
+            <MarketRelatedMedicines key={card.id} card={card}
+              medicineType={types.find(type => type.key === "medicine")} references={references}
+              onOpen={id => {
+                openCard(id);
+                detailTop.current?.focus({ preventScroll: true });
+                detailTop.current?.scrollIntoView({ block: "start" });
+              }} />
           )}
         </>
       )}

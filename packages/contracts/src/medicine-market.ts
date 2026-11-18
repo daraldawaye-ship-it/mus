@@ -269,6 +269,6 @@ export interface MarketDetail {
   contributions: MarketContribution[];
 }
 export type MarketRelatedMedicinesPage = {
-  items: { id: number; name: string; englishName: string | null }[];
+  items: (MarketCard & { englishName: string | null })[];
   nextCursor: number | null;
 };
