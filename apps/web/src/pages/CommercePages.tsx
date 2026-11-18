@@ -1479,8 +1479,8 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, s
                     )}</colgroup>
                     <thead><tr>
                       <th>التاريخ</th>
-                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th className="invoice-item-options-number">السعر</th></> : <th>البيان</th>}
-                      <th className="invoice-item-options-number">الكمية (و1)</th>
+                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th className="invoice-item-options-number">{view === "purchase" ? "سعر الشراء الصافي" : "السعر"}</th></> : <th>البيان</th>}
+                      <th className="invoice-item-options-number">{view === "purchase" ? "صافي الكمية (و1)" : "الكمية (و1)"}</th>
                     </tr></thead>
                     <tbody>{history.data.items.map(row => (
                       <tr key={row.lineId}>
@@ -4844,6 +4844,7 @@ function InvoiceViewer({
                 <th>الصنف</th>
                 <th>الوحدة</th>
                 <th>الكمية</th>
+                {invoice.kind === "purchase" && <><th>البونص</th><th>صافي الكمية</th></>}
                 <th>السعر</th>
                 {invoice.kind === "purchase" && <th>الانتهاء</th>}
                 <th>الخصم</th>
@@ -4865,6 +4866,10 @@ function InvoiceViewer({
                   </td>
                   <td>{line.unitName}</td>
                   <td>{amount(line.quantity)}</td>
+                  {invoice.kind === "purchase" && <>
+                    <td>{amount(line.bonusQuantity ?? "0")}</td>
+                    <td>{amount((BigInt(line.quantity) + BigInt(line.bonusQuantity ?? "0")).toString())}</td>
+                  </>}
                   <td>{amount(line.unitPrice)}</td>
                   {invoice.kind === "purchase" && (
                     <td>{line.expiryDate || "—"}</td>
