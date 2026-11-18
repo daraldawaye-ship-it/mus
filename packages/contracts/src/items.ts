@@ -566,6 +566,12 @@ export interface ItemStatistics {
     createdAt: string;
   } | null;
   lastSale: ItemStatisticsInvoice | null;
+  /** Unique local export days within 30 days, and the subset after the latest posted purchase. */
+  marketOrders: {
+    last30Days: number;
+    afterLastPurchase30Days: number;
+    lastPurchaseAt: string | null;
+  } | null;
   lastPurchase:
     | (ItemStatisticsInvoice & {
         price: string;
