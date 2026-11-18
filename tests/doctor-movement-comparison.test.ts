@@ -44,6 +44,7 @@ test("168-hour medical movement comparison groups shared names and signed net am
     assert.equal(Number(doctor.totalCurrent),120);
     assert.equal(Number(doctor.totalPrevious),125);
     assert.equal(Number(doctor.totalDifference),-5);
+    assert.equal(res.rows[0]!.doctorName,"الدكتور أحمد", "numeric differences sort correctly");
     const query=await db.query<Record<string,unknown>>(doctorMovementComparisonSql,[2,"%المستشفى%",1,0]);
     assert.equal(query.rows.length,1);
     assert.equal(Number(query.rows[0]!.totalCurrent),20);

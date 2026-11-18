@@ -54,6 +54,6 @@ SELECT doctor_name AS "doctorName",
  COALESCE(sum(difference) OVER(),0)::text AS "totalDifference",
  (SELECT until_at FROM cutoff) AS "untilAt"
 FROM compared
-ORDER BY difference DESC, current_amount DESC, doctor_name ASC
+ORDER BY compared.difference DESC, compared.current_amount DESC, compared.doctor_name ASC
 LIMIT $3 OFFSET $4
 `;
