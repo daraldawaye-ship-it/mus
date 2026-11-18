@@ -4,6 +4,7 @@ import type { z } from "zod";
 import {
   calculateInvoiceTotals,
   invoiceLineGross,
+  netPurchasePriceFirstUnit,
   normalizeRate,
   type Invoice,
   type InvoiceLine,
@@ -1055,11 +1056,9 @@ export async function createInvoice(
       if (line.bonusQuantity <= 0n || line.quantity <= 0n ||
           line.smallest <= 0n || line.total < 0n ||
           line.item.currency_id !== input.currencyId) continue;
-      const firstMultiplier = stockUnitMultiplier(line.item, 1);
-      const raw = line.total * firstMultiplier;
-      const unitPriceUnits = ((raw * 2n + line.smallest * 100n) /
-        (line.smallest * 200n)) * 100n;
-      const effectivePrice = moneyString(unitPriceUnits);
+      const effectivePrice = netPurchasePriceFirstUnit(
+        moneyString(line.total), line.smallest.toString(),
+        stockUnitMultiplier(line.item, 1));
       const updated = await client.query(
         `UPDATE items SET purchase_price=$3::numeric,
            revision=revision+1,updated_at=clock_timestamp()
