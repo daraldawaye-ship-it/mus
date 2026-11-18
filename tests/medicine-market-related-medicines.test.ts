@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import express, { type ErrorRequestHandler } from "express";
+import type { Pool } from "pg";
+import { medicineMarketRoutes } from "../apps/api/src/routes-medicine-market.ts";
+import type { MarketKind, MarketRelatedMedicinesPage } from "../packages/contracts/src/medicine-market.ts";
+
+test("related market medicines page by exact relation and omit hidden cards and the current medicine", async t => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  for (const file of ["001_market.sql", "20261116_card_statistics.sql", "20261117_card_rating_statistics.sql"]) {
+    await db.exec(await readFile("apps/api/market-migrations/" + file, "utf8"));
+  }
+  await db.exec("INSERT INTO users(id,display_name) VALUES(1,'Owner')");
+  async function add(kind: MarketKind, name: string, data = {}, status = "published", archived = false) {
+    const result = await db.query<{ id: number }>(
+      `INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,archived,created_by,idempotency_key)
+       VALUES($1,$2,$2,$3,$4,$5,1,$6) RETURNING id`,
+      [kind, name, JSON.stringify(data), status, archived, randomUUID()],
+    );
+    return result.rows[0]!.id;
+  }
+  const agent = await add("agent", "Agent");
+  const manufacturer = await add("manufacturer", "Manufacturer");
+  const composition = await add("composition", "Composition");
+  const otherComposition = await add("composition", "Other composition");
+  const hiddenAgent = await add("agent", "Hidden agent", {}, "pending");
+  const links = { agentId: agent, manufacturerId: manufacturer, compositionId: composition };
+  const medicine = await add("medicine", "Current", { compositionId: String(composition) });
+  const unlinked = await add("medicine", "Unlinked");
+  const malformed = await add("medicine", "Malformed", { compositionId: [composition] });
+  const agentOnly = await add("medicine", "Agent alone", { agentId: agent });
+  const manufacturerOnly = await add("medicine", "Manufacturer alone", { manufacturerId: manufacturer });
+  const anotherForm = await add("medicine", "Other form", { compositionId: otherComposition });
+  const related = [];
+  for (let i = 0; i < 41; i++) {
+    related.unshift(await add("medicine", `Item ${i}`, {
+      ...links, agentId: String(agent), englishName: `Medicine ${i}`,
+      accountingMappings: [{ system: "test", identifier: "private" }],
+    }));
+  }
+  await add("medicine", "Archived", links, "published", true);
+  await add("medicine", "Pending", links, "pending");
+  await add("medicine", "Rejected", links, "rejected");
+  await add("manufacturer", "Not a medicine", links);
+
+  const app = express();
+  app.use(medicineMarketRoutes(db as unknown as Pool, {
+    async viewer() { return null; },
+    async enabled() {},
+  }, true));
+  app.use(((error, _req, res, _next) => {
+    res.status(error.status ?? 500).json({ message: error.message });
+  }) as ErrorRequestHandler);
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const request = (id: number, query = "") =>
+    fetch(`http://127.0.0.1:${address.port}/medicine-market/cards/${id}/related-medicines${query}`);
+  async function get(id: number, cursor?: number) {
+    const response = await request(id, cursor === undefined ? "" : `?cursor=${cursor}`);
+    assert.equal(response.status, 200);
+    return await response.json() as MarketRelatedMedicinesPage;
+  }
+  async function all(id: number) {
+    const first = await get(id);
+    assert.equal(first.items.length, 20);
+    assert(first.nextCursor);
+    const second = await get(id, first.nextCursor);
+    assert.equal(second.items.length, 20);
+    assert(second.nextCursor);
+    const last = await get(id, second.nextCursor);
+    assert.equal(last.nextCursor, null);
+    return [...first.items, ...second.items, ...last.items].map(item => item.id);
+  }
+
+  assert.deepEqual((await get(agent)).items[0], { id: related[0], name: "Item 40", englishName: "Medicine 40" });
+  assert.deepEqual(await all(agent), [...related, agentOnly]);
+  assert.deepEqual(await all(manufacturer), [...related, manufacturerOnly]);
+  assert.deepEqual(await all(composition), [...related, medicine]);
+  assert.deepEqual(await all(medicine), related);
+  assert.deepEqual((await get(otherComposition)).items.map(item => item.id), [anotherForm]);
+  for (const id of [unlinked, malformed, anotherForm]) {
+    assert.deepEqual(await get(id), { items: [], nextCursor: null });
+  }
+  assert.equal((await request(hiddenAgent)).status, 404);
+  assert.equal((await request(agent, "?cursor=0")).status, 400);
+});

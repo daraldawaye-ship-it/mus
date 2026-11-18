@@ -30,6 +30,7 @@ import { MarketFriendReferral } from "../MarketFriendReferral";
 import { MarketStagingProgress } from "./MarketStagingProgress";
 import { MarketCardCounts, RecordMarketCardOpen } from "./MarketCardStatistics";
 import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
+import { MarketRelatedMedicines } from "./MarketRelatedMedicines";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
@@ -1196,6 +1197,7 @@ export function MedicineMarketPage({
     page = Math.max(1, Number(params.get("page")) || 1),
     selected = Number(params.get("card")) || null;
   const selectedRef = useRef(selected);
+  const detailTop = useRef<HTMLDivElement>(null);
   selectedRef.current = selected;
   const status =
       params.get("status") ?? (tab === "contributions" ? "" : "pending"),
@@ -1646,7 +1648,7 @@ export function MedicineMarketPage({
           </div>
           {selected ? (
             <Card className="medicine-market-detail">
-              <div className="medicine-market-detail-top">
+              <div className="medicine-market-detail-top" ref={detailTop} tabIndex={-1}>
                 <Button variant="ghost" onClick={() => write({ card: null })}>
                   <ArrowLeft size={16} /> العودة إلى القائمة
                 </Button>
@@ -1941,6 +1943,13 @@ export function MedicineMarketPage({
     </div>
               {list.data && pagination(list.data.total, 18)}
             </>
+          )}
+          {selected && card && (
+            <MarketRelatedMedicines key={card.id} card={card} onOpen={id => {
+              openCard(id);
+              detailTop.current?.focus({ preventScroll: true });
+              detailTop.current?.scrollIntoView({ block: "start" });
+            }} />
           )}
         </>
       )}

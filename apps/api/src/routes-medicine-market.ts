@@ -16,6 +16,7 @@ import {
   type MarketField,
   type MarketKind,
   type MarketPermissions,
+  type MarketRelatedMedicinesPage,
 } from "../../../packages/contracts/src/medicine-market.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -1091,6 +1092,44 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         comments: comments.rows.map(commentOutput),
         contributions: contributions.rows.map(contributionOutput),
       });
+    }),
+  );
+  router.get(
+    root + "/cards/:cardId/related-medicines",
+    handler(async (req, res) => {
+      const user = await viewer(pool, req);
+      await enabled(pool, req);
+      const source = await getCard(pool, id(req.params.cardId), user);
+      const cursor = req.query.cursor === undefined
+        ? null : id(typeof req.query.cursor === "string" ? req.query.cursor : undefined);
+      const field = source.kind === "agent" ? "agentId"
+        : source.kind === "manufacturer" ? "manufacturerId" : "compositionId";
+      const relationId = source.kind === "medicine" ? source.data.compositionId : source.id;
+      if (!["agent", "manufacturer", "composition", "medicine"].includes(source.kind) ||
+          (typeof relationId !== "number" && typeof relationId !== "string") ||
+          !/^[1-9][0-9]{0,9}$/.test(String(relationId)) || Number(relationId) > 2147483647) {
+        res.json({ items: [], nextCursor: null } satisfies MarketRelatedMedicinesPage);
+        return;
+      }
+      // The isolated market uses the existing partial relation indexes.
+      const relation = `c.data->>'${field}'`;
+      const relationFilter = stagingIsolated
+        ? `market_ref(${relation})=$1::integer` : `${relation}=$1::text`;
+      const pageSize = 20;
+      const { rows } = await pool.query<MarketRelatedMedicinesPage["items"][number]>(
+        `SELECT c.id,c.name,
+          CASE WHEN jsonb_typeof(c.data->'englishName')='string' THEN c.data->>'englishName' END AS "englishName"
+        FROM medicine_market_cards c
+        WHERE c.kind='medicine' AND c.status='published' AND NOT c.archived
+          AND ${relationFilter} AND c.id<>$2 AND ($3::integer IS NULL OR c.id<$3)
+        ORDER BY c.id DESC LIMIT $4`,
+        [relationId, source.id, cursor, pageSize + 1],
+      );
+      const items = rows.slice(0, pageSize);
+      res.json({
+        items,
+        nextCursor: rows.length > pageSize ? items[pageSize - 1]!.id : null,
+      } satisfies MarketRelatedMedicinesPage);
     }),
   );
   router.post(
