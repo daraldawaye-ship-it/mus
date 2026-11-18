@@ -85,6 +85,10 @@
 .numeric-pad-confirm:hover { filter:brightness(1.08); }
 .numeric-pad-confirm svg { width:13px; height:13px; }
 .numeric-pad-error { margin:0; color:var(--error-text); font-size:11px; }
+@media(max-width:640px) {
+  .numeric-pad-open { display:none; }
+  .numeric-pad-input-row input:not(:disabled) { cursor:pointer; }
+}
 @media(max-width:420px) {
   .numeric-pad-dialog { width:min(160px,calc(100vw - 12px)); }
   .numeric-pad-shell { padding:6px; gap:5px; }
