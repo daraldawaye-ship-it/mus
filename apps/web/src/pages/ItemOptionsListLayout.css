@@ -1,0 +1,32 @@
+/* Keep totals on the same desktop line as selection and draft actions. */
+.item-options-selection-tools.item-options-inline-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  margin-bottom: 6px;
+}
+.item-options-inline-tools > span,
+.item-options-inline-tools > .button,
+.item-options-inline-tools > .item-options-inline-summary {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.item-options-inline-tools .item-options-inline-summary {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+@media (max-width: 680px) {
+  .item-options-selection-tools.item-options-inline-tools {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  .item-options-inline-tools .item-options-inline-summary {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
+import "./ItemOptionsListLayout.css";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -197,6 +198,11 @@ const marketOrderColumns = ["marketOrder30Days", "marketOrderAfterPurchase30Days
 const compositionColumns = ["compositionSaleMonth", "compositionStock", "compositionCoverage"] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
+const defaultHiddenTableColumns: ReadonlySet<TableColumn> = new Set([
+  "reserve", "purchaseFactor", "orderStoppedUntil",
+  "minOrderQuantity", "orderAlertQuantity", "reviewed",
+]);
+const defaultVisibleTableColumns = allTableColumns.filter(id => !defaultHiddenTableColumns.has(id));
 const tableColumnWidths: Record<TableColumn, number> = {
   choice: 48,
   stock: 65,
@@ -228,35 +234,36 @@ const tableColumnWidths: Record<TableColumn, number> = {
   compositionCoverage: 65,
 };
 function readVisibleTableColumns(key: string): TableColumn[] {
-  if (typeof window === "undefined") return allTableColumns;
+  if (typeof window === "undefined") return defaultVisibleTableColumns;
   try {
-    // Existing v1 column selections should show the new companion column.
-    // A v2 selection is explicit and may intentionally hide either column.
+    // v7 introduces six hidden-by-default editing columns. Migrate an older
+    // fully visible layout to the new default without losing custom selections.
+    // Explicit v7 choices, including "إظهار الكل", always win.
     const current = window.localStorage.getItem(key);
-    const previousV5 = current === null
-      ? window.localStorage.getItem(key.replace(":v6:", ":v5:")) : null;
-    const previousV4 = current === null && previousV5 === null
-      ? window.localStorage.getItem(key.replace(":v6:", ":v4:")) : null;
-    const older = current === null
-      ? previousV5 ?? previousV4 ?? window.localStorage.getItem(key.replace(":v6:", ":v3:")) ??
-        window.localStorage.getItem(key.replace(":v6:", ":v2:")) ??
-        window.localStorage.getItem(key.replace(":v6:", ":v1:")) : null;
-    const raw = current ?? older;
-    if (!raw) return allTableColumns;
+    const prior = (version: number) => window.localStorage.getItem(key.replace(":v7:", `:v${version}:`));
+    const previousV6 = current === null ? prior(6) : null;
+    const previousV5 = current === null && previousV6 === null ? prior(5) : null;
+    const previousV4 = current === null && previousV6 === null && previousV5 === null ? prior(4) : null;
+    const previousV3 = current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(3) : null;
+    const previousV2 = previousV3 === null && current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(2) : null;
+    const previousV1 = previousV2 === null && previousV3 === null && current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(1) : null;
+    const raw = current ?? previousV6 ?? previousV5 ?? previousV4 ?? previousV3 ?? previousV2 ?? previousV1;
+    if (!raw) return defaultVisibleTableColumns;
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return allTableColumns;
-    const isLegacy = current === null && previousV5 === null && previousV4 === null &&
-      window.localStorage.getItem(key.replace(":v6:", ":v3:")) === null &&
-      window.localStorage.getItem(key.replace(":v6:", ":v2:")) === null && older !== null;
-    const oldBeforePlanning = current === null && previousV5 === null && previousV4 === null;
+    if (!Array.isArray(parsed)) return defaultVisibleTableColumns;
+    const oldBeforePlanning = current === null && previousV6 === null &&
+      previousV5 === null && previousV4 === null;
+    const isLegacy = previousV1 !== null;
     const valid = allTableColumns.filter(id => parsed.includes(id) ||
       (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")) ||
       (oldBeforePlanning && planningColumns.includes(id as typeof planningColumns[number])) ||
       (oldBeforePlanning && compositionColumns.includes(id as typeof compositionColumns[number])) ||
-      (current === null && previousV5 === null && id === "compositionCoverage") ||
-      (current === null && marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
-    return valid.length ? valid : allTableColumns;
-  } catch { return allTableColumns; }
+      (current === null && previousV6 === null && previousV5 === null && id === "compositionCoverage") ||
+      (current === null && previousV6 === null && marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
+    if (!valid.length) return defaultVisibleTableColumns;
+    return current === null && valid.length === allTableColumns.length
+      ? defaultVisibleTableColumns : valid;
+  } catch { return defaultVisibleTableColumns; }
 }
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -270,7 +277,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v6:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v7:${companyId}:${user?.id ?? "guest"}`;
   const columnLayoutStorageKey = `alraesy:item-options-table-layout:v1:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
@@ -1197,7 +1204,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       </div>
     </Card>
     <Card title="نتائج قائمة الأصناف">
-      <div className="item-options-selection-tools">
+      <div className="item-options-selection-tools item-options-inline-tools">
         <span>الاختيار المؤقت المشترك للشركة: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
         <Button variant="secondary"
           disabled={!canView || !result || !result.total || addingUnselected ||
@@ -1205,8 +1212,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           onClick={() => void addUnselectedToOrderDraft()}>
           {addingUnselected ? "جارٍ إضافة كل غير المختارة…" : "إضافة جميع الأصناف غير المختارة إلى مسودة طلبية"}
         </Button>
-      </div>
-      {result && <p className="muted">
+      {result && <p className="muted item-options-inline-summary">
         إجمالي الأصناف المطابقة: <bdi>{result.total.toLocaleString("en-US")}</bdi>
         {" "}· إجمالي قيمة المطلوب:{" "}
         {result.requiredPurchaseValueTotals.length ?
@@ -1218,6 +1224,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         {" "}· التاريخ: <bdi>{result.asOf}</bdi>
         {" "}· الصفحة <bdi>{page.toLocaleString("en-US")}</bdi> من <bdi>{pages.toLocaleString("en-US")}</bdi>
       </p>}
+      </div>
+
       <div className="form-actions item-options-result-controls">
         <div className="item-options-mobile-sort-controls">
           <Select label="الترتيب حسب العمود" value={activeSort}
