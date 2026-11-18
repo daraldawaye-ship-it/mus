@@ -3286,8 +3286,10 @@ ul {
 .commerce-matrix-purchase .commerce-col-quantity { width: 9%; }
 .commerce-matrix-purchase .commerce-col-price { width: 12%; }
 .commerce-matrix-purchase .commerce-col-expiry { width: 140px; }
-.commerce-matrix-purchase .commerce-col-total { width: 11%; }
+.commerce-matrix-purchase .commerce-col-total { width: 10%; }
+.commerce-matrix-purchase .commerce-col-bonus { width: 7%; }
 .commerce-matrix-purchase .commerce-col-delete { width: 6%; }
+.commerce-matrix-purchase .commerce-line-bonus input { text-align: center; font-variant-numeric: tabular-nums; }
 .commerce-matrix-purchase input[type="date"],
 .commerce-matrix-purchase input[type="month"] {
   direction: ltr;
