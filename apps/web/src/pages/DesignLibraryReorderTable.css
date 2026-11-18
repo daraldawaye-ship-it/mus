@@ -1,11 +1,15 @@
 .wad-reorder { min-width:0; color:var(--text); }
 .wad-reorder .wad-reorder-toolbar { display:flex; align-items:center; justify-content:space-between; gap:6px 10px; flex-wrap:wrap; }
 .wad-reorder .wad-reorder-toolbar .button { padding:4px 7px; gap:4px; font-size:11px; }
+.wad-reorder .wad-reorder-actions { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.wad-reorder .wad-reorder-column-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-block:12px; }
+.wad-reorder .wad-reorder-column-option { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; }
+.wad-reorder .wa-dialog { width:min(420px,calc(100vw - 24px)); }
 .wad-reorder .wad-reorder-stage { position:relative; min-width:0; }
 .wad-reorder .wad-reorder-scroll { overscroll-behavior-x:contain; scrollbar-width:thin; }
 .wad-reorder .wad-reorder-table { table-layout:fixed; }
 .wad-reorder .wad-reorder-table thead th { position:relative; padding:0; }
-.wad-reorder .wad-reorder-handle { display:flex; align-items:center; gap:4px; width:100%; min-height:34px; padding:6px 7px; padding-inline-end:17px; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:start; white-space:nowrap; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
+.wad-reorder .wad-reorder-handle { display:flex; align-items:center; gap:4px; width:100%; min-height:34px; padding:6px 7px; padding-inline-end:17px; overflow:hidden; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:start; white-space:nowrap; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
 .wad-reorder .wad-reorder-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .wad-reorder .wad-reorder-handle:hover { background:var(--surface); color:var(--primary); }
 .wad-reorder .wad-reorder-handle:focus-visible,
@@ -14,8 +18,14 @@
 .wad-reorder .wad-reorder-help summary:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .wad-reorder .wad-reorder-handle svg { flex:none; }
 .wad-reorder .wad-reorder-grip { opacity:.6; }
+.wad-reorder .wad-reorder-handle[data-narrow="true"] .wad-reorder-grip { display:none; }
 .wad-reorder .wad-reorder-sort { flex:none; margin-inline-start:auto; }
-.wad-reorder .wad-reorder-table tbody td { padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+.wad-reorder .wad-reorder-table :is(th,td) { border-inline-end:1px solid color-mix(in srgb,var(--border) 70%,var(--primary)); }
+.wad-reorder .wad-reorder-table tr > :last-child { border-inline-end:0; }
+.wad-reorder .wad-reorder-table tbody tr { --wad-row-bg:var(--surface); }
+.wad-reorder .wad-reorder-table tbody tr:nth-child(even) { --wad-row-bg:var(--soft); }
+.wad-reorder .wad-reorder-table tbody td { min-width:0; padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:clip; font-variant-numeric:tabular-nums; background:var(--wad-row-bg); }
+.wad-reorder .design-cell-scroll-shell { inline-size:100%; min-inline-size:0; }
 .wad-reorder .wad-reorder-table td[data-column="name"] { font-weight:600; }
 .wad-reorder .wad-reorder-table .wad-reorder-source { opacity:.4; background:var(--surface); }
 .wad-reorder.wad-reorder-active,

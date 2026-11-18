@@ -171,7 +171,7 @@ export default function DesignLibraryData() {
     <SectionIntro onReset={() => setRevision(value => value + 1)}>نماذج عربية للفرز والتصفية وتحريك الأعمدة وعرض الأصناف والمقارنات والمتابعة.</SectionIntro>
     <div className="wad-groups" key={revision}>
       <Group title="ترتيب الأعمدة بالسحب">
-        <Example code="ض-13" title="جدول بأعمدة قابلة للسحب" note="اسحب عنوان العمود لتغيير مكانه، واسحب الفاصل لتصغير عرضه أو تكبيره. النقرة العادية على العنوان تفرز الصفوف." wide><DesignLibraryReorderTable /></Example>
+        <Example code="ض-13" title="جدول بأعمدة قابلة للسحب" note="إظهار وإخفاء الأعمدة، وتغيير مكانها وعرضها بالسحب، وصفوف متناوبة بخطوط فاصلة. اسحب النص الطويل داخل الخلية مع ظل مثل ج-10." wide><DesignLibraryReorderTable /></Example>
       </Group>
       <Group title="الفرز والتصفية والاختيار">
         <Example code="ض-01" title="جدول بفرز مباشر" source={source("excel-bootstrap-table-filter-jquery-plugin")} note="اضغط على عنوان الصنف أو الكمية أو السعر لعكس ترتيب الصفوف."><SortableTable /></Example>
