@@ -3,11 +3,13 @@
 .wad-reorder .wad-reorder-toolbar .button { padding:4px 7px; gap:4px; font-size:11px; }
 .wad-reorder .wad-reorder-stage { position:relative; min-width:0; }
 .wad-reorder .wad-reorder-scroll { overscroll-behavior-x:contain; scrollbar-width:thin; }
-.wad-reorder .wad-reorder-table { width:100%; min-width:660px; table-layout:fixed; }
-.wad-reorder .wad-reorder-table thead th { padding:0; }
-.wad-reorder .wad-reorder-handle { display:flex; align-items:center; gap:4px; width:100%; min-height:34px; padding:6px 7px; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:start; white-space:nowrap; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
+.wad-reorder .wad-reorder-table { table-layout:fixed; }
+.wad-reorder .wad-reorder-table thead th { position:relative; padding:0; }
+.wad-reorder .wad-reorder-handle { display:flex; align-items:center; gap:4px; width:100%; min-height:34px; padding:6px 7px; padding-inline-end:17px; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:start; white-space:nowrap; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
+.wad-reorder .wad-reorder-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .wad-reorder .wad-reorder-handle:hover { background:var(--surface); color:var(--primary); }
 .wad-reorder .wad-reorder-handle:focus-visible,
+.wad-reorder .wad-reorder-resizer:focus-visible,
 .wad-reorder .wad-reorder-scroll:focus-visible,
 .wad-reorder .wad-reorder-help summary:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .wad-reorder .wad-reorder-handle svg { flex:none; }
@@ -18,6 +20,11 @@
 .wad-reorder .wad-reorder-table .wad-reorder-source { opacity:.4; background:var(--surface); }
 .wad-reorder.wad-reorder-active,
 .wad-reorder.wad-reorder-active .wad-reorder-handle { cursor:grabbing; user-select:none; -webkit-user-select:none; }
+.wad-reorder .wad-reorder-resizer { position:absolute; inset-block:0; inset-inline-end:0; width:12px; z-index:2; cursor:col-resize; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.wad-reorder .wad-reorder-resizer::after { content:""; position:absolute; inset-block:5px; inset-inline-end:1px; width:2px; border-radius:2px; background:var(--border); }
+.wad-reorder .wad-reorder-resizer:is(:hover,:focus-visible,.is-resizing)::after { width:3px; background:var(--primary); }
+.wad-reorder.wad-reorder-resizing,
+.wad-reorder.wad-reorder-resizing * { cursor:col-resize !important; user-select:none; -webkit-user-select:none; }
 .wad-reorder .wad-reorder-ghost { position:absolute; z-index:3; display:flex; align-items:center; gap:5px; min-height:34px; padding:6px 7px; background:var(--surface); color:var(--text); border:1px solid var(--primary); border-radius:4px; box-shadow:0 3px 9px color-mix(in srgb,var(--text) 14%,transparent); font-size:12px; font-weight:600; white-space:nowrap; pointer-events:none; }
 .wad-reorder .wad-reorder-line { position:absolute; z-index:4; width:3px; transform:translateX(-1px); border-radius:2px; background:var(--primary); pointer-events:none; }
 .wad-reorder .wad-reorder-line::before { content:""; position:absolute; top:-3px; left:-2px; width:7px; height:7px; border-radius:50%; background:var(--primary); }
@@ -29,4 +36,8 @@
 @media (max-width:430px) {
   .wad-reorder .wad-reorder-toolbar > .wa-muted { font-size:11px; }
   .wad-reorder .wad-reorder-footer { gap:4px 8px; }
+}
+@media (pointer:coarse) {
+  .wad-reorder .wad-reorder-resizer { width:18px; }
+  .wad-reorder .wad-reorder-handle { padding-inline-end:22px; }
 }

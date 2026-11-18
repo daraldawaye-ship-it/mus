@@ -3,13 +3,16 @@ import { ArrowDownUp, GripVertical, RotateCcw } from "lucide-react";
 import "./DesignLibraryReorderTable.css";
 
 type ColumnKey = "id" | "name" | "category" | "quantity" | "price" | "total";
+type ColumnWidths = Record<ColumnKey, number>;
 type DemoRow = { id: number; name: string; category: string; quantity: number; price: number; total: number };
-const COLUMNS: { key: ColumnKey; label: string; width: number }[] = [
-  { key: "id", label: "رقم", width: 72 }, { key: "name", label: "الصنف", width: 156 },
-  { key: "category", label: "الفئة", width: 112 }, { key: "quantity", label: "الكمية", width: 88 },
-  { key: "price", label: "السعر", width: 116 }, { key: "total", label: "الإجمالي", width: 116 },
+const COLUMNS: { key: ColumnKey; label: string; width: number; minWidth: number }[] = [
+  { key: "id", label: "رقم", width: 72, minWidth: 64 }, { key: "name", label: "الصنف", width: 156, minWidth: 108 },
+  { key: "category", label: "الفئة", width: 112, minWidth: 88 }, { key: "quantity", label: "الكمية", width: 88, minWidth: 80 },
+  { key: "price", label: "السعر", width: 116, minWidth: 88 }, { key: "total", label: "الإجمالي", width: 116, minWidth: 96 },
 ];
 const DEFAULT_ORDER = COLUMNS.map(column => column.key);
+const DEFAULT_WIDTHS = Object.fromEntries(COLUMNS.map(column => [column.key, column.width])) as ColumnWidths;
+const MAX_COLUMN_WIDTH = 640;
 const ROWS: DemoRow[] = [
   { id: 1, name: "دفتر ملاحظات", category: "دفاتر", quantity: 12, price: 800 },
   { id: 2, name: "قلم حبر", category: "أقلام", quantity: 30, price: 250 },
@@ -25,10 +28,13 @@ type Drag = {
   startX: number; startY: number; x: number; y: number; offset: number; width: number; next: ColumnKey[];
 };
 type Preview = { key: ColumnKey; left: number; top: number; width: number; lineX: number; height: number; valid: boolean };
+type Resize = { key: ColumnKey; pointerId: number; handle: HTMLDivElement; startX: number; startWidth: number };
 
 // A local design-library example: no requests, storage, or operational records.
 export default function DesignLibraryReorderTable() {
   const [order, setOrder] = useState<ColumnKey[]>(() => [...DEFAULT_ORDER]);
+  const [widths, setWidths] = useState<ColumnWidths>(() => ({ ...DEFAULT_WIDTHS }));
+  const [resizing, setResizing] = useState<ColumnKey | null>(null);
   const [sort, setSort] = useState<{ key: ColumnKey; descending: boolean }>({ key: "id", descending: false });
   const [message, setMessage] = useState("بيانات تجريبية؛ يتحرك العمود كاملًا مع عنوانه.");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -37,10 +43,69 @@ export default function DesignLibraryReorderTable() {
   const handles = useRef(new Map<ColumnKey, HTMLButtonElement>());
   const orderRef = useRef(order);
   const drag = useRef<Drag | null>(null);
+  const resize = useRef<Resize | null>(null);
+  const widthsRef = useRef(widths);
   const animation = useRef(0);
   const suppressClick = useRef(false);
   const helpId = useId();
   orderRef.current = order;
+  widthsRef.current = widths;
+
+  function changeWidth(key: ColumnKey, value: number) {
+    const minimum = COLUMNS.find(column => column.key === key)!.minWidth;
+    const width = Math.max(minimum, Math.min(MAX_COLUMN_WIDTH, Math.round(value)));
+    if (width === widthsRef.current[key]) return;
+    const next = { ...widthsRef.current, [key]: width };
+    widthsRef.current = next;
+    setWidths(next);
+  }
+
+  function finishResize(cancelled: boolean) {
+    const current = resize.current;
+    if (!current) return;
+    resize.current = null;
+    if (cancelled) changeWidth(current.key, current.startWidth);
+    if (current.handle.hasPointerCapture(current.pointerId)) current.handle.releasePointerCapture(current.pointerId);
+    setResizing(null);
+    setMessage(cancelled ? "أُلغي تغيير عرض العمود." : `عرض «${label(current.key)}»: ${widthsRef.current[current.key]} بكسل.`);
+  }
+
+  function resizeDown(event: PointerEvent<HTMLDivElement>, key: ColumnKey) {
+    if (drag.current || resize.current || !event.isPrimary || event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    suppressClick.current = true;
+    event.currentTarget.focus({ preventScroll: true });
+    resize.current = { key, pointerId: event.pointerId, handle: event.currentTarget, startX: event.clientX, startWidth: widthsRef.current[key] };
+    setResizing(key);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function resizeMove(event: PointerEvent<HTMLDivElement>) {
+    const current = resize.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault(); event.stopPropagation();
+    // The separator is at inline-end (left) in RTL: moving left widens this column.
+    changeWidth(current.key, current.startWidth + current.startX - event.clientX);
+  }
+
+  function resizeUp(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerId !== resize.current?.pointerId) return;
+    resizeMove(event);
+    finishResize(false);
+  }
+
+  function resizeKey(event: KeyboardEvent<HTMLDivElement>, key: ColumnKey) {
+    if (drag.current || resize.current || event.altKey || event.ctrlKey || event.metaKey) return;
+    const step = event.shiftKey ? 24 : 8;
+    const minimum = COLUMNS.find(column => column.key === key)!.minWidth;
+    const value = event.key === "ArrowLeft" ? widthsRef.current[key] + step
+      : event.key === "ArrowRight" ? widthsRef.current[key] - step
+        : event.key === "Home" ? minimum : event.key === "End" ? MAX_COLUMN_WIDTH : null;
+    if (value === null) return;
+    event.preventDefault(); event.stopPropagation();
+    changeWidth(key, value);
+    setMessage(`عرض «${label(key)}»: ${widthsRef.current[key]} بكسل.`);
+  }
 
   function focusColumn(key: ColumnKey, scroll = false) {
     requestAnimationFrame(() => {
@@ -116,7 +181,7 @@ export default function DesignLibraryReorderTable() {
   }
 
   function pointerDown(event: PointerEvent<HTMLButtonElement>, key: ColumnKey) {
-    if (drag.current || !event.isPrimary || event.button !== 0) return;
+    if (drag.current || resize.current || !event.isPrimary || event.button !== 0) return;
     suppressClick.current = false;
     const rect = event.currentTarget.getBoundingClientRect();
     event.currentTarget.focus({ preventScroll: true });
@@ -149,7 +214,7 @@ export default function DesignLibraryReorderTable() {
   }
 
   function keyboardMove(event: KeyboardEvent<HTMLButtonElement>, key: ColumnKey) {
-    if (drag.current) return;
+    if (drag.current || resize.current) return;
     suppressClick.current = false;
     if (!event.altKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
@@ -163,9 +228,9 @@ export default function DesignLibraryReorderTable() {
   }
 
   useEffect(() => {
-    const cancel = () => finishDrag(true);
+    const cancel = () => { finishDrag(true); finishResize(true); };
     const escape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape" && drag.current) { event.preventDefault(); finishDrag(true); }
+      if (event.key === "Escape" && (drag.current || resize.current)) { event.preventDefault(); cancel(); }
     };
     const visibility = () => { if (document.hidden) cancel(); };
     window.addEventListener("blur", cancel);
@@ -181,6 +246,9 @@ export default function DesignLibraryReorderTable() {
       const current = drag.current;
       drag.current = null;
       if (current?.handle.hasPointerCapture(current.pointerId)) current.handle.releasePointerCapture(current.pointerId);
+      const currentResize = resize.current;
+      resize.current = null;
+      if (currentResize?.handle.hasPointerCapture(currentResize.pointerId)) currentResize.handle.releasePointerCapture(currentResize.pointerId);
     };
   }, []);
 
@@ -190,17 +258,19 @@ export default function DesignLibraryReorderTable() {
     return (sort.descending ? -result : result) || a.id - b.id;
   });
 
-  return <div className={`wa-stack wad-reorder${preview ? " wad-reorder-active" : ""}`} dir="rtl">
-    <div className="wad-reorder-toolbar"><span className="wa-muted" id={helpId}>اسحب العنوان للتحريك، وانقر عليه للفرز.</span>
-      <button type="button" className="button button-ghost button-compact" disabled={sameOrder(order, DEFAULT_ORDER)} onClick={() => {
-        finishDrag(true); orderRef.current = [...DEFAULT_ORDER]; setOrder([...DEFAULT_ORDER]);
-        setMessage("أُعيد ترتيب الأعمدة الأصلي."); if (viewport.current) viewport.current.scrollLeft = 0;
-      }}><RotateCcw size={12} aria-hidden="true" />إعادة الترتيب</button>
+  const tableWidth = order.reduce((sum, key) => sum + widths[key], 0);
+  return <div className={`wa-stack wad-reorder${preview ? " wad-reorder-active" : ""}${resizing ? " wad-reorder-resizing" : ""}`} dir="rtl">
+    <div className="wad-reorder-toolbar"><span className="wa-muted" id={helpId}>اسحب العنوان للتحريك، والفاصل لتغيير العرض. انقر العنوان للفرز.</span>
+      <button type="button" className="button button-ghost button-compact" disabled={sameOrder(order, DEFAULT_ORDER) && COLUMNS.every(column => widths[column.key] === column.width)} onClick={() => {
+        finishDrag(true); finishResize(true); orderRef.current = [...DEFAULT_ORDER]; setOrder([...DEFAULT_ORDER]);
+        widthsRef.current = { ...DEFAULT_WIDTHS }; setWidths({ ...DEFAULT_WIDTHS });
+        setMessage("أُعيد ترتيب الأعمدة وعرضها الأصلي."); if (viewport.current) viewport.current.scrollLeft = 0;
+      }}><RotateCcw size={12} aria-hidden="true" />إعادة الضبط</button>
     </div>
     <div ref={stage} className="wad-reorder-stage">
       <div ref={viewport} className="wa-table-scroll wad-reorder-scroll" onScroll={updateDrag} tabIndex={0} role="region" aria-label="جدول تجريبي قابل للتمرير أفقيًا">
-        <table className="wa-table wad-reorder-table" aria-label="أعمدة قابلة للسحب والفرز" aria-describedby={helpId}>
-          <colgroup>{order.map(key => <col key={key} style={{ width: COLUMNS.find(column => column.key === key)!.width }} />)}</colgroup>
+        <table id={`${helpId}-table`} className="wa-table wad-reorder-table" style={{ width: tableWidth, minWidth: tableWidth }} aria-label="أعمدة قابلة للسحب وتغيير العرض والفرز" aria-describedby={helpId}>
+          <colgroup>{order.map(key => <col key={key} style={{ width: widths[key] }} />)}</colgroup>
           <thead><tr>{order.map(key => <th key={key} scope="col" className={preview?.key === key ? "wad-reorder-source" : undefined}
             aria-sort={sort.key === key ? (sort.descending ? "descending" : "ascending") : "none"}>
             <button type="button" className="wad-reorder-handle" ref={node => { if (node) handles.current.set(key, node); else handles.current.delete(key); }}
@@ -210,13 +280,23 @@ export default function DesignLibraryReorderTable() {
               onLostPointerCapture={event => { if (event.pointerId === drag.current?.pointerId) finishDrag(true); }}
               onKeyDown={event => keyboardMove(event, key)} onDragStart={event => event.preventDefault()}
               onClick={event => {
+                if (resize.current) { event.preventDefault(); return; }
                 if (suppressClick.current) { event.preventDefault(); suppressClick.current = false; return; }
                 const descending = sort.key === key ? !sort.descending : false;
                 setSort({ key, descending }); setMessage(`الفرز حسب ${label(key)}، ${descending ? "تنازليًا" : "تصاعديًا"}.`);
               }}>
-              <GripVertical size={11} className="wad-reorder-grip" aria-hidden="true" /><span>{label(key)}</span>
+              <GripVertical size={11} className="wad-reorder-grip" aria-hidden="true" /><span className="wad-reorder-label">{label(key)}</span>
               {sort.key === key ? <span className="wad-reorder-sort" aria-hidden="true">{sort.descending ? "↓" : "↑"}</span> : <ArrowDownUp size={11} className="wad-reorder-sort" aria-hidden="true" />}
             </button>
+            <div className={`wad-reorder-resizer${resizing === key ? " is-resizing" : ""}`} role="separator" tabIndex={0}
+              aria-label={`تغيير عرض عمود ${label(key)}`} aria-orientation="vertical" aria-controls={`${helpId}-table`}
+              aria-valuemin={COLUMNS.find(column => column.key === key)!.minWidth} aria-valuemax={MAX_COLUMN_WIDTH}
+              aria-valuenow={widths[key]} aria-valuetext={`${widths[key]} بكسل`} title={`اسحب الفاصل لتغيير عرض ${label(key)}`}
+              onPointerDown={event => resizeDown(event, key)} onPointerMove={resizeMove} onPointerUp={resizeUp}
+              onPointerCancel={event => { if (event.pointerId === resize.current?.pointerId) finishResize(true); }}
+              onLostPointerCapture={event => { if (event.pointerId === resize.current?.pointerId) finishResize(true); }}
+              onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+              onKeyDown={event => resizeKey(event, key)} onDragStart={event => event.preventDefault()} />
           </th>)}</tr></thead>
           <tbody>{sortedRows.map(row => <tr key={row.id}>{order.map(key => <td key={key} data-column={key}
             className={preview?.key === key ? "wad-reorder-source" : undefined}>
@@ -229,7 +309,7 @@ export default function DesignLibraryReorderTable() {
       </div>{preview.valid && <div className="wad-reorder-line" aria-hidden="true" style={{ left: preview.lineX, top: preview.top, height: preview.height }} />}</>}
     </div>
     <div className="wad-reorder-footer"><span className="wa-muted" role="status" aria-live="polite" aria-atomic="true">{message}</span>
-      <details className="wad-reorder-help"><summary>إظهار المزيد</summary><p>على الهاتف: اسحب عنوان العمود بإصبعك، واقترب من طرف الجدول للتمرير أثناء السحب. مرّر الصفوف لرؤية بقية الأعمدة.</p><p>بلوحة المفاتيح: حدّد العنوان ثم اضغط <bdi>Alt + ←</bdi> أو <bdi>Alt + →</bdi>. لإلغاء السحب اضغط <bdi>Esc</bdi>.</p></details>
+      <details className="wad-reorder-help"><summary>إظهار المزيد</summary><p>لتغيير العرض: اسحب الفاصل عند الطرف الأيسر لعنوان العمود؛ إلى اليسار للتكبير وإلى اليمين للتصغير. يبقى العرض مع العمود عند نقله.</p><p>على الهاتف: اسحب العنوان لنقله أو الفاصل لتغيير عرضه. مرّر الصفوف لرؤية بقية الأعمدة.</p><p>بلوحة المفاتيح: على العنوان استخدم <bdi>Alt + ←</bdi> أو <bdi>Alt + →</bdi> للنقل، وعلى الفاصل استخدم السهمين لتغيير العرض. يسرّع <bdi>Shift</bdi> التغيير، ويعيد <bdi>Esc</bdi> العرض السابق أثناء السحب.</p></details>
     </div>
   </div>;
 }
