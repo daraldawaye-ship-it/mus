@@ -385,7 +385,17 @@ function ExportHistory({ context }: { context: CompanyContext }) {
     enabled: !!user, staleTime: 10_000,
   });
   const totalPages = Math.max(1, Math.ceil((result.data?.total ?? 0)/100));
-  const dateText = (value: string) => value.slice(0, 10);
+  const dateTimeText = (value: string) => {
+    const instant = new Date(value.replace(" ", "T"));
+    if (Number.isNaN(instant.getTime())) return value;
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(instant);
+    const part = (kind: Intl.DateTimeFormatPartTypes) =>
+      parts.find(row => row.type === kind)?.value ?? "";
+    return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+  };
   const quantityText = (value: string | null, integer = false) => {
     if (value == null || value === "") return "—";
     const number = Number(value);
@@ -430,13 +440,13 @@ function ExportHistory({ context }: { context: CompanyContext }) {
         <div role="region" tabIndex={0} aria-label="سجل الطلبيات المرحلة"
           style={{ maxHeight:"68vh", overflow:"auto", border:"1px solid var(--border, #888)", borderRadius:6 }}>
           <table className="data-table" dir="rtl" style={{ width:"100%", minWidth:560, borderCollapse:"collapse", fontSize:13, tableLayout:"auto" }}>
-            <thead><tr><th>{heading("name", "الصنف")}</th><th>{heading("required", "الكمية المطلوبة")}</th><th>{heading("available", "المتوفر وقت الترحيل دون المرتجعات")}</th><th>{heading("date", "تاريخ الترحيل")}</th></tr></thead>
+            <thead><tr><th>{heading("name", "الصنف")}</th><th>{heading("required", "الكمية المطلوبة")}</th><th>{heading("available", "المتوفر وقت الترحيل دون المرتجعات")}</th><th>{heading("date", "تاريخ ووقت الترحيل")}</th></tr></thead>
             <tbody>
               {sortedItems.map(row => <tr key={row.id}>
                 <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
                 <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.requiredQuantity, true)}</td>
                 <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.availableQuantity)}</td>
-                <td dir="ltr" title={row.exportedAt} style={{ textAlign:"center", whiteSpace:"nowrap" }}>{dateText(row.exportDate)}</td>
+                <td dir="ltr" title={row.exportedAt} style={{ textAlign:"center", whiteSpace:"nowrap" }}>{dateTimeText(row.exportedAt)}</td>
               </tr>)}
             </tbody>
           </table>
