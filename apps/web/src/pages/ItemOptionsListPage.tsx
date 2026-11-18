@@ -573,6 +573,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       coverageColumnsVersion: 2 as const,
       planningColumnsVersion: 1 as const,
       compositionColumnsVersion: 2 as const,
+      marketOrderColumnsVersion: 1 as const,
       visibleColumns: [...visibleColumns],
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -620,6 +621,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         (values.planningColumnsVersion !== 1 && planningColumns.includes(id as typeof planningColumns[number])) ||
         (values.compositionColumnsVersion === undefined && compositionColumns.includes(id as typeof compositionColumns[number])) ||
         (values.compositionColumnsVersion !== 2 && id === "compositionCoverage") ||
+        (values.marketOrderColumnsVersion !== 1 &&
+          marketOrderColumns.includes(id as typeof marketOrderColumns[number])) ||
         (values.coverageColumnsVersion !== 2 && id === "coverageWithReserve" &&
           values.visibleColumns?.includes("coverage")));
       if (restoredColumns.length) {
