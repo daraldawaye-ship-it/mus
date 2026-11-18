@@ -66,7 +66,8 @@ const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
     cell:row=><bdi dir="ltr">{money(row.slipsCurrent)}</bdi>},
   {key:"slipsPrevious",label:"قصاصات مسددة — الـ168 السابقة",width:200,sortable:true,
     cell:row=><bdi dir="ltr">{money(row.slipsPrevious)}</bdi>},
-].sort((a,b)=>defaultColumnKeys.indexOf(a.key)-defaultColumnKeys.indexOf(b.key));
+];
+comparisonColumns.sort((a,b)=>defaultColumnKeys.indexOf(a.key)-defaultColumnKeys.indexOf(b.key));
 function readVisibleColumns(storageKey:string):ColumnKey[]{
   try{
     const current=window.localStorage.getItem(storageKey);
