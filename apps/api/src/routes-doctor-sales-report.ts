@@ -29,7 +29,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       q:z.string().trim().max(120).optional().default(""),
       page:z.coerce.number().int().min(1).max(100000).optional().default(1),
       pageSize:z.coerce.number().int().min(1).max(100).optional().default(50),
-      sortKey:z.enum(["doctorName","category","department","phone","currentAmount","previousAmount","difference","paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"]).optional().default("difference"),
+      sortKey:z.enum(["doctorName","category","department","phone","currentAmount","previousAmount","difference","invoiceCountCurrent","invoiceCountPrevious","invoiceCountDifference","paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"]).optional().default("difference"),
       sortDir:z.enum(["asc","desc"]).optional().default("desc"),
     }).strict(),req.query);
     const result=await transaction(pool,async client=>{

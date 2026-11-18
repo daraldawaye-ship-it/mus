@@ -13,6 +13,7 @@ import "./DoctorMovementComparisonPage.css";
 type Row = {
   doctorName:string;category:string;department:string;phone:string;
   currentAmount:string;previousAmount:string;difference:string;
+  invoiceCountCurrent:string;invoiceCountPrevious:string;invoiceCountDifference:string;
   paidCurrent:string|null;paidPrevious:string|null;
   slipsCurrent:string|null;slipsPrevious:string|null;
 };
@@ -23,10 +24,15 @@ const money=(value:string|null)=>value===null?"—":formatWholeMoney(value);
 const paidKeys:readonly ColumnKey[]=["paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"];
 
 type ColumnKey=keyof Row;
-const previousColumnKeys:ColumnKey[]=["doctorName","currentAmount","previousAmount","difference"];
+const formerColumnKeys:ColumnKey[]=[
+  "doctorName","category","department","phone",
+  "currentAmount","previousAmount","difference",
+  "paidCurrent","paidPrevious","slipsCurrent","slipsPrevious",
+];
 const defaultColumnKeys:ColumnKey[]=[
   "doctorName","category","department","phone",
   "currentAmount","previousAmount","difference",
+  "invoiceCountCurrent","invoiceCountPrevious","invoiceCountDifference",
   "paidCurrent","paidPrevious","slipsCurrent","slipsPrevious",
 ];
 const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
@@ -44,6 +50,12 @@ const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
     cell:row=><bdi dir="ltr">{formatWholeMoney(row.previousAmount)}</bdi>},
   {key:"difference",label:"الفارق (+ / −)",width:138,sortable:true,
     cell:row=><strong><bdi dir="ltr">{signText(row.difference)}</bdi></strong>},
+  {key:"invoiceCountCurrent",label:"مرات الفواتير — آخر 168 ساعة",width:168,sortable:true,
+    cell:row=><bdi dir="ltr">{row.invoiceCountCurrent}</bdi>},
+  {key:"invoiceCountPrevious",label:"مرات الفواتير — الـ168 السابقة",width:180,sortable:true,
+    cell:row=><bdi dir="ltr">{row.invoiceCountPrevious}</bdi>},
+  {key:"invoiceCountDifference",label:"فارق مرات الفواتير (+ / −)",width:170,sortable:true,
+    cell:row=><strong><bdi dir="ltr">{signText(row.invoiceCountDifference)}</bdi></strong>},
   {key:"paidCurrent",label:"المسدد له بدون قصاصات — آخر 168 ساعة",width:215,sortable:true,
     cell:row=><bdi dir="ltr">{money(row.paidCurrent)}</bdi>},
   {key:"paidPrevious",label:"المسدد له بدون قصاصات — الـ168 السابقة",width:218,sortable:true,
@@ -56,16 +68,19 @@ const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
 function readVisibleColumns(storageKey:string):ColumnKey[]{
   try{
     const current=window.localStorage.getItem(storageKey);
-    const isLegacy=current===null;
-    const data:unknown=JSON.parse(current??window.localStorage.getItem(
-      storageKey.replace(":v2:",":v1:"))??"null");
-    if(Array.isArray(data)){
-      const selected=defaultColumnKeys.filter(key=>data.includes(key));
-      if(isLegacy){
-        // Respect prior hidden columns while making all newly added columns
-        // visible on the first visit after upgrading from the four-column table.
-        const newKeys=defaultColumnKeys.filter(key=>!previousColumnKeys.includes(key));
-        const migrated=defaultColumnKeys.filter(key=>selected.includes(key)||newKeys.includes(key));
+    const previousV2=current===null?window.localStorage.getItem(storageKey.replace(":v3:",":v2:")):null;
+    const previousV1=current===null&&previousV2===null?
+      window.localStorage.getItem(storageKey.replace(":v3:",":v1:")):null;
+    const saved:unknown=JSON.parse(current??previousV2??previousV1??"null");
+    if(Array.isArray(saved)){
+      const selected=defaultColumnKeys.filter(key=>saved.includes(key));
+      if(current===null){
+        // Existing explicit choices remain; only newly introduced columns
+        // are visible by default. A v1 layout predates metadata/payouts.
+        const knownBefore=previousV2!==null?formerColumnKeys:
+          ["doctorName","currentAmount","previousAmount","difference"];
+        const migrated=defaultColumnKeys.filter(key=>
+          selected.includes(key)||!knownBefore.includes(key));
         if(migrated.length)return migrated;
       }
       if(selected.length)return selected;
@@ -77,7 +92,7 @@ function ComparisonTable({rows,companyId,userId,sortKey,sortDir,onSort,canViewPa
   rows:Row[];companyId:number;userId:number|string;sortKey:ColumnKey;sortDir:"asc"|"desc";
   onSort:(key:ColumnKey)=>void;canViewPayments:boolean;
 }){
-  const storageKey=`alraesy:doctor-movement-columns-visible:v2:${companyId}:${userId}`;
+  const storageKey=`alraesy:doctor-movement-columns-visible:v3:${companyId}:${userId}`;
   const [visibleColumns,setVisibleColumns]=useState<ColumnKey[]>(()=>readVisibleColumns(storageKey));
   const [editingColumns,setEditingColumns]=useState<ColumnKey[]>(visibleColumns);
   const [columnsOpen,setColumnsOpen]=useState(false);
@@ -237,7 +252,8 @@ export function DoctorMovementComparisonPage({context}:{context:CompanyContext})
         <small className="muted">الأرقام بالعملة الأساسية للشركة دون رمز العملة أو الكسور.
           الفئة والجهة والهاتف من كرت الاسم المشترك، والمبالغ المسددة من صرف العهدة أو السند المباشر.
           عمولات الطبيب/الممرض منفصلة عن القصاصات، ولا تُكرر قيود السندات.
-          الفارق = الفترة الأحدث ناقص السابقة.
+          فارق المبيعات وفارق مرات الفواتير = آخر 168 ساعة ناقص الـ168 السابقة.
+          عدد الفواتير يشمل فواتير البيع المرحّلة ومردودات البيع المرحّلة، كل فاتورة مرة واحدة.
           {!data.canViewPayments&&" بيانات الصرف محجوبة عن الحسابات غير المخولة بالاطلاع المالي."}</small>
       </Card>
     </>}

@@ -61,6 +61,9 @@ test("168-hour medical movement comparison groups shared names and signed net am
     assert.equal(Number(doctor.currentAmount),100);
     assert.equal(Number(doctor.previousAmount),65);
     assert.equal(Number(doctor.difference),35);
+    assert.equal(doctor.invoiceCountCurrent,"2");
+    assert.equal(doctor.invoiceCountPrevious,"3");
+    assert.equal(doctor.invoiceCountDifference,"-1");
     assert.equal(doctor.category,"doctor");
     assert.equal(doctor.department,"قسم أ","metadata follows the primary shared-name card");
     assert.equal(doctor.phone,"711111111");
@@ -72,6 +75,9 @@ test("168-hour medical movement comparison groups shared names and signed net am
     assert.equal(Number(hospital.currentAmount),20);
     assert.equal(Number(hospital.previousAmount),60);
     assert.equal(Number(hospital.difference),-40);
+    assert.equal(hospital.invoiceCountCurrent,"1");
+    assert.equal(hospital.invoiceCountPrevious,"1");
+    assert.equal(hospital.invoiceCountDifference,"0");
     assert.equal(Number(hospital.slipsCurrent),7);
     assert.equal(Number(hospital.slipsPrevious),9);
     assert.equal(Number(hospital.paidCurrent),0);
@@ -96,6 +102,17 @@ test("168-hour medical movement comparison groups shared names and signed net am
     assert.equal(unauthorized.rows.length,2,"sales still available without finance rights");
     assert.equal(unauthorized.rows[0]!.paidCurrent,null);
     assert.equal(unauthorized.rows[0]!.slipsPrevious,null);
+    assert.equal(unauthorized.rows.find(row=>row.doctorName==="الدكتور أحمد")!.invoiceCountCurrent,"2",
+      "invoice counts remain visible to commerce viewers");
+    const byInvoiceCurrent=await db.query<Record<string,unknown>>(
+      sortedDoctorMovementComparisonSql("invoiceCountCurrent","desc"),[2,"%",2,0,true]);
+    assert.equal(byInvoiceCurrent.rows[0]!.doctorName,"الدكتور أحمد");
+    const byInvoicePrevious=await db.query<Record<string,unknown>>(
+      sortedDoctorMovementComparisonSql("invoiceCountPrevious","desc"),[2,"%",2,0,true]);
+    assert.equal(byInvoicePrevious.rows[0]!.doctorName,"الدكتور أحمد");
+    const byInvoiceDifference=await db.query<Record<string,unknown>>(
+      sortedDoctorMovementComparisonSql("invoiceCountDifference","asc"),[2,"%",2,0,true]);
+    assert.equal(byInvoiceDifference.rows[0]!.doctorName,"الدكتور أحمد");
 
   }finally{await db.close();}
 });

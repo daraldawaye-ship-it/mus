@@ -35,7 +35,9 @@ sales_by_name AS (
  SELECT lower(regexp_replace(btrim(doctor_name),'[[:space:]]+',' ','g')) AS name_key,
    MIN(doctor_name) AS doctor_name,
    COALESCE(SUM(amount) FILTER (WHERE period_index=1),0) AS recent_amount,
-   COALESCE(SUM(amount) FILTER (WHERE period_index=0),0) AS previous_amount
+   COALESCE(SUM(amount) FILTER (WHERE period_index=0),0) AS previous_amount,
+   COUNT(*) FILTER (WHERE period_index=1)::bigint AS recent_invoice_count,
+   COUNT(*) FILTER (WHERE period_index=0)::bigint AS previous_invoice_count
  FROM recent_sales
  GROUP BY lower(regexp_replace(btrim(doctor_name),'[[:space:]]+',' ','g'))
 ),
@@ -116,6 +118,9 @@ compared AS (
    COALESCE(s.recent_amount,0) AS current_amount,
    COALESCE(s.previous_amount,0) AS prior_amount,
    COALESCE(s.recent_amount,0)-COALESCE(s.previous_amount,0) AS difference,
+   COALESCE(s.recent_invoice_count,0)::bigint AS invoice_count_current,
+   COALESCE(s.previous_invoice_count,0)::bigint AS invoice_count_previous,
+   (COALESCE(s.recent_invoice_count,0)-COALESCE(s.previous_invoice_count,0))::bigint AS invoice_count_difference,
    CASE WHEN $5::boolean THEN COALESCE(p.paid_recent,0) ELSE NULL::numeric END AS paid_current,
    CASE WHEN $5::boolean THEN COALESCE(p.paid_previous,0) ELSE NULL::numeric END AS paid_previous,
    CASE WHEN $5::boolean THEN COALESCE(p.slips_recent,0) ELSE NULL::numeric END AS slips_current,
@@ -131,6 +136,9 @@ SELECT doctor_name AS "doctorName",
  current_amount::text AS "currentAmount",
  prior_amount::text AS "previousAmount",
  difference::text AS "difference",
+ invoice_count_current::text AS "invoiceCountCurrent",
+ invoice_count_previous::text AS "invoiceCountPrevious",
+ invoice_count_difference::text AS "invoiceCountDifference",
  paid_current::text AS "paidCurrent",
  paid_previous::text AS "paidPrevious",
  slips_current::text AS "slipsCurrent",
@@ -149,6 +157,7 @@ LIMIT $3 OFFSET $4
 export type DoctorMovementSortKey =
   | "doctorName" | "category" | "department" | "phone"
   | "currentAmount" | "previousAmount" | "difference"
+  | "invoiceCountCurrent" | "invoiceCountPrevious" | "invoiceCountDifference"
   | "paidCurrent" | "paidPrevious" | "slipsCurrent" | "slipsPrevious";
 const sortExpressions: Record<DoctorMovementSortKey,string> = {
   doctorName:"lower(compared.doctor_name)",
@@ -158,6 +167,9 @@ const sortExpressions: Record<DoctorMovementSortKey,string> = {
   currentAmount:"compared.current_amount",
   previousAmount:"compared.prior_amount",
   difference:"compared.difference",
+  invoiceCountCurrent:"compared.invoice_count_current",
+  invoiceCountPrevious:"compared.invoice_count_previous",
+  invoiceCountDifference:"compared.invoice_count_difference",
   paidCurrent:"compared.paid_current",
   paidPrevious:"compared.paid_previous",
   slipsCurrent:"compared.slips_current",
