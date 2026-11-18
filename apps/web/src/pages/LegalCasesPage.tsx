@@ -1,5 +1,5 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import "./LegalCasesPage.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -196,18 +196,31 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+ {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><div className="legal-case-list-controls">
+ <Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+ <button type="button" className="legal-case-summary-sort" aria-pressed={caseSort.key==="summary"} onClick={()=>sortCases("summary")}>فرز حسب الشرح <span aria-hidden="true">{caseSort.key==="summary"?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button>
+ </div>
  <div className="legal-case-table-scroll" role="region" aria-label="قائمة القضايا" tabIndex={0}>
  <table className="legal-case-table"><thead><tr>{[
- ["title","اسم القضية"],["case_number","رقم القضية"],["agency","جهة القضية"],["case_type","النوع"],["stage","الحالة"],["summary","شرح عنها"],["priority","الأولوية"],["start_date","تاريخ البداية"],["next_hearing","تاريخ الجلسة القادمة"],["last_hearing","تاريخ آخر جلسة"]
+ ["title","اسم القضية"],["case_number","رقم القضية"],["agency","جهة القضية"],["case_type","النوع"],["stage","الحالة"],["priority","الأولوية"],["start_date","تاريخ البداية"],["next_hearing","تاريخ الجلسة القادمة"],["last_hearing","تاريخ آخر جلسة"]
  ].map(([key,label])=><th scope="col" key={key} aria-sort={caseSort.key===key?(caseSort.direction==="asc"?"ascending":"descending"):"none"}><button className="legal-case-sort" onClick={()=>sortCases(key)}>{label}<span aria-hidden="true">{caseSort.key===key?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button></th>)}</tr></thead>
- <tbody>{(list.data?.items??[]).map(c=><tr key={c.id} className={caseId===c.id?"selected":""}>
+ <tbody>{(list.data?.items??[]).map(c=><Fragment key={c.id}>
+ <tr className={caseId===c.id?"selected":""}>
  <td><button className="legal-case-title-button" aria-pressed={caseId===c.id} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}>{c.title}</button></td>
  <td>{c.case_number||"—"}</td><td>{c.agency||"—"}</td><td>{c.case_type||"—"}</td>
  <td>{c.stage||(c.status==="closed"?"منتهية":c.status==="active"?"نشطة إداريًا":"غير محددة")}{c.stage&&<small className="legal-case-admin-status">حالة البطاقة: {c.status==="closed"?"مغلقة":c.status==="active"?"نشطة":"غير محددة"}</small>}</td>
- <td>{c.summary?<details className="legal-case-summary"><summary>{c.summary.length>150?c.summary.slice(0,150)+"… — إظهار المزيد":c.summary}</summary><div className="legal-preserve">{c.summary}</div></details>:"—"}</td>
  <td>{c.priority||"غير محددة"}</td><td>{c.start_date?.slice(0,10)||"—"}</td><td>{c.next_hearing?.slice(0,10)||"—"}</td><td>{c.last_hearing?.slice(0,10)||"—"}</td>
- </tr>)}{!list.isPending&&!list.error&&!list.data?.items.length&&<tr><td colSpan={10}>لا توجد قضايا مطابقة</td></tr>}</tbody></table></div>
+ </tr>
+ <tr className={`legal-case-description-row${caseId===c.id?" selected":""}`}>
+  <td colSpan={9}>
+   {c.summary?.trim()
+    ?c.summary.trim().length>150
+      ?<details className="legal-case-summary"><summary><strong>الشرح:</strong> <span className="legal-case-summary-preview">{c.summary.trim().slice(0,150)}…</span><span className="legal-case-summary-more">إظهار المزيد</span><span className="legal-case-summary-less">إظهار أقل</span></summary><div className="legal-preserve">{c.summary}</div></details>
+      :<div className="legal-case-summary-short"><strong>الشرح:</strong> <span>{c.summary}</span></div>
+    :<div className="legal-case-summary-short"><strong>الشرح:</strong> <span>—</span></div>}
+  </td>
+ </tr>
+ </Fragment>)}{!list.isPending&&!list.error&&!list.data?.items.length&&<tr><td colSpan={9}>لا توجد قضايا مطابقة</td></tr>}</tbody></table></div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
  <p>عدد القضايا: {list.data?.total??"…"}</p>
