@@ -29,11 +29,13 @@ const formerColumnKeys:ColumnKey[]=[
   "currentAmount","previousAmount","difference",
   "paidCurrent","paidPrevious","slipsCurrent","slipsPrevious",
 ];
+// Default order (RTL) requested by the owner in the 19 Nov comparison screenshot.
+// The eight featured columns come first; all remaining columns follow.
 const defaultColumnKeys:ColumnKey[]=[
-  "doctorName","category","department","phone",
-  "currentAmount","previousAmount","difference",
-  "invoiceCountCurrent","invoiceCountPrevious","invoiceCountDifference",
-  "paidCurrent","paidPrevious","slipsCurrent","slipsPrevious",
+  "doctorName","category","currentAmount","invoiceCountCurrent",
+  "difference","invoiceCountDifference","paidCurrent","slipsCurrent",
+  "department","phone","previousAmount","invoiceCountPrevious",
+  "paidPrevious","slipsPrevious",
 ];
 const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
   {key:"doctorName",label:"الاسم المشترك للطبيب أو الجهة",width:245,sortable:true,
@@ -64,7 +66,7 @@ const comparisonColumns:InteractiveTableColumn<Row,ColumnKey>[]=[
     cell:row=><bdi dir="ltr">{money(row.slipsCurrent)}</bdi>},
   {key:"slipsPrevious",label:"قصاصات مسددة — الـ168 السابقة",width:200,sortable:true,
     cell:row=><bdi dir="ltr">{money(row.slipsPrevious)}</bdi>},
-];
+].sort((a,b)=>defaultColumnKeys.indexOf(a.key)-defaultColumnKeys.indexOf(b.key));
 function readVisibleColumns(storageKey:string):ColumnKey[]{
   try{
     const current=window.localStorage.getItem(storageKey);
