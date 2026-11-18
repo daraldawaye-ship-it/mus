@@ -398,7 +398,7 @@ function NumericPadExamples() {
     <Example code="د-14" title="لوحة أرقام للكمية الصحيحة"
       note="نفس المكوّن قابل لإعادة الاستخدام دون كسور أو قيم سالبة؛ لا يتصل بالمخزون.">
       <NumericPadField label="كمية تجريبية" value={quantity} onChange={setQuantity}
-        allowNegative={false} allowDecimal={false} maxIntegerDigits={8}/>
+        allowNegative={false} allowDecimal={false} maxIntegerDigits={9}/>
       <p className="wa-muted" role="status">صافي الكمية المكتوبة: <bdi dir="ltr">{quantity || "—"}</bdi></p>
     </Example>
   </>;
