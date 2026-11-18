@@ -148,7 +148,9 @@ type Row = {
   purchasePrice: string; purchaseCurrencyCode: string; purchaseNotes: string;
   requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
-  availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string;
+  availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string;
+  marketOrder30Days: number; marketOrderAfterPurchase30Days: number;
+  saleTimesFourMonths: string;
   compositionSaleUnit1Month: string | null; compositionAvailableUnit1: string | null;
   compositionCoverageDays: string | null; saleTimesYear: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
@@ -173,6 +175,8 @@ const sortOptions = [
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
   ["purchaseFactor", "عامل وحدة الشراء (الوحدة الأولى)"],
   ["month", "مرات المبيعات في شهر"], ["saleQuantityMonth", "الكمية المباعة في شهر"],
+  ["marketOrder30Days", "مرات الطلب من السوق آخر 30 يوم"],
+  ["marketOrderAfterPurchase30Days", "مرات الطلب من السوق آخر 30 يوم بعد آخر شراء"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["year", "مرات المبيعات في عام"], ["allTime", "مرات المبيعات منذ البداية"],
   ["previousYear", "مرات عام السابق"],
   ["requiredPurchaseQuantity", "الكمية المطلوبة"],
@@ -186,8 +190,9 @@ const sortOptions = [
   ["compositionStock", "الكمية المتوفرة للتركيب"],
   ["compositionCoverage", "الكفاية التقريبية للتركيب"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"],["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["marketOrder30Days","مرات الطلب من السوق آخر 30 يوم"],["marketOrderAfterPurchase30Days","مرات الطلب من السوق آخر 30 يوم بعد آخر شراء"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"],["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"]] as const;
 const planningColumns = ["minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed"] as const;
+const marketOrderColumns = ["marketOrder30Days", "marketOrderAfterPurchase30Days"] as const;
 const compositionColumns = ["compositionSaleMonth", "compositionStock", "compositionCoverage"] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
@@ -197,26 +202,28 @@ function readVisibleTableColumns(key: string): TableColumn[] {
     // Existing v1 column selections should show the new companion column.
     // A v2 selection is explicit and may intentionally hide either column.
     const current = window.localStorage.getItem(key);
-    const previousV4 = current === null
-      ? window.localStorage.getItem(key.replace(":v5:", ":v4:")) : null;
+    const previousV5 = current === null
+      ? window.localStorage.getItem(key.replace(":v6:", ":v5:")) : null;
+    const previousV4 = current === null && previousV5 === null
+      ? window.localStorage.getItem(key.replace(":v6:", ":v4:")) : null;
     const older = current === null
-      ? previousV4 ?? window.localStorage.getItem(key.replace(":v5:", ":v3:")) ??
-        window.localStorage.getItem(key.replace(":v5:", ":v2:")) ??
-        window.localStorage.getItem(key.replace(":v5:", ":v1:")) : null;
+      ? previousV5 ?? previousV4 ?? window.localStorage.getItem(key.replace(":v6:", ":v3:")) ??
+        window.localStorage.getItem(key.replace(":v6:", ":v2:")) ??
+        window.localStorage.getItem(key.replace(":v6:", ":v1:")) : null;
     const raw = current ?? older;
     if (!raw) return allTableColumns;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return allTableColumns;
-    const isLegacy = current === null && previousV4 === null &&
-      window.localStorage.getItem(key.replace(":v5:", ":v3:")) === null &&
-      window.localStorage.getItem(key.replace(":v5:", ":v2:")) === null && older !== null;
+    const isLegacy = current === null && previousV5 === null && previousV4 === null &&
+      window.localStorage.getItem(key.replace(":v6:", ":v3:")) === null &&
+      window.localStorage.getItem(key.replace(":v6:", ":v2:")) === null && older !== null;
+    const oldBeforePlanning = current === null && previousV5 === null && previousV4 === null;
     const valid = allTableColumns.filter(id => parsed.includes(id) ||
       (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")) ||
-      (current === null && previousV4 === null &&
-        planningColumns.includes(id as typeof planningColumns[number])) ||
-      (current === null && previousV4 === null &&
-        compositionColumns.includes(id as typeof compositionColumns[number])) ||
-      (current === null && id === "compositionCoverage"));
+      (oldBeforePlanning && planningColumns.includes(id as typeof planningColumns[number])) ||
+      (oldBeforePlanning && compositionColumns.includes(id as typeof compositionColumns[number])) ||
+      (current === null && previousV5 === null && id === "compositionCoverage") ||
+      (current === null && marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
     return valid.length ? valid : allTableColumns;
   } catch { return allTableColumns; }
 }
@@ -232,7 +239,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v5:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v6:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -1269,6 +1276,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
+              <div style={hiddenColumnStyle("marketOrder30Days")} className="item-options-mobile-stat">
+                <span>مرات الطلب من السوق آخر 30 يوم</span><bdi>{row.marketOrder30Days}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("marketOrderAfterPurchase30Days")} className="item-options-mobile-stat">
+                <span>مرات الطلب من السوق آخر 30 يوم بعد آخر شراء</span><bdi>{row.marketOrderAfterPurchase30Days}</bdi>
+              </div>
               <div style={hiddenColumnStyle("fourMonths")} className="item-options-mobile-stat">
                 <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
               </div>
@@ -1321,6 +1334,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 {visibleColumns.includes("orderStoppedUntil") && <col className="item-options-planning-col" />}
 {visibleColumns.includes("reviewed") && <col className="item-options-planning-col" />}
 {visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
+            {visibleColumns.includes("marketOrder30Days") && <col className="item-options-month-times-col" />}
+            {visibleColumns.includes("marketOrderAfterPurchase30Days") && <col className="item-options-month-times-col" />}
             {visibleColumns.includes("fourMonths") && <col className="item-options-four-months-col" />}
             {visibleColumns.includes("allTime") && <col className="item-options-all-time-col" />}
             {visibleColumns.includes("previousYear") && <col className="item-options-previous-year-col" />}
@@ -1349,6 +1364,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 <th scope="col" style={hiddenColumnStyle("orderStoppedUntil")}>إيقاف</th>
 <th scope="col" style={hiddenColumnStyle("reviewed")}>مراجع</th>
 {sortHeader("month", "مبيعات مرات في شهر")}
+            {sortHeader("marketOrder30Days", "مرات الطلب من السوق آخر 30 يوم")}
+            {sortHeader("marketOrderAfterPurchase30Days", "مرات الطلب من السوق آخر 30 يوم بعد آخر شراء")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
@@ -1390,6 +1407,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 <td style={hiddenColumnStyle("orderStoppedUntil")}><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></td>
 <td style={hiddenColumnStyle("reviewed")}><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></td>
 <td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
+              <td style={hiddenColumnStyle("marketOrder30Days")}><bdi>{row.marketOrder30Days}</bdi></td>
+              <td style={hiddenColumnStyle("marketOrderAfterPurchase30Days")}><bdi>{row.marketOrderAfterPurchase30Days}</bdi></td>
               <td style={hiddenColumnStyle("fourMonths")}><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td style={hiddenColumnStyle("allTime")}><bdi>{row.saleTimesAllTime}</bdi></td>
               <td style={hiddenColumnStyle("previousYear")}><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
