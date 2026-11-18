@@ -24,15 +24,15 @@
 .numeric-pad-dialog {
   position:fixed; inset:0; margin:auto; box-sizing:border-box;
   border:1px solid var(--border); border-radius:11px;
-  padding:0; width:min(186px,calc(100vw - 14px)); max-width:none;
+  padding:0; width:min(160px,calc(100vw - 14px)); max-width:none;
   max-height:min(94dvh,360px); overflow-y:auto;
   color:var(--text); background:var(--surface);
   box-shadow:0 18px 55px var(--shadow),0 0 0 1px var(--border);
 }
 .numeric-pad-dialog::backdrop { background:rgba(0,0,0,.58); }
-.numeric-pad-shell { padding:6px; display:grid; gap:5px; }
+.numeric-pad-shell { padding:6px; display:grid; gap:5px; min-width:0; }
 .numeric-pad-display {
-  display:flex; align-items:center; gap:3px; padding:3px;
+  width:100%; min-width:0; display:flex; align-items:center; gap:3px; padding:3px;
   min-height:34px; border:1px solid var(--field-border,var(--border));
   background:var(--field-bg,var(--bg)); border-radius:8px;
 }
@@ -59,8 +59,8 @@
 .numeric-pad-sign.positive { color:var(--success-text); background:var(--success-bg); }
 .numeric-pad-sign.negative { color:var(--error-text); background:var(--error-bg); }
 .numeric-pad-keys {
-  display:grid; grid-template-columns:repeat(3,minmax(0,46px));
-  justify-content:center; gap:4px;
+  width:100%; min-width:0; display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px;
 }
 .numeric-pad-keys button {
   min-width:0; height:40px; padding:1px; border:1px solid var(--button-border,var(--border));
@@ -74,7 +74,7 @@
 .numeric-pad-keys .numeric-pad-backspace {
   display:grid; place-items:center; color:var(--error-text); background:var(--error-bg);
 }
-.numeric-pad-actions { display:flex; align-items:center; justify-content:center; gap:4px; }
+.numeric-pad-actions { width:100%; min-width:0; display:flex; align-items:center; justify-content:center; gap:4px; }
 .numeric-pad-actions button {
   display:flex; align-items:center; justify-content:center; gap:5px;
   flex:0 1 69px; min-height:26px; padding:2px 5px; border-radius:5px;
@@ -86,7 +86,7 @@
 .numeric-pad-confirm svg { width:13px; height:13px; }
 .numeric-pad-error { margin:0; color:var(--error-text); font-size:11px; }
 @media(max-width:420px) {
-  .numeric-pad-dialog { width:min(186px,calc(100vw - 12px)); }
+  .numeric-pad-dialog { width:min(160px,calc(100vw - 12px)); }
   .numeric-pad-shell { padding:6px; gap:5px; }
   .numeric-pad-keys button { height:40px; }
 }
