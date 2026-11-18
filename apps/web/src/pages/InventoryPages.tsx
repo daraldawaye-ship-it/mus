@@ -42,7 +42,7 @@ import { ExpiryMonthField } from "../ExpiryMonthField";
 import { StagedMovementsPanel } from "../StagedInvoiceViews";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
-import { firstUnitStockText } from "../sale-stock-quantity";
+import { firstUnitStockText, invoiceSearchStock } from "../sale-stock-quantity";
 import { signedStockMovementQuantity } from "../stock-movement-display";
 import { adenInvoiceToday } from "../invoice-save-date";
 import {
@@ -1791,7 +1791,7 @@ function OperationEditor({
                 </Notice>}
                 {locationBalances.data && locationBalances.data.items.length===0 &&
                   <p className="muted">لا توجد مواقع معرفة لهذه الشركة.</p>}
-                {locationBalances.data?.items.map(({location,quantityUnit1}) => (
+                {locationBalances.data?.items.map(({location,quantitySmallest}) => (
                   <div className="inventory-location-balance-row" key={location.id}>
                     <div className="inventory-location-balance-name">
                       <strong>{location.name}</strong>
@@ -1801,7 +1801,7 @@ function OperationEditor({
                       }{!location.effectiveActive && " · غير فعال"}</small>
                     </div>
                     <div className="inventory-location-balance-quantity">
-                      <bdi>{quantityText(quantityUnit1)}</bdi>
+                      <bdi>{invoiceSearchStock({ ...item, availableSmallest: quantitySmallest })}</bdi>
                       <small className="muted">{item.unit1Name}</small>
                     </div>
                     <div className="inventory-location-balance-actions">
