@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, Minus, Pencil, Plus, X } from "lucide-react";
 import { Example, Group, SectionIntro } from "./DesignLibraryWebartShared";
+import { NumericPadField } from "../NumericPadField";
 import "./DesignLibraryEntry.css";
 
 // Original local demonstrations. Inputs never send, store, or alter business data.
@@ -384,6 +385,25 @@ function StepForm() {
   </div>;
 }
 
+function NumericPadExamples() {
+  const [amount, setAmount] = useState("1250.75");
+  const [quantity, setQuantity] = useState("12");
+  return <>
+    <Example code="د-13" title="لوحة أرقام منبثقة — موجب وسالب"
+      note="اضغط أيقونة لوحة الأرقام بجانب الحقل؛ (+/−) يبدّل الإشارة. موافق يعتمد القيمة، وإلغاء أو Escape لا يغيرها. هذه تجربة محلية فقط.">
+      <NumericPadField label="المبلغ التجريبي" value={amount} onChange={setAmount}
+        maxIntegerDigits={15} maxDecimals={4} allowNegative allowDecimal/>
+      <p className="wa-muted" role="status">قيمة الحقل الخارجي: <bdi dir="ltr">{amount || "—"}</bdi></p>
+    </Example>
+    <Example code="د-14" title="لوحة أرقام للكمية الصحيحة"
+      note="نفس المكوّن قابل لإعادة الاستخدام دون كسور أو قيم سالبة؛ لا يتصل بالمخزون.">
+      <NumericPadField label="كمية تجريبية" value={quantity} onChange={setQuantity}
+        allowNegative={false} allowDecimal={false} maxIntegerDigits={8}/>
+      <p className="wa-muted" role="status">صافي الكمية المكتوبة: <bdi dir="ltr">{quantity || "—"}</bdi></p>
+    </Example>
+  </>;
+}
+
 export default function DesignLibraryEntry() {
   const [revision, setRevision] = useState(0);
   return <div className="design-webart design-webart-entry">
@@ -396,6 +416,9 @@ export default function DesignLibraryEntry() {
         <Example code="د-02" title="إدخال شهر وسنة" note="صلاحية بصيغة MM/YYYY مع تنبيه للشهر غير الصحيح." source={source("datable-js")}><MonthYearMask /></Example>
         <Example code="د-03" title="قيمة عشرية مع تحقق" note="يحافظ على النص والمدخلات غير الصحيحة لتصحيحها، دون تقريب." source={source("decimal-mask")}><DecimalInput /></Example>
         <Example code="د-04" title="كمية بخطوة قابلة للاختيار" note="زيادة ونقصان بمقدار وحدة تختارها؛ لا يغيّر كرت صنف." source={source("jquery-mask-as-number")}><QuantityStepper /></Example>
+      </Group>
+      <Group title="لوحة الأرقام — مكوّن جاهز لإعادة الاستخدام">
+        <NumericPadExamples/>
       </Group>
       <Group title="حقول مترابطة وتحرير سريع">
         <Example code="د-05" title="نطاق رقمي مترابط" note="يكشف انقلاب الحد الأدنى والأعلى مباشرة." source={source("jquery-masked-input")}><NumberRange /></Example>
