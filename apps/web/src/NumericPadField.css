@@ -23,50 +23,46 @@
 .numeric-pad-field button:disabled { opacity:.45; cursor:not-allowed; }
 .numeric-pad-dialog {
   position:fixed; inset:0; margin:auto; box-sizing:border-box;
-  border:1px solid var(--border); border-radius:15px;
-  padding:0; width:min(310px,calc(100vw - 24px)); max-width:none;
-  max-height:min(94dvh,615px); overflow-y:auto;
+  border:1px solid var(--border); border-radius:11px;
+  padding:0; width:min(226px,calc(100vw - 18px)); max-width:none;
+  max-height:min(94dvh,420px); overflow-y:auto;
   color:var(--text); background:var(--surface);
   box-shadow:0 18px 55px var(--shadow),0 0 0 1px var(--border);
 }
 .numeric-pad-dialog::backdrop { background:rgba(0,0,0,.58); }
-.numeric-pad-shell { padding:13px; display:grid; gap:10px; }
-.numeric-pad-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; }
-.numeric-pad-heading strong { min-width:0; overflow-wrap:anywhere; }
-.numeric-pad-close {
-  width:27px; height:27px; flex:none; display:grid; place-items:center;
-  color:var(--muted); border:1px solid var(--border);
-  background:transparent; border-radius:7px; cursor:pointer;
-}
+.numeric-pad-shell { padding:9px; display:grid; gap:7px; }
 .numeric-pad-display {
-  display:flex; align-items:center; gap:6px; padding:5px 7px;
-  min-height:49px; border:1px solid var(--field-border,var(--border));
-  background:var(--field-bg,var(--bg)); border-radius:9px;
+  display:flex; align-items:center; gap:5px; padding:4px 5px;
+  min-height:42px; border:1px solid var(--field-border,var(--border));
+  background:var(--field-bg,var(--bg)); border-radius:8px;
 }
 .numeric-pad-value {
-  flex:1; min-width:0; text-align:left; font-size:25px;
-  font-weight:750; letter-spacing:.3px; font-variant-numeric:tabular-nums;
+  flex:1; min-width:0; text-align:left; font-size:21px;
+  font-weight:750; letter-spacing:0; font-variant-numeric:tabular-nums;
   overflow-wrap:anywhere; line-height:1.2;
 }
 .numeric-pad-clear {
-  display:inline-flex; align-items:center; gap:3px; padding:4px 6px;
-  flex:none; font-size:11px; border:1px solid var(--border);
-  border-radius:6px; background:transparent; color:var(--muted); cursor:pointer;
+  display:grid; place-items:center; padding:0;
+  width:23px; height:25px; flex:none; border:0;
+  border-radius:5px; background:transparent; color:var(--muted); cursor:pointer;
 }
+.numeric-pad-clear:hover { color:var(--error-text); background:var(--error-bg); }
 .numeric-pad-sign {
-  display:flex; align-items:center; justify-content:center; gap:6px;
-  min-height:30px; padding:4px 8px; border:1px solid transparent; border-radius:7px;
-  font-weight:750; font-size:12px; cursor:pointer; transition:background .12s;
+  display:flex; flex:none; align-items:center; justify-content:center; gap:3px;
+  min-height:27px; padding:2px 6px; border:1px solid transparent; border-radius:5px;
+  font-weight:750; font-size:11px; cursor:pointer; transition:background .12s;
 }
-.numeric-pad-sign > span { font-size:17px; line-height:1; }
-.numeric-pad-sign small { font-size:10px; opacity:.8; margin-inline-start:auto; }
+.numeric-pad-sign > span { font-size:15px; line-height:1; }
 .numeric-pad-sign.positive { color:var(--success-text); background:var(--success-bg); }
 .numeric-pad-sign.negative { color:var(--error-text); background:var(--error-bg); }
-.numeric-pad-keys { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.numeric-pad-keys {
+  display:grid; grid-template-columns:repeat(3,minmax(0,56px));
+  justify-content:center; gap:6px;
+}
 .numeric-pad-keys button {
-  min-width:0; height:55px; border:1px solid var(--button-border,var(--border));
-  border-radius:10px; color:var(--text); background:var(--button-surface,var(--bg));
-  box-shadow:0 2px 4px var(--shadow); font-size:23px;
+  min-width:0; height:46px; padding:2px; border:1px solid var(--button-border,var(--border));
+  border-radius:8px; color:var(--text); background:var(--button-surface,var(--bg));
+  box-shadow:0 1px 3px var(--shadow); font-size:21px;
   font-weight:750; font-variant-numeric:tabular-nums; cursor:pointer;
   touch-action:manipulation;
 }
@@ -75,21 +71,20 @@
 .numeric-pad-keys .numeric-pad-backspace {
   display:grid; place-items:center; color:var(--error-text); background:var(--error-bg);
 }
-.numeric-pad-actions { display:grid; grid-template-columns:1fr 1.35fr; gap:8px; }
+.numeric-pad-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .numeric-pad-actions button {
   display:flex; align-items:center; justify-content:center; gap:5px;
-  min-height:40px; padding:7px 10px; border-radius:8px;
-  font-size:13px; font-weight:750; cursor:pointer;
+  min-height:34px; padding:5px 7px; border-radius:7px;
+  font-size:12px; font-weight:750; cursor:pointer;
 }
 .numeric-pad-cancel { border:1px solid var(--border); background:var(--button-surface,var(--bg)); color:var(--text); }
 .numeric-pad-confirm { border:1px solid transparent; background:var(--primary); color:var(--on-primary); }
 .numeric-pad-confirm:hover { filter:brightness(1.08); }
 .numeric-pad-error { margin:0; color:var(--error-text); font-size:11px; }
 @media(max-width:420px) {
-  .numeric-pad-dialog { width:min(292px,calc(100vw - 18px)); }
-  .numeric-pad-shell { padding:10px; gap:8px; }
-  .numeric-pad-keys { gap:7px; }
-  .numeric-pad-keys button { height:49px; }
+  .numeric-pad-dialog { width:min(226px,calc(100vw - 14px)); }
+  .numeric-pad-shell { padding:8px; gap:6px; }
+  .numeric-pad-keys button { height:46px; }
 }
 @media(prefers-reduced-motion:reduce) {
   .numeric-pad-sign { transition:none; }
