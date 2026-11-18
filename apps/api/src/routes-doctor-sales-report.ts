@@ -9,6 +9,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
+import { doctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
 import { audit } from "./services/audit.ts";
 
 const filters = z.object({
@@ -22,6 +23,42 @@ const filters = z.object({
 
 export function doctorSalesReportRoutes(pool: Pool): Router {
   const router = Router();
+  router.get("/companies/:companyId/doctor-movement-comparison", handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const input=parse(z.object({
+      q:z.string().trim().max(120).optional().default(""),
+      page:z.coerce.number().int().min(1).max(100000).optional().default(1),
+      pageSize:z.coerce.number().int().min(1).max(100).optional().default(50),
+    }).strict(),req.query);
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      await companyAccess(client,user,companyId,"commerce.view");
+      const page=(await directoryEntries(client,user,companyId))
+        .find(entry=>entry.key==="company.doctor-movement-comparison");
+      if(!page?.enabled||!page.actionAccess.view)
+        throw new HttpError(403,"forbidden","ليست لديك صلاحية مقارنة حركة الأطباء والجهات");
+      const rows=await client.query(doctorMovementComparisonSql,[
+        companyId,searchPattern(input.q),input.pageSize,(input.page-1)*input.pageSize,
+      ]);
+      const first=rows.rows[0];
+      const clock=first?.untilAt ?? (await client.query("SELECT transaction_timestamp() AS at")).rows[0].at;
+      const currentUntil=new Date(clock);
+      return {
+        untilAt:currentUntil.toISOString(),
+        recentFrom:new Date(currentUntil.getTime()-168*3600000).toISOString(),
+        previousFrom:new Date(currentUntil.getTime()-336*3600000).toISOString(),
+        page:input.page,pageSize:input.pageSize,
+        total:first?.totalNames??0,
+        totalCurrent:first?.totalCurrent??"0",
+        totalPrevious:first?.totalPrevious??"0",
+        totalDifference:first?.totalDifference??"0",
+        items:rows.rows.map(({totalNames,totalCurrent,totalPrevious,totalDifference,untilAt,...row})=>row),
+      };
+    });
+    res.json({report:result});
+  }));
+
   router.get("/companies/:companyId/doctor-sales-report", handler(async (req,res) => {
     const companyId = id(req.params.companyId);
     const input = parse(filters, req.query);

@@ -267,6 +267,9 @@ const PurchaseLineMovementsPage = lazy(() => import("./pages/PurchaseLineMovemen
 const SalesTimeReportPage = lazy(() =>
   import("./pages/SalesTimeReportPage").then(m => ({ default: m.SalesTimeReportPage })),
 );
+const DoctorMovementComparisonPage = lazy(() =>
+  import("./pages/DoctorMovementComparisonPage").then(m=>({default:m.DoctorMovementComparisonPage})),
+);
 const DoctorSalesReportPage = lazy(() =>
   import("./pages/DoctorSalesReportPage").then(m=>({default:m.DoctorSalesReportPage})),
 );
@@ -408,6 +411,7 @@ const companySections = [
   "items",
   "item-statistics-report",
   "doctor-sales-report",
+  "doctor-movement-comparison",
   "doctor-sales-movements",
   "sales-time-report",
   "item-options-list",
@@ -532,6 +536,7 @@ function Navigation({
     "company.sales": <FileText size={17} />,
     "company.sales-time-report": <TrendingUp size={17} />,
     "company.doctor-sales-movements": <FileText size={17} />,
+    "company.doctor-movement-comparison": <TrendingUp size={17} />,
     "company.pouch-receipts": <HandCoins size={17} />,
     "company.electronic-receipts": <Wallet size={17} />,
     "company.purchases": <FileText size={17} />,
@@ -872,6 +877,10 @@ function CompanyContent({
     case "sales-time-report":
       return <Suspense fallback={<Notice>جارٍ تحميل تقرير المبيعات حسب الأوقات…</Notice>}>
         <SalesTimeReportPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "doctor-movement-comparison":
+      return <Suspense fallback={<Notice>جارٍ تحميل مقارنة حركة الأطباء والجهات…</Notice>}>
+        <DoctorMovementComparisonPage key={context.company.id} context={context}/>
       </Suspense>;
     case "doctor-sales-report":
       return <Suspense fallback={<Notice>جارٍ تحميل مبيعات الأطباء والجهات…</Notice>}>

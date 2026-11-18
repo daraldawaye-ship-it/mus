@@ -630,6 +630,16 @@ page(
     keywords: ["حركة", "فواتير", "مبيعات", "أطباء", "ممرضين", "اسم مشترك", "رئيسي", "جهة"] },
 );
 page(
+  "company.doctor-movement-comparison",
+  "مقارنة حركة الأطباء والجهات",
+  "التقارير",
+  "/companies/:companyId/doctor-movement-comparison",
+  { view: permission("commerce.view") },
+  "مقارنة صافي مبيعات آخر 168 ساعة بالـ168 ساعة السابقة، مجمعة حسب الاسم المشترك لكروت الأطباء والممرضين والجهات، مع فارق موجب أو سالب.",
+  { type: "report", parentKey: "company.sales",
+    keywords: ["أطباء", "جهات", "مقارنة", "مبيعات", "168 ساعة", "اسم مشترك", "فارق"] },
+);
+page(
   "company.doctor-sales-report",
   "مبيعات الأطباء والجهات",
   "التقارير",
