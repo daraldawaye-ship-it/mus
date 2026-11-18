@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { api, useSession } from "./api";
 import { operatorActivityOrigin, sendOperatorActivity } from "./operator-activity-client";
@@ -9,17 +9,15 @@ type EventInput = { action: EventKind; targetType: string; targetId?: number;
   label?: string; text?: string; path?: string };
 type QueuedEvent = { id: string; action: EventKind; targetType: string;
   targetId: number; label: string; text: string; path: string };
-const OPT_OUT = "alraesy-interest-opt-out";
 const VISITOR = "alraesy-interest-visitor";
 const queue: QueuedEvent[] = [];
 let visitorFallback: string | null = null;
 let flushTimer: number | null = null;
 let sending = false;
 
+/** Usage analytics are enabled by default for signed-in users and visitors.
+ * Continue to honor explicit privacy signals supplied by the browser. */
 export function interestCollectionEnabled(): boolean {
-  try {
-    if (window.localStorage.getItem(OPT_OUT) === "1") return false;
-  } catch { return false; }
   const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
   return nav.globalPrivacyControl !== true && nav.doNotTrack !== "1";
 }
@@ -119,22 +117,4 @@ export function InterestTracker() {
     };
   },[user?.id, employeePreview]);
   return null;
-}
-export function InterestPrivacyToggle() {
-  const [disabled,setDisabled]=useState(()=>{
-    try{return window.localStorage.getItem(OPT_OUT)==="1";}catch{return true;}
-  });
-  function toggle(){
-    try {
-      if(disabled)window.localStorage.removeItem(OPT_OUT);
-      else {window.localStorage.setItem(OPT_OUT,"1");
-        window.localStorage.removeItem(VISITOR);queue.length=0;}
-      setDisabled(!disabled);
-    } catch { /* Storage is disabled: collection is already disabled. */ }
-  }
-  return <button type="button" data-no-interest="" onClick={toggle}
-    title="تسجيل تفاعلات التنقل والبحث والكروت لتحسين الموقع، دون تسجيل كلمات المرور والبيانات المدخلة في النماذج"
-    style={{background:"transparent",border:0,padding:0,font:"inherit",cursor:"pointer",textDecoration:"underline",color:"inherit"}}>
-    {disabled?"تفعيل إحصاءات الاهتمامات":"إيقاف إحصاءات الاهتمامات"}
-  </button>;
 }

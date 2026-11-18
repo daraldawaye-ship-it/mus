@@ -69,7 +69,7 @@ import { AppSetup } from "./AppSetup";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
-import { InterestTracker, InterestPrivacyToggle } from "./InterestTracker";
+import { InterestTracker } from "./InterestTracker";
 import { CompanyDeviceDiscovery } from "./company-device-discovery";
 import { AttendanceApprovalBanner } from "./AttendanceApprovalBanner";
 import { QuickLoginPage } from "./QuickLoginPage";
@@ -1618,7 +1618,7 @@ function Workspace() {
           </main>
           <footer className="workspace-footer">
             <span>الرئيسي</span>
-            <InterestPrivacyToggle />
+            <span title="يسجل الموقع فتح الصفحات والكروت والتفاعلات وعمليات البحث المسموح بها لأغراض الإدارة والإحصاء، دون كلمات المرور أو بيانات الحقول الخاصة. تُحترم إشارات منع التتبع الصادرة من المتصفح.">تسجيل حركة الاستخدام والإحصاءات</span>
             <span>الحسابات · الشركات · فريق العمل</span>
           </footer>
         </div>
