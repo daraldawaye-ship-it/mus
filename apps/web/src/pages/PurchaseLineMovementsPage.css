@@ -6,17 +6,20 @@
 .purchase-movement-filter-date { flex:1 1 145px; }
 .purchase-movement-filters input { width:100%; min-width:0; height:36px; }
 .purchase-movement-table-wrap { overflow:auto; width:100%; max-height:calc(100vh - 290px); min-height:220px; border:1px solid var(--border, #32454d); border-radius:7px; }
-.purchase-movement-table { width:100%; min-width:960px; border-collapse:separate; border-spacing:0; table-layout:fixed; white-space:nowrap; font-size:13px; }
+.purchase-movement-table { width:100%; min-width:1180px; border-collapse:separate; border-spacing:0; table-layout:fixed; white-space:nowrap; font-size:13px; }
 .purchase-movement-table th,.purchase-movement-table td { padding:0 10px; height:39px; border-bottom:1px solid var(--border, #32454d); overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
 .purchase-movement-table thead th { position:sticky; top:0; z-index:2; background:var(--surface-raised, #19383b); font-weight:700; padding:0; }
 .purchase-movement-table tbody tr:hover { background:var(--surface-hover, rgba(98,157,157,.13)); }
-.purchase-movement-table th:first-child { width:27%; }
-.purchase-movement-table th:nth-child(2) { width:9%; }
-.purchase-movement-table th:nth-child(3) { width:10%; }
-.purchase-movement-table th:nth-child(4) { width:12%; }
-.purchase-movement-table th:nth-child(5) { width:12%; }
-.purchase-movement-table th:nth-child(6) { width:16%; }
-.purchase-movement-table th:nth-child(7) { width:14%; }
+.purchase-movement-table th:first-child { width:21%; }
+.purchase-movement-table th:nth-child(2) { width:8%; }
+.purchase-movement-table th:nth-child(3) { width:8%; }
+.purchase-movement-table th:nth-child(4) { width:10%; }
+.purchase-movement-table th:nth-child(5) { width:7%; }
+.purchase-movement-table th:nth-child(6) { width:9%; }
+.purchase-movement-table th:nth-child(7) { width:11%; }
+.purchase-movement-table th:nth-child(8) { width:10%; }
+.purchase-movement-table th:nth-child(9) { width:9%; }
+.purchase-movement-table th:nth-child(10) { width:7%; }
 .purchase-movement-table td a { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .purchase-movement-table .purchase-movement-number { text-align:end; font-variant-numeric:tabular-nums; }
 .purchase-movement-table .purchase-movement-date { font-variant-numeric:tabular-nums; }
