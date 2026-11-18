@@ -390,13 +390,13 @@ function NumericPadExamples() {
   const [quantity, setQuantity] = useState("12");
   return <>
     <Example code="د-13" title="لوحة أرقام منبثقة — موجب وسالب"
-      note="اضغط أيقونة لوحة الأرقام بجانب الحقل؛ (+/−) يبدّل الإشارة. موافق يعتمد القيمة، وإلغاء أو Escape لا يغيرها. هذه تجربة محلية فقط.">
+      note="حقل اختياري: زر × يفرّغ الشاشة، و«موافق» يُبقي الحقل الخارجي فارغًا. إلغاء أو Escape لا يغير القيمة.">
       <NumericPadField label="المبلغ التجريبي" value={amount} onChange={setAmount}
-        maxIntegerDigits={15} maxDecimals={4} allowNegative allowDecimal/>
+        maxIntegerDigits={15} maxDecimals={4} allowNegative allowDecimal allowEmpty/>
       <p className="wa-muted" role="status">قيمة الحقل الخارجي: <bdi dir="ltr">{amount || "—"}</bdi></p>
     </Example>
     <Example code="د-14" title="لوحة أرقام للكمية الصحيحة"
-      note="نفس المكوّن قابل لإعادة الاستخدام دون كسور أو قيم سالبة؛ لا يتصل بالمخزون.">
+      note="حقل لا يسمح بالتفريغ: زر × يجعل الشاشة فارغة، وعند «موافق» تتحول القيمة الفارغة إلى صفر. يقبل حتى 9 أرقام.">
       <NumericPadField label="كمية تجريبية" value={quantity} onChange={setQuantity}
         allowNegative={false} allowDecimal={false} maxIntegerDigits={9}/>
       <p className="wa-muted" role="status">صافي الكمية المكتوبة: <bdi dir="ltr">{quantity || "—"}</bdi></p>
