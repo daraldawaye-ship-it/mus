@@ -32,14 +32,6 @@ export async function readItemStatistics(
     allowed("company.order-draft-exports") &&
     allowed("company.purchases") &&
     allowed("company.invoice");
-  if (canViewMarketOrders) {
-    // Reconcile the current local day and any late purchase correction before display.
-    // Both counts remain in the separate, rebuildable item_statistics table.
-    await client.query(
-      "SELECT refresh_item_market_order_statistics($1,ARRAY[$2::integer])",
-      [companyId,itemId],
-    );
-  }
   const row = (
     await client.query(
       `SELECT s.*,s.stock_total::text AS stock_total,s.stock_showroom::text AS stock_showroom,s.stock_warehouse::text AS stock_warehouse
