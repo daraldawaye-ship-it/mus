@@ -230,6 +230,22 @@ export function invoiceLineGross(quantity: string, unitPrice: string, decimalPla
   return amount(raw < 0n ? -rounded : rounded);
 }
 
+/** Effective purchase-card price per FIRST unit (4 decimals), using exact
+ * invoice-money micros and physical stock in the smallest unit. The free bonus
+ * changes only the denominator, never the amount billed to the supplier. */
+export function netPurchasePriceFirstUnit(
+  netLineTotal: string, netSmallestQuantity: string, smallestPerFirstUnit: number,
+): string {
+  const paid = units(netLineTotal);
+  const stock = BigInt(netSmallestQuantity);
+  const factor = BigInt(smallestPerFirstUnit);
+  if (paid < 0n || stock <= 0n || factor <= 0n)
+    throw new Error("كمية أو قيمة شراء صافية غير صالحة");
+  const numerator = paid * factor;
+  const fourDecimals = (numerator + stock * 50n) / (stock * 100n);
+  return amount(fourDecimals * 100n);
+}
+
 /** Distribute the entered header discount according to the gross invoice sign.
  * A net-negative invoice applies the new amount to returning lines; the
  * inherited discount of a linked return is kept separately and never replaced.
