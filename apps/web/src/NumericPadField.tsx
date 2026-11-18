@@ -152,7 +152,6 @@ export function NumericPadField({
             aria-pressed={draft.startsWith("-")} disabled={!allowNegative}
             onClick={toggleSign} title="تبديل موجب وسالب">
             <span aria-hidden="true">{draft.startsWith("-") ? "−" : "+"}</span>
-            {draft.startsWith("-") ? "سالب" : "موجب"}
           </button>
         </div>
         <div className="numeric-pad-keys" dir="ltr">
