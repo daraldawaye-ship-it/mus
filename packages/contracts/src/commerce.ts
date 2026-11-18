@@ -38,6 +38,10 @@ export const invoiceLineSchema = z
     itemId: id,
     unit: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     quantity: invoiceQuantitySchema,
+    /** Free extra units: stock receives them but supplier is not charged. */
+    bonusQuantity: z.string().trim().transform(normalizeDigits)
+      .pipe(z.string().regex(/^\d{1,22}$/, "البونص عدد صحيح غير سالب"))
+      .transform(value => BigInt(value).toString()).optional(),
     unitPrice: amountSchema.optional(),
     expiryDate: documentDateSchema.nullable().default(null),
     originalLineId: id.nullable().default(null),
@@ -80,6 +84,11 @@ export const invoiceSchema = z
     if (value.lines.some((line) => !/^-?\d+$/.test(line.quantity))) return;
     for (const [index, line] of value.lines.entries()) {
       const returning = BigInt(line.quantity) < 0n;
+      const bonus = BigInt(line.bonusQuantity ?? "0");
+      if (bonus > 0n && (value.kind !== "purchase" || returning || line.originalLineId !== null))
+        context.addIssue({code:"custom",path:["lines",index,"bonusQuantity"],message:"البونص مسموح للمشتريات الجديدة الموجبة فقط"});
+      if (bonus && BigInt(line.quantity) + bonus > 10n ** 22n - 1n)
+        context.addIssue({code:"custom",path:["lines",index,"bonusQuantity"],message:"إجمالي الكمية مع البونص يتجاوز الحد المدعوم"});
       if (!returning && line.originalLineId !== null)
         context.addIssue({
           code: "custom",
@@ -128,6 +137,8 @@ export interface InvoiceLine {
   factor3: number;
   purchaseFactor: number;
   quantity: string;
+  /** Free physical units in this line's selected unit; zero for old invoices. */
+  bonusQuantity?: string;
   smallestQuantity: string;
   unitPrice: string;
   gross: string;
