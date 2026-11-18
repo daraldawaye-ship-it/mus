@@ -94,6 +94,7 @@ export function invoiceLineDTO(row: QueryResultRow): InvoiceLine {
     factor3: row.factor3,
     purchaseFactor: row.purchase_factor,
     quantity: row.quantity,
+    bonusQuantity: row.bonus_quantity ?? "0",
     smallestQuantity: row.smallest_quantity,
     unitPrice: normalizeRate(row.unit_price),
     gross: normalizeRate(row.gross),
@@ -235,6 +236,7 @@ interface PreparedLine {
   item: QueryResultRow;
   unit: 1 | 2 | 3;
   quantity: bigint;
+  bonusQuantity: bigint;
   smallest: bigint;
   price: string;
   gross: bigint;
@@ -281,6 +283,14 @@ export async function createInvoice(
     if (!("saleCustomerName" in oldPayload)) oldPayload.saleCustomerName = "";
     if (!("supplierAccountId" in oldPayload)) oldPayload.supplierAccountId = null;
     if (!("supplierReceiptNumber" in oldPayload)) oldPayload.supplierReceiptNumber = "";
+    // Legacy invoice retries were created before bonus was supported. An
+    // omitted bonus is equivalent to zero, but a nonzero bonus must never replay.
+    const oldLines = oldPayload.lines as Array<Record<string,unknown>> | undefined;
+    const newLines = input.lines as Array<Record<string,unknown>>;
+    if (Array.isArray(oldLines) && Array.isArray(newLines))
+      for (const [index,line] of oldLines.entries())
+        if (!("bonusQuantity" in line) && newLines[index]?.bonusQuantity === "0")
+          line.bonusQuantity = "0";
     // JSONB is order-insensitive even for nested object keys, unlike JS
     // JSON.stringify. Legacy and current replay payloads must compare exactly.
     const same = await client.query(
@@ -442,7 +452,10 @@ export async function createInvoice(
     let price: string,
       discount = 0n,
       original: QueryResultRow | null = null;
-    const smallest = quantity * stockUnitMultiplier(item, line.unit);
+    // Bonus never adds a supplier charge; it adds free physical stock in the
+    // same selected unit. Linked supplier returns allocate the original bonus
+    // proportionally, assigning any remainder to the final return.
+    let bonusQuantity = BigInt(line.bonusQuantity ?? "0");
     let expiryDate = line.expiryDate;
     if (line.originalLineId !== null) {
       if (quantity >= 0n) conflict("يرتبط سطر الأصل بكمية مرتجعة سالبة فقط");
@@ -463,7 +476,7 @@ export async function createInvoice(
       )
         conflict("مردود المبيعات يرجع إلى معرض فاتورة الأصل");
       const previous = await client.query(
-        "SELECT COALESCE(sum(-quantity),0)::text AS quantity,COALESCE(sum(-discount+manual_discount),0)::text AS discount FROM invoice_lines WHERE company_id=$1 AND original_line_id=$2",
+        "SELECT COALESCE(sum(-quantity),0)::text AS quantity,COALESCE(sum(-bonus_quantity),0)::text AS bonus_quantity,COALESCE(sum(-discount+manual_discount),0)::text AS discount FROM invoice_lines WHERE company_id=$1 AND original_line_id=$2",
         [companyId, original.id],
       );
       const returned = BigInt(previous.rows[0].quantity),
@@ -471,6 +484,13 @@ export async function createInvoice(
         originalQuantity = BigInt(original.quantity);
       if (returned + requested > originalQuantity)
         conflict("كمية المردود تتجاوز الكمية المتبقية من سطر الأصل");
+      if (input.kind === "purchase" && BigInt(original.bonus_quantity ?? "0") > 0n) {
+        const originalBonus = BigInt(original.bonus_quantity);
+        const returnedBonus = BigInt(previous.rows[0].bonus_quantity);
+        // Floor by cumulative returned paid units to conserve all free units.
+        const cumulativeBonus = originalBonus * (returned + requested) / originalQuantity;
+        bonusQuantity = -(cumulativeBonus - returnedBonus);
+      }
       price = normalizeRate(original.unit_price);
       if (line.unitPrice !== undefined && line.unitPrice !== price)
         conflict("سعر المردود محفوظ من الأصل ولا يعدل");
@@ -572,12 +592,14 @@ export async function createInvoice(
       if (!item.has_expiry && expiryDate !== null)
         conflict("الصنف لا يستخدم دفعات انتهاء");
     }
+    const smallest = (quantity + bonusQuantity) * stockUnitMultiplier(item, line.unit);
     const gross = moneyUnits(invoiceLineGross(quantity.toString(), price, currency.decimal_places));
     assertAmount(gross);
     prepared.push({
       item,
       unit: line.unit,
       quantity,
+      bonusQuantity,
       smallest,
       price,
       gross,
@@ -867,7 +889,7 @@ export async function createInvoice(
   for (const [index, line] of prepared.entries()) {
     const snapshot = line.original ?? line.item;
     const result = await client.query(
-      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id,commission_rate,commission_amount,manual_discount) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING id",
+      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id,commission_rate,commission_amount,manual_discount,bonus_quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id",
       [
         companyId,
         invoiceId,
@@ -892,6 +914,7 @@ export async function createInvoice(
         line.commissionRate,
         moneyString(line.commissionAmount),
         moneyString(line.manualDiscount),
+        line.bonusQuantity.toString(),
       ],
     );
     const lineId = result.rows[0].id as number;
@@ -1021,6 +1044,41 @@ export async function createInvoice(
       "UPDATE invoice_lines SET cost_base=$1 WHERE company_id=$2 AND id=$3",
       [moneyString(cost), companyId, lineId],
     );
+  }
+  // For bonused purchase receipts only, refresh the default card purchase price
+  // to the effective price per FIRST unit in the item's own currency. This is
+  // an optional UI convenience; value/quantity postings above remain exact.
+  // Do not overwrite today's card price from a backdated purchase when a
+  // newer purchase exists, and do not rewrite defaults for historical imports.
+  if (input.kind === "purchase" && !importContext) {
+    for (const line of prepared) {
+      if (line.bonusQuantity <= 0n || line.quantity <= 0n ||
+          line.smallest <= 0n || line.total < 0n ||
+          line.item.currency_id !== input.currencyId) continue;
+      const firstMultiplier = stockUnitMultiplier(line.item, 1);
+      const raw = line.total * firstMultiplier;
+      const unitPriceUnits = ((raw * 2n + line.smallest * 100n) /
+        (line.smallest * 200n)) * 100n;
+      const effectivePrice = moneyString(unitPriceUnits);
+      const updated = await client.query(
+        `UPDATE items SET purchase_price=$3::numeric,
+           revision=revision+1,updated_at=clock_timestamp()
+         WHERE company_id=$1 AND id=$2 AND purchase_price IS DISTINCT FROM $3::numeric
+           AND NOT EXISTS (
+             SELECT 1 FROM invoice_lines prior_line
+             JOIN invoices prior ON prior.company_id=prior_line.company_id
+               AND prior.id=prior_line.invoice_id
+             WHERE prior.company_id=$1 AND prior.kind='purchase'
+               AND prior.posted AND prior.document_date>$4::date
+               AND prior_line.item_id=$2 AND prior_line.quantity>0
+           ) RETURNING id`,
+        [companyId, line.item.id, effectivePrice, input.documentDate],
+      );
+      if (updated.rowCount)
+        await audit(client, user, "item.field.update", "item", line.item.id,
+          {purchasePrice:normalizeRate(line.item.purchase_price)},
+          {purchasePrice:effectivePrice,reason:"purchase-bonus",invoiceId}, companyId);
+    }
   }
   // The item card is the authoritative nearest-expiry value.
   // Only physical stock ENTERING via purchases and customer sales returns
