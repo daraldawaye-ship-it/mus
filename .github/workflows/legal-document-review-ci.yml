@@ -4,6 +4,7 @@ on:
     branches: [work/legal-document-review, preview/render-2026-10-23]
     paths:
       - "apps/api/src/routes-legal-cases.ts"
+      - "apps/api/src/services/mcp-api.ts"
       - "apps/api/migrations/*legal_document_review.sql"
       - "apps/web/src/pages/Legal*"
       - "packages/contracts/src/legal-document-review.ts"
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - "apps/api/src/routes-legal-cases.ts"
+      - "apps/api/src/services/mcp-api.ts"
       - "apps/api/migrations/*legal_document_review.sql"
       - "apps/web/src/pages/Legal*"
       - "packages/contracts/src/legal-document-review.ts"
@@ -31,3 +33,7 @@ jobs:
       - run: npm ci
       - run: npx tsx --test tests/legal-document-review.test.ts
       - run: npm run build
+      - run: >-
+          npx tsc --noEmit --module ESNext --moduleResolution Bundler --target ES2022 --lib ES2022,DOM,DOM.Iterable
+          --types node --jsx react-jsx --strict --skipLibCheck --esModuleInterop --allowImportingTsExtensions
+          apps/web/src/pages/LegalCasesPage.tsx apps/api/src/routes-legal-cases.ts tests/legal-document-review.test.ts

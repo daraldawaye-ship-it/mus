@@ -10,6 +10,7 @@ export const documentImageLabels:Record<DocumentImageState,string> = {
   unverified:"غير متحققة",
 };
 export type LegalDocumentReview = {
+  documentTitle?:string;
   sourceFilename?:string;
   sourcePage?:number;
   sourceUrl?:string;

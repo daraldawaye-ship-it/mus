@@ -15,6 +15,7 @@ export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
  const source=review?.sourceUrl||(entry.drive_file_id?"https://drive.google.com/file/d/"+encodeURIComponent(entry.drive_file_id)+"/view":"")||entry.pdf_url||entry.image_urls?.find(Boolean);
  const filename=review?.sourceFilename??entry.title.match(/(?:^|[\s—–])(\d{4}\.gif)\s*$/i)?.[1];
  return <section className="legal-review-card" aria-label="بطاقة بيانات المستند">
+  {review?.documentTitle&&review.documentTitle!==entry.title&&<strong>{review.documentTitle}</strong>}
   <div className="legal-tags">
    <span>الصورة: {documentImageLabels[state]}</span>
    <span>التفريغ: {transcriptionLabels[entry.transcription_status??"unknown"]}</span>
@@ -59,6 +60,7 @@ export function DocumentReviewFields({value,change,isNew}:{value:LegalDocumentRe
  return <details className="legal-review-card legal-wide" open={value.manualTranscription||undefined}>
   <summary>بيانات المستند وأولوية تفريغه</summary>
   <div className="legal-fields">
+   <Field label="عنوان المستند كما يظهر في المصدر" value={value.documentTitle??""} maxLength={300} onChange={e=>set("documentTitle",e.target.value||undefined)}/>
    <Field label="اسم ملف المصدر" value={value.sourceFilename??""} maxLength={250} onChange={e=>set("sourceFilename",e.target.value||undefined)}/>
    <Field label="رابط المصدر المؤكد (HTTPS)" value={value.sourceUrl??""} onChange={e=>set("sourceUrl",e.target.value||undefined)}/>
    <Field label="رقم الصفحة في المصدر" type="number" min={1} max={1000000} value={value.sourcePage??""} onChange={e=>set("sourcePage",e.target.value?Number(e.target.value):undefined)}/>

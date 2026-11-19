@@ -6,9 +6,18 @@ import express from "express";
 import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import type { User } from "../packages/contracts/src/index.ts";
+import { apiCatalog } from "../apps/api/src/services/mcp-api.ts";
 import { legalCaseRoutes } from "../apps/api/src/routes-legal-cases.ts";
 import { HttpError } from "../apps/api/src/errors.ts";
 import { ZodError } from "zod";
+
+test("catalog advertises document review updates and filters",()=>{
+ const router=legalCaseRoutes({} as Pool);
+ const list=apiCatalog(router,{operation:"GET /legal/records"}).operations[0];
+ const put=apiCatalog(router,{operation:"PUT /legal/records/:id"}).operations[0];
+ assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState"]);
+ assert.ok(put.bodySchema && JSON.stringify(put.bodySchema).includes("\"documentReview\""));
+});
 
 test("legal document reviews stay revision-safe and manual queue excludes resolved and duplicate records",async t=>{
  const db=new PGlite();
