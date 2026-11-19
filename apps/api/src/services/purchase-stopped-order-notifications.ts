@@ -13,7 +13,7 @@ type StoppedPurchaseItem = {
  * Notify once per distinct received item on a newly posted purchase invoice.
  * Read the current item card, but compare the stop date with the invoice's
  * posting date in Aden, not with a delayed worker's processing date.
- * A blank order quantity is stored as numeric zero on existing item cards.
+ * The current special-order threshold is NULL when unset; zero is explicitly set.
  * Positive lines only: purchase returns must never raise this alert.
  */
 export async function notifyPurchaseOfStoppedOrderItem(
