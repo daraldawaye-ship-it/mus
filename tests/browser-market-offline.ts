@@ -70,7 +70,7 @@ const owner = { id: 71, name: "اختبار", displayName: "مالك محلي", 
   kind: "admin", owner: true, archived: false, suspended: false, editor: true, monitor: true };
 let currentUser: typeof owner | null = null;
 let denyMarket = false;
-let delayCards = 0;
+let heldCardResponse: Promise<void> | null = null;
 const responses: { path: string; status: number; conditional: boolean }[] = [];
 const app = express();
 let disconnected = false;
@@ -113,7 +113,7 @@ app.use("/api/medicine-market", async (req, res) => {
   const visible = (item: MarketCard) => ({ ...item, data: { ...item.data,
     ...(currentUser ? { accountingMappings: [{ system: "بيانات المالك الخاصة", identifier: "private-owner-only" }] } : {}) } });
   if (req.path === "/cards") {
-    if (delayCards) await new Promise(resolve => setTimeout(resolve, delayCards));
+    if (heldCardResponse) await heldCardResponse;
     const kind = String(req.query.kind ?? "");
     const q = String(req.query.q ?? "").toLowerCase();
     const page = Number(req.query.page) || 1, pageSize = Number(req.query.pageSize) || 20;
@@ -192,14 +192,16 @@ try {
 
   // A cold navigation reads saved cards before a slow background refresh finishes.
   cards.find(c => c.id === 145)!.data.defaultSalePrice = "275";
-  delayCards = 1800;
-  const start = Date.now();
+  let releaseCardResponse!: () => void;
+  heldCardResponse = new Promise<void>(resolve => { releaseCardResponse = resolve; });
   await page.reload({ waitUntil: "domcontentloaded" });
   const first = page.getByRole("button", { name: "فتح الكرت: دواء الأوفلاين 45", exact: true });
   await first.waitFor();
-  assert(Date.now() - start < 1600, "Saved catalogue should appear before the delayed response");
+  assert.match(await first.locator(".market-compact-card-price").innerText(), /150/,
+    "Saved catalogue must appear while its new response is still held by the server");
+  heldCardResponse = null;
+  releaseCardResponse();
   await page.waitForFunction(() => document.querySelector(".market-compact-card-price")?.textContent?.includes("275"));
-  delayCards = 0;
   await api(page, listPath, true);
   assert(responses.some(r => r.path.startsWith("/cards?") && r.status === 304 && r.conditional), "Unchanged JSON must use conditional 304 validation");
   console.log("PASS immediate cached display, background refresh and conditional 304");
@@ -208,7 +210,7 @@ try {
   await page.goto(`${origin}/?card=901`);
   await page.locator(".medicine-market-detail-heading").waitFor();
   await page.locator(".market-related-medicines .market-compact-card").first().waitFor();
-  await page.locator(".market-related-medicines .market-catalog-section-footer button").click();
+  await page.locator(".market-related-medicines .market-catalog-section-footer").scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelectorAll(".market-related-medicines .market-compact-card").length >= 40);
   await cacheReady(page, "/medicine-market/cards/901/related-medicines?cursor=126");
   console.log("PASS related medicine batches saved independently");
@@ -217,14 +219,18 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".medicine-market-detail-heading").waitFor();
   await page.locator(".market-related-medicines .market-compact-card").first().waitFor();
-  await page.locator(".market-related-medicines .market-catalog-section-footer button").click();
+  if (await page.locator(".market-related-medicines .market-compact-card").count() < 40) {
+    await page.locator(".market-related-medicines .market-catalog-section-footer").scrollIntoViewIfNeeded();
+  }
   await page.waitForFunction(() => document.querySelectorAll(".market-related-medicines .market-compact-card").length >= 40);
   assert.match(await page.locator("body").innerText(), /المحفوظ|محفوظ|دون إنترنت/);
   const savedCard = page.getByRole("button", { name: "فتح الكرت: دواء الأوفلاين 45", exact: true });
   await savedCard.click();
-  await page.locator(".medicine-market-detail-heading").waitFor();
+  await page.getByRole("heading", { name: "دواء الأوفلاين 45", exact: true }).waitFor();
   assert.match(await page.locator("body").innerText(), /دواء الأوفلاين 45/);
   assert.match(await page.locator("body").innerText(), /جزئي|التفاصيل|المحمّل|المحمل/);
+  await page.waitForFunction(() => Array.from(document.querySelectorAll("img")).some(img =>
+    img.src.startsWith("blob:") && img.complete && img.naturalWidth > 0));
   // Local search may produce only the subset downloaded on this device.
   const search = await api(page, "/medicine-market/cards?kind=medicine&q=Offline%20medicine%2045&page=1&pageSize=18");
   assert((search as { items: MarketCard[] }).items.some(c => c.id === 145));
