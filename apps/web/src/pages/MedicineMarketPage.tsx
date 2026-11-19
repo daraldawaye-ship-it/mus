@@ -32,7 +32,7 @@ import { MarketFriendReferral } from "../MarketFriendReferral";
 import { PageActionsDropdown, type PageAction } from "../SalesHeaderActionsDropdown";
 import { MarketStagingProgress } from "./MarketStagingProgress";
 import { MarketCardCounts, RecordMarketCardOpen } from "./MarketCardStatistics";
-import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
+import { MarketCatalogSections, MarketCompactCard, orderPublicMarketTypes } from "./MarketCatalogSections";
 import { MarketRelatedMedicines } from "./MarketRelatedMedicines";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
@@ -1248,7 +1248,7 @@ export function MedicineMarketPage({
   const permissions = meta.data?.permissions;
   const types = meta.data?.types ?? [];
   // Only public contribution cards are in the browse/create menus.
-  const visibleTypes = types.filter(type=>!isMarketAdministrativeKind(type.key));
+  const visibleTypes = orderPublicMarketTypes(types);
   const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
   const sectionedCatalog = tab === "catalog" && !selected && !kind && !q;
