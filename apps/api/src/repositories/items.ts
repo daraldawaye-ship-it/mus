@@ -109,7 +109,6 @@ export function itemDTO(row: QueryResultRow): Item {
     currencyDecimalPlaces: row.currency_decimal_places,
     currencyActive: row.currency_active,
     reorderLimit: normalizeRate(row.reorder_limit),
-    orderQuantity: normalizeRate(row.order_quantity),
     reserveQuantity: normalizeRate(row.reserve_quantity),
     ...(Object.hasOwn(row, "available_smallest") ? {
       availableSmallest: row.available_smallest === null ? null : String(row.available_smallest),
