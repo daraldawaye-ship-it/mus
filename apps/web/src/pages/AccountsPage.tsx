@@ -33,6 +33,7 @@ import {
   useMasterChanges,
 } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import { OwnerAdministrativeNotes } from "../OwnerAdministrativeNotes";
 import {
   AccountStatisticsCard,
   usePendingAccountStatisticsActions,
@@ -1176,6 +1177,7 @@ function AccountEditor({
           </Button>
         </div>
       </form>
+      {account && <OwnerAdministrativeNotes key={account.id} companyId={companyId} kind="accounts" recordId={account.id} />}
       {account?.kind === "posting" && (
         <AccountStatisticsCard
           companyId={companyId}
