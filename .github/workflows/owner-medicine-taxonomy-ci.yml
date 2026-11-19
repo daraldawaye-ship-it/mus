@@ -1,0 +1,25 @@
+name: Owner Medicine Taxonomy
+on:
+  push:
+    branches: [work/private-medicine-taxonomy, preview/render-2026-10-23]
+    paths:
+      - "apps/api/src/routes-owner-medicine-taxonomy.ts"
+      - "apps/web/src/pages/MarketMedicineTaxonomyPage.tsx"
+      - "apps/api/migrations/*owner_medicine_taxonomy_draft.sql"
+      - "tests/owner-medicine-taxonomy.test.ts"
+      - ".github/workflows/owner-medicine-taxonomy-ci.yml"
+permissions:
+  contents: read
+jobs:
+  private-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npx tsx --test tests/owner-medicine-taxonomy.test.ts
+      - run: npm run build
+      - run: npx tsc --noEmit --module ESNext --moduleResolution Bundler --target ES2022 --lib ES2022,DOM,DOM.Iterable --types node --jsx react-jsx --strict --skipLibCheck --esModuleInterop --allowImportingTsExtensions apps/web/src/pages/MarketMedicineTaxonomyPage.tsx apps/api/src/routes-owner-medicine-taxonomy.ts tests/owner-medicine-taxonomy.test.ts

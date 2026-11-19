@@ -106,6 +106,7 @@ const CentralAccessPage = lazy(() =>
 );
 const OwnerPhonePreviewPage = lazy(() => import("./pages/OwnerPhonePreviewPage"));
 const DesignLibraryPage = lazy(() => import("./pages/DesignLibraryPage"));
+const MarketMedicineTaxonomyPage = lazy(() => import("./pages/MarketMedicineTaxonomyPage"));
 const MarketCoveragePage = lazy(() => import("./pages/MarketCoveragePage"));
 const InterestStatisticsPage = lazy(() => import("./pages/InterestStatisticsPage").then(m=>({default:m.InterestStatisticsPage})));
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
@@ -1461,6 +1462,7 @@ function Workspace() {
               <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
                 <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :
                 <Notice tone="error">إحصاءات الاهتمامات للمالك فقط.</Notice>}</Protected>} />
+              <Route path="/medicine-market/owner/medicine-taxonomy" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل المسودة…</Notice>}><MarketMedicineTaxonomyPage key={user.id} /></Suspense></PageRouteGuard> : <Notice>هذه المسودة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/card-coverage" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketCoveragePage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />

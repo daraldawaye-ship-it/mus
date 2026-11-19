@@ -1535,6 +1535,7 @@ export function MedicineMarketPage({
       {tab === "catalog" && permissions?.canConfigure && (
         <details className="medicine-market-admin-references">
           <summary>إدارة بيانات السوق والبيانات المرجعية</summary>
+          {user?.owner && !visitorOnly && <Link to={`${ROOT}/owner/medicine-taxonomy`}>التصنيف الدوائي — مسودة إدارية</Link>}
           <p className="medicine-market-muted">للاطلاع والاختيار فقط. إضافة وتصحيح القوائم تتم إداريًا، وليس من أزرار كروت المستخدمين.</p>
           <div className="medicine-market-reference-cards">
             <details>
