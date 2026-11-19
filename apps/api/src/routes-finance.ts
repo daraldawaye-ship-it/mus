@@ -311,7 +311,7 @@ export async function readAccountLedger(
     WHEN closing.variance_amount>0 AND l.description NOT LIKE '%عجز%' THEN 'عجز — ' || l.description
     WHEN closing.variance_amount<0 AND l.description NOT LIKE '%زيادة%' THEN 'زيادة — ' || l.description
     ELSE l.description END`;
-  const cte = `WITH full_ledger AS (SELECT l.*, ${labeledDescription} AS labeled_description,d.number,${ledgerDate} AS document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY ${ledgerDate},d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${cashboxLedgerFrom})`;
+  const cte = `WITH full_ledger AS (SELECT l.*, ${labeledDescription} AS labeled_description,d.number,${ledgerDate} AS document_date,d.created_at AS recorded_at,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY ${ledgerDate},d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${cashboxLedgerFrom})`;
   const filter =
     "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.labeled_description ILIKE $5 OR f.document_description ILIKE $5)";
   const count = await client.query(
@@ -357,6 +357,7 @@ export async function readAccountLedger(
     documentId: row.document_id,
     documentNumber: row.number,
     documentDate: row.date_text,
+    recordedAt: row.recorded_at ? new Date(row.recorded_at).toISOString() : null,
     kind: row.kind,
     status: row.status,
     description: row.labeled_description || row.document_description,
