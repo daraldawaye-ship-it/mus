@@ -125,3 +125,15 @@
 
 .legal-case-sort{display:flex;align-items:center;justify-content:space-between;gap:4px;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;text-align:inherit;cursor:pointer}
 .legal-case-sort:focus-visible{outline:2px solid var(--accent,#ffbd00);outline-offset:4px}
+
+/* Compact, progressively disclosed legal document review card. */
+.legal-review-card { margin:.35rem 0; padding:.45rem .6rem; border:1px solid #cbd5e1; border-radius:.45rem; }
+.legal-review-card .legal-fields { margin-block-start:.4rem; }
+.legal-review-card .legal-preserve { margin:.35rem 0; overflow-wrap:anywhere; }
+.legal-review-card summary { cursor:pointer; font-weight:600; }
+.legal-review-links { gap:.45rem; display:flex; flex-wrap:wrap; margin-block:.25rem; }
+.legal-review-controls { display:flex; flex-wrap:wrap; align-items:end; gap:.4rem .6rem; }
+.legal-review-controls > * { max-width:100%; }
+.legal-review-high { font-weight:700; border:1px solid currentColor; }
+.legal-review-group { margin:.55rem 0 .2rem; padding-block:.25rem; border-block-end:1px solid #cbd5e1; font-size:1rem; }
+.legal-review-check { display:flex; align-items:center; gap:.35rem; }

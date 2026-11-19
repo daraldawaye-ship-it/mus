@@ -1,4 +1,6 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
+import { documentImageStates, documentPriorities, documentImageLabels, documentPriorityLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
+import { DocumentReviewCard, DocumentReviewFields, groupDocumentRows, type ReviewEntry } from "./LegalDocumentReview";
 import { Fragment, useState } from "react";
 import "./LegalCasesPage.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,15 +12,15 @@ import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing"|"instruction";
 type Case = {id:number;title:string;case_number:string;case_type:string;last_hearing:string|null;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
-type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;transcription_status:TranscriptionState|null;transcription_file:boolean;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
+type Entry = ReviewEntry & Partial<LegalTaskPriority> & {id:number;kind:Kind;transcription_status:TranscriptionState|null;transcription_file:boolean;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;caseType:string;lastHearing:string|null;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
-type RecordForm = {kind:Kind;transcriptionStatus?:TranscriptionState;transcriptionFile?:boolean;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
+type RecordForm = {documentReview?:LegalDocumentReview;kind:Kind;transcriptionStatus?:TranscriptionState;transcriptionFile?:boolean;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
 const kinds:{id:Kind;label:string}[]=[{id:"instruction",label:"التعليمات"},{id:"explanation",label:"الشرح"},{id:"fact",label:"المعطيات"},{id:"event",label:"التسلسل الزمني"},{id:"document",label:"المستندات"},{id:"task",label:"المهام"},{id:"report",label:"تقارير المتابعة"},{id:"hearing",label:"الجلسات"}];
 const globalLists=[{id:"instruction",label:"التعليمات"},{id:"event",label:"التسلسل الزمني"},{id:"fact",label:"المعطيات"},{id:"document",label:"المستندات"}] as const;
 const emptyCase:CaseForm={title:"",caseNumber:"",caseType:"",lastHearing:null,agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
 const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,caseType:c.case_type??"",lastHearing:c.last_hearing?.slice(0,10)??null,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
-const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,transcriptionStatus:e?.transcription_status??undefined,transcriptionFile:e?.transcription_file,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
+const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,documentReview:kind==="document"?e?.document_review:undefined,transcriptionStatus:e?.transcription_status??undefined,transcriptionFile:e?.transcription_file,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
 function evidenceReason(entry:Entry):string {
  const texts=[entry.body,entry.content_text].filter(Boolean);
  for(const value of texts){
@@ -46,13 +48,14 @@ function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseFo
  <Field label="أولوية القضية: 1 الأعلى، 10 الأقل، 0 غير محددة" type="number" min={0} max={10} value={value.priority} onChange={e=>set("priority",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label="ملخص القضية" value={value.summary} onChange={v=>set("summary",v)}/></div></div>;
 }
-function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordForm)=>void;people:Person[]}) {
+function EntryFields({value,change,people,isNew}:{value:RecordForm;change:(v:RecordForm)=>void;people:Person[];isNew:boolean}) {
  const set=(key:keyof RecordForm,v:unknown)=>change({...value,[key]:v});
  return <div className="legal-fields">
  <Field label="العنوان" value={value.title} onChange={e=>set("title",e.target.value)}/>
  <Field label={value.kind==="task"?"ترتيب ثانوي عند تساوي الأولوية":"الترتيب"} type="number" min={0} value={value.sortOrder} onChange={e=>set("sortOrder",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label={value.kind==="instruction"?"نص التعليمة":"الشرح التفصيلي"} value={value.body} rows={6} onChange={v=>set("body",v)}/></div>
  {(value.kind==="document")&&<>
+ <DocumentReviewFields value={value.documentReview??{}} change={v=>set("documentReview",v)} isNew={isNew}/>
  <Select label="حالة التفريغ" value={value.transcriptionStatus??"unknown"} onChange={e=>set("transcriptionStatus",e.target.value)}>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
  <Select label="يحسب في إجمالي الملفات" value={value.transcriptionFile===undefined?"auto":String(value.transcriptionFile)} onChange={e=>set("transcriptionFile",e.target.value==="auto"?undefined:e.target.value==="true")}><option value="auto">بحسب نوع البطاقة</option><option value="true">بطاقة ملف</option><option value="false">ورقة أو سجل آخر</option></Select>
  <div className="legal-wide"><TextField label="النص الكامل للمستند — مستقل عن الشرح" value={value.contentText} rows={8} onChange={v=>set("contentText",v)}/></div>
@@ -76,6 +79,9 @@ export function LegalCasesPage() {
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
  const globalKind=globalLists.find(k=>k.id===params.get("list"))?.id??null;
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
+ const [imageFilter,setImageFilter]=useState(""),[priorityFilter,setPriorityFilter]=useState(""),[transcriptionFilter,setTranscriptionFilter]=useState("");
+ const manual=globalKind==="document"&&params.get("manual")==="1";
+ const manualCase=manual?(Number(params.get("manualCase"))||null):null;
  const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [caseSort,setCaseSort]=useState({key:"",direction:"asc"});
@@ -91,7 +97,17 @@ export function LegalCasesPage() {
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
- const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch],queryFn:({signal})=>api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"}),{signal}),enabled:!!user&&!!globalKind});
+ const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,priorityFilter,transcriptionFilter],queryFn:({signal})=>{
+  const query=new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"});
+  if(globalKind==="document"){
+   if(manual)query.set("manual","true");
+   if(manualCase)query.set("caseId",String(manualCase));
+   if(imageFilter)query.set("imageState",imageFilter);
+   if(priorityFilter&&!manual)query.set("priority",priorityFilter);
+   if(transcriptionFilter)query.set("transcriptionState",transcriptionFilter);
+  }
+  return api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+query,{signal});
+ },enabled:!!user&&!!globalKind});
  const transcription=useQuery({queryKey:["legal","transcription-summary",user?.id],queryFn:({signal})=>api<TranscriptionSummary>("/legal/transcription-summary",{signal}),enabled:!!user&&globalKind==="document",refetchInterval:60_000});
  const expanded=useQuery({queryKey:["legal","expanded",user?.id,expandedId],queryFn:({signal})=>api<{record:Entry}>("/legal/records/"+expandedId,{signal}),enabled:!!user&&expandedId!==null});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
@@ -100,9 +116,15 @@ export function LegalCasesPage() {
  const editor=owner||selected.data?.role==="editor",reporter=editor||selected.data?.role==="reporter";
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
+ const resetGlobalPage=()=>{setGlobalPage(1);setExpandedId(null);setFocus(null);};
+ const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setPriorityFilter("");setTranscriptionFilter("");};
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
-  setGlobalPage(1);setGlobalSearch("");setFocus(null);setExpandedId(null);setEntryEdit(null);
-  setParams(p=>{const next=new URLSearchParams(p);if(kind)next.set("list",kind);else next.delete("list");return next;});
+  resetGlobalContext();
+  setParams(p=>{const next=new URLSearchParams(p);next.delete("manual");next.delete("manualCase");if(kind)next.set("list",kind);else next.delete("list");return next;});
+ };
+ const openManual=(limitedCase:number|null=null)=>{
+  resetGlobalContext();
+  setParams(p=>{const next=new URLSearchParams(p);next.set("list","document");next.set("manual","1");if(limitedCase)next.set("manualCase",String(limitedCase));else next.delete("manualCase");return next;});
  };
  const action=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");setNotice("");try{await fn();await client.invalidateQueries({queryKey:["legal"]});setNotice("حُفظ التغيير");}catch(e){setError(errorMessage(e));}finally{setBusy(false);}};
  const submitCase=()=>void action(async()=>{
@@ -111,6 +133,12 @@ export function LegalCasesPage() {
   setCaseEdit(false);setCaseNew(false);
  });
  const beginEntry=(kind:Kind,e?:Entry,fromReport?:number)=>{setEntryDraft(entryForm(kind,globalKind ? 0 : caseId,e));setEditingRevision(e?.revision??0);setEntryEdit(e?e.id:"new");setLinkAfterSave(fromReport??null);setError("");};
+ const beginGlobalDocument=async(id:number)=>{
+  setBusy(true);setError("");setNotice("");
+  try {const data=await api<{record:Entry}>("/legal/records/"+id);beginEntry("document",data.record);}
+  catch(e){setError(errorMessage(e));}
+  finally{setBusy(false);}
+ };
  const submitEntry=()=>void action(async()=>{
   if(entryEdit==="new"){const result=await api<{record:Entry}>("/legal/records",{method:"POST",body:entryDraft});if(linkAfterSave)await api("/legal/records/"+result.record.id+"/links",{method:"POST",body:{otherId:linkAfterSave,linked:true}});setFocus(result.record.id);}
   else if(typeof entryEdit==="number"){
@@ -123,7 +151,7 @@ export function LegalCasesPage() {
   const reader=new FileReader();reader.onload=()=>void action(async()=>{await api("/legal/records/"+entryId+"/images",{method:"POST",body:{filename:file.name,dataUrl:String(reader.result)}});setFocus(entryId);});
   reader.onerror=()=>setError("تعذر قراءة الصورة");reader.readAsDataURL(file);
  };
- const entryEditor=entryEdit===null ? null : <div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>;
+ const entryEditor=entryEdit===null ? null : <div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields key={entryEdit} value={entryDraft} change={setEntryDraft} people={people.data?.items??[]} isNew={entryEdit==="new"}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()||Boolean(entryDraft.documentReview?.manualTranscription&&!entryDraft.documentReview.missingPassage?.trim())} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>;
  return <div className="legal-workspace">
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setActivePanel("cases");setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
@@ -140,27 +168,39 @@ export function LegalCasesPage() {
    </div>
   </details>
  </nav>
- {globalKind?<Card title={globalLists.find(item=>item.id===globalKind)?.label+" — جميع القضايا"}>
+ {globalKind?<Card title={manual?"يحتاج تفريغًا يدويًا"+(manualCase?" · القضية #"+manualCase:" — جميع القضايا"):globalLists.find(item=>item.id===globalKind)?.label+" — جميع القضايا"}>
  <div className="legal-directory-head">
  <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="العنوان أو التفاصيل"/>
  {globalRecords.data&&<span>إجمالي السجلات: {globalRecords.data.total}</span>}
  </div>
- {globalKind==="document"&&transcription.data&&<div className="legal-tags"><strong>المتبقي لاستكمال التسجيل {transcription.data.remaining}</strong>{transcriptionStates.map(s=><span key={s}>{transcriptionLabels[s]} {transcription.data!.counts[s]}</span>)}</div>}
+ {globalKind==="document"&&<div className="legal-review-controls">
+  <Button variant={manual?"primary":"secondary"} aria-pressed={manual} onClick={()=>manual?openGlobal("document"):openManual()}>{manual?"عرض كل المستندات":"يحتاج تفريغًا يدويًا"}</Button>
+  {manualCase&&<Button variant="secondary" onClick={()=>openManual()}>كل القضايا</Button>}
+  <Select label="حالة الصورة" value={imageFilter} onChange={e=>{setImageFilter(e.target.value);resetGlobalPage();}}><option value="">كل الصور</option>{documentImageStates.map(s=><option key={s} value={s}>{documentImageLabels[s]}</option>)}</Select>
+  <Select label="حالة التفريغ" value={transcriptionFilter} onChange={e=>{setTranscriptionFilter(e.target.value);resetGlobalPage();}}><option value="">كل حالات التفريغ</option>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
+  {!manual&&<Select label="أهمية النقص" value={priorityFilter} onChange={e=>{setPriorityFilter(e.target.value);resetGlobalPage();}}><option value="">كل الأولويات</option><option value="unrated">غير مقيّمة</option>{documentPriorities.map(p=><option key={p} value={p}>{documentPriorityLabels[p]}</option>)}</Select>}
+ </div>}
+ {globalKind==="document"&&entryEditor}
+ {globalKind==="document"&&!manual&&transcription.data&&<div className="legal-tags"><strong>المتبقي لاستكمال التسجيل {transcription.data.remaining}</strong>{transcriptionStates.map(s=><span key={s}>{transcriptionLabels[s]} {transcription.data!.counts[s]}</span>)}</div>}
  {globalKind==="instruction"&&owner&&<>
    <Button onClick={()=>beginEntry("instruction")}>إضافة تعليمة</Button>
    {entryEditor}
  </>}
  {globalRecords.isPending&&<Notice>جارٍ تحميل القائمة…</Notice>}
  {globalRecords.error&&<Notice tone="error">{errorMessage(globalRecords.error)} <Button variant="secondary" onClick={()=>void globalRecords.refetch()}>إعادة المحاولة</Button></Notice>}
- {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة للبحث.</Notice>}
- {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
+ {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>{manual?"لا توجد أوراق مميزة للتفريغ اليدوي في هذا النطاق.":"لا توجد سجلات مطابقة للبحث."}</Notice>}
+ {groupDocumentRows(globalRecords.data?.items??[],manual,manualCase).map(group=><Fragment key={group.key}>
+ {group.label&&<h3 className="legal-review-group">{group.label}</h3>}
+ {group.items.map(r=><article key={r.id} className="legal-entry">
  <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div>
  <div className="legal-actions">
  {r.kind==="instruction"&&owner&&<Button variant="secondary" onClick={()=>beginEntry("instruction",r)}>تعديل</Button>}
+ {r.kind==="document"&&owner&&<Button variant="secondary" disabled={busy} onClick={()=>void beginGlobalDocument(r.id)}>تعديل بيانات المستند</Button>}
  {r.kind==="document"&&owner&&<Select aria-label={`حالة تفريغ السجل ${r.id}`} value={r.transcription_status??"unknown"} disabled={busy} onChange={e=>{const state=e.target.value;void action(async()=>{await api("/legal/transcription-status",{method:"POST",body:{entries:[{id:r.id,revision:r.revision,state,file:r.transcription_file}]}});});}}>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>}
  <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button>
  {(r.kind==="fact"||r.kind==="document")&&<Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>}
  </div></div>
+ {r.kind==="document"&&<DocumentReviewCard entry={r}/>}
  {(r.kind==="fact"||r.kind==="document")&&<>
  {expandedId===r.id&&<div className="legal-directory-extra">
  {expanded.isPending&&<Notice>جارٍ تحميل التفاصيل…</Notice>}
@@ -189,7 +229,7 @@ export function LegalCasesPage() {
  {r.kind==="document"&&links.data.images.length>0&&<div className="legal-doc-images">{links.data.images.map(img=><a key={img.id} href={"/api/legal/images/"+img.id} target="_blank" rel="noreferrer"><img src={"/api/legal/images/"+img.id} alt={img.filename||"صورة المستند"}/></a>)}</div>}
  </>}
  </div>}
- </article>)}
+ </article>)}</Fragment>)}
  {globalRecords.data&&globalRecords.data.total>globalRecords.data.pageSize&&<div className="legal-actions">
  <Button variant="secondary" disabled={globalPage<=1||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p-1);setFocus(null);setExpandedId(null);}}>السابق</Button>
  <span>صفحة {globalPage} من {Math.ceil(globalRecords.data.total/globalRecords.data.pageSize)}</span>
@@ -260,9 +300,11 @@ export function LegalCasesPage() {
  {tab==="unlinked"&&owner&&<><Field label="بحث في السجلات التي لم ترتبط بأي قضية" value={unlinkedSearch} onChange={e=>{setUnlinkedSearch(e.target.value);setUnlinkedPage(1);}}/>{all.isPending&&<Notice>جارٍ تحميل السجلات…</Notice>}{all.error&&<Notice tone="error">{errorMessage(all.error)}</Notice>}{all.data&&<p>السجلات غير المرتبطة: {all.data.total} — صفحة {unlinkedPage} من {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</p>}</>}
  {entryEditor}
  {(visible.length===0&&!entryEdit&&!all.isPending)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
+ {tab==="document"&&caseId>0&&<div className="legal-actions"><Button variant="secondary" onClick={()=>openManual(caseId)}>يحتاج تفريغًا يدويًا في هذه القضية</Button></div>}
  {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
  {Boolean(r.legacy_snapshot)&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
+ {r.kind==="document"&&<DocumentReviewCard entry={r}/>}
  {r.kind==="document"&&<div className="legal-doc">{r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}
  {r.pdf_url&&<a target="_blank" rel="noreferrer" href={r.pdf_url}>رابط PDF</a>}
  {r.drive_file_id&&<span>Drive: {r.drive_file_id}</span>}

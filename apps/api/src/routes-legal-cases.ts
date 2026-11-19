@@ -42,11 +42,30 @@ const caseSchema = z.object({
   priority: z.number().int().min(0).max(10).default(0),
   summary: z.string().max(100000).default(""),
 }).strict();
+import { documentImageStates, documentPriorities } from "../../../packages/contracts/src/legal-document-review.ts";
+
+const documentReviewSchema=z.object({
+  sourceFilename:z.string().trim().min(1).max(250).optional(),
+  sourcePage:z.number().int().min(1).max(1000000).optional(),
+  sourceUrl:httpsUrl.optional(),
+  keywords:z.array(z.string().trim().min(1).max(80)).max(32).optional(),
+  evidenceSummary:z.string().trim().max(4000).optional(),
+  missingPassage:z.string().trim().max(4000).optional(),
+  nextAction:z.string().trim().max(4000).optional(),
+  priority:z.enum(documentPriorities).optional(),
+  manualTranscription:z.boolean().optional(),
+  hearingDate:z.iso.date().optional(),
+  hearingGroup:z.string().trim().min(1).max(180).optional(),
+  canonicalRecordId:z.number().int().min(1).max(2147483647).optional(),
+  verifiedOn:z.iso.date().optional(),
+}).strict().refine(v=>!v.manualTranscription||(v.priority==="high"&&!!v.missingPassage),"يلزم تحديد أهمية عالية وموضع النقص لإضافته إلى التفريغ اليدوي");
+
 const kindSchema = z.enum(["fact","document","event","explanation","task","report","hearing","instruction"]);
 const recordSchema = z.object({
   kind: kindSchema,
   transcriptionStatus:z.enum(transcriptionStates).optional(),
   transcriptionFile:z.boolean().optional(),
+  documentReview:documentReviewSchema.nullable().optional(),
   title: z.string().trim().min(1).max(300),
   body: z.string().max(250000).default(""),
   contentText: z.string().max(1000000).default(""),
@@ -164,6 +183,51 @@ async function requireCases(db:Database,user:User,ids:number[],role:"reporter"|"
   if(!ids.length && !user.owner) throw new HttpError(403,"legal_forbidden","حدد قضية مصرحًا لك بها");
   for(const caseId of ids) await canCase(db,user,caseId,role);
 }
+// The referring record grants no new access to the canonical record or image.
+const documentImageJoin=(owner:string,user:string)=>`
+LEFT JOIN LATERAL (
+  SELECT i.id FROM legal_document_images i WHERE r.kind='document' AND i.record_id=r.id ORDER BY i.id LIMIT 1
+) local_image ON true
+LEFT JOIN LATERAL (
+  SELECT i.id FROM legal_records original
+  JOIN legal_document_images i ON i.record_id=original.id
+  WHERE r.kind='document' AND local_image.id IS NULL
+    AND original.id=(r.document_review->>'canonicalRecordId')::int
+    AND original.kind='document'
+    AND EXISTS (SELECT 1 FROM legal_record_links l WHERE l.first_record_id=LEAST(r.id,original.id) AND l.second_record_id=GREATEST(r.id,original.id))
+    AND (${owner}::boolean OR (
+      EXISTS (SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=original.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=original.id
+          AND NOT EXISTS (SELECT 1 FROM legal_case_access a WHERE a.case_id=rc.case_id AND a.user_id=${user})
+      )
+    ))
+  ORDER BY i.id LIMIT 1
+) canonical_image ON true`;
+const documentImageState=`CASE
+  WHEN r.kind<>'document' THEN NULL
+  WHEN local_image.id IS NOT NULL THEN 'internal'
+  WHEN canonical_image.id IS NOT NULL THEN 'canonical'
+  WHEN r.drive_file_id<>'' OR r.pdf_url<>'' OR COALESCE(r.document_review->>'sourceUrl','')<>'' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(r.image_urls) AS href(value) WHERE href.value<>'')
+    THEN 'external'
+  ELSE 'unverified' END`;
+const documentViewColumns=`${documentImageState} AS document_image_state,
+COALESCE(local_image.id, canonical_image.id) AS document_image_id,
+CASE WHEN r.kind='document' THEN ARRAY(SELECT rc.case_id FROM legal_record_cases rc WHERE rc.record_id=r.id ORDER BY rc.case_id) END AS document_case_ids`;
+
+async function validateDocumentReview(db:Database,user:User,input:z.infer<typeof recordSchema>,recordId?:number) {
+  if(!input.documentReview) return;
+  if(input.kind!=="document") throw new HttpError(400,"invalid_kind","بيانات المستند لسجلات المستندات فقط");
+  const original=input.documentReview.canonicalRecordId;
+  if(original===undefined) return;
+  if(recordId===undefined || original===recordId) throw new HttpError(400,"invalid_reference","اربط سجل الأصل بعد حفظ الوثيقة");
+  await canRecord(db,user,original);
+  const linked=await db.query(`SELECT 1 FROM legal_record_links l JOIN legal_records original ON original.id=$3
+    WHERE l.first_record_id=$1 AND l.second_record_id=$2 AND original.kind='document'`,
+    [Math.min(recordId,original),Math.max(recordId,original),original]);
+  if(!linked.rows.length) throw new HttpError(400,"invalid_reference","حدّد سجل أصل مرتبطًا بهذه الوثيقة");
+}
+
 const forbidIfDisabled=async(db:Database)=>{
   const disabled=await db.query("SELECT 1 FROM page_settings WHERE page_key='public.legal-cases' AND company_id IS NULL AND enabled=false");
   if(disabled.rowCount) throw new HttpError(403,"page_disabled","نظام القضايا معطل");
@@ -294,8 +358,9 @@ export function legalCaseRoutes(pool:Pool):Router {
     const rows=await pool.query<LegalTaskRow>(
       `SELECT r.*,u.display_name AS creator_name,
         (SELECT count(*)::int FROM legal_document_images i WHERE i.record_id=r.id) AS image_count,
-        linked.case_title,linked.next_hearing
+        linked.case_title,linked.next_hearing,${documentViewColumns}
        FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id
+       ${documentImageJoin("$2","$3")}
        LEFT JOIN users u ON u.id=r.created_by
        LEFT JOIN LATERAL (
          SELECT string_agg(c.title,' ' ORDER BY c.id) AS case_title,
@@ -470,21 +535,50 @@ export function legalCaseRoutes(pool:Pool):Router {
     if(unlinkedParam!==undefined && !["true","false"].includes(String(unlinkedParam))) throw new HttpError(400,"invalid_query","مرشح الربط غير صالح");
     const unlinked=unlinkedParam==="true";
     if(unlinked) ownerOnly(user);
+    const manual=req.query.manual;
+    const priority=req.query.priority;
+    const imageState=req.query.imageState;
+    const transcriptionState=req.query.transcriptionState;
+    const caseParam=req.query.caseId;
+    const selectedCase=caseParam===undefined?null:Number(caseParam);
+    if ((manual!==undefined&&manual!=="true"&&manual!=="false")||
+      (priority!==undefined&&priority!=="unrated"&&!z.enum(documentPriorities).safeParse(priority).success)||
+      (imageState!==undefined&&!z.enum(documentImageStates).safeParse(imageState).success)||
+      (transcriptionState!==undefined&&!z.enum(transcriptionStates).safeParse(transcriptionState).success)||
+      (caseParam!==undefined&&(typeof caseParam!=="string"||!/^[0-9]+$/.test(caseParam)||!Number.isSafeInteger(selectedCase)||Number(selectedCase)<1||Number(selectedCase)>2147483647)))
+      throw new HttpError(400,"invalid_query","مرشح المستندات غير صالح");
+    if (selectedCase!==null) await canCase(pool,user,selectedCase);
     const q=String(req.query.q??"").trim().slice(0,120),limit=unlinked?30:100;
-    const where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
+    let where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4 OR COALESCE(r.document_review->>'sourceFilename','') ILIKE $4 OR COALESCE(r.document_review->>'keywords','') ILIKE $4 OR COALESCE(r.document_review->>'evidenceSummary','') ILIKE $4 OR COALESCE(r.document_review->>'missingPassage','') ILIKE $4) AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
+    const args:unknown[]=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
+    const filter=(fragment:string,value:unknown)=>{args.push(value);where+=" AND "+fragment.replace("?", "$"+args.length);};
+    if (selectedCase!==null) filter("EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id AND rc.case_id=?)",selectedCase);
+    if (priority!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'priority','unrated')=?",priority);
+    if (imageState!==undefined) filter("("+documentImageState+")=?",imageState);
+    if (transcriptionState!==undefined) filter("r.kind='document' AND COALESCE(r.transcription_status,'unknown')=?",transcriptionState);
+    if (manual==="true") where+=` AND r.kind='document' AND COALESCE(r.transcription_status,'unknown') NOT IN ('complete','duplicate','archived')
+      AND r.document_review->>'priority'='high' AND r.document_review->>'manualTranscription'='true'
+      AND NULLIF(btrim(r.document_review->>'missingPassage'),'') IS NOT NULL`;
     const orderBy = kind === "instruction" ? "r.sort_order, r.id" :
-      kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" : "r.id DESC";
-    const args=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
+      kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" :
+      manual==="true" ? "document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
+    const docs=kind==="document"||manual==="true"||imageState!==undefined;
+    const compact=req.query.compact==="true"&&!unlinked&&(kind==="fact"||kind==="document");
+    const cols=compact?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.drive_file_id,r.document_review,r.transcription_status,r.transcription_file,r.revision":"r.*";
+    const filteredImages=imageState!==undefined?documentImageJoin("$1","$2"):"";
     const [rows,count]=await Promise.all([
-      pool.query("SELECT "+(req.query.compact==="true" && !unlinked && (kind==="fact"||kind==="document")?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.transcription_status,r.transcription_file,r.revision":"r.*")+" FROM legal_records r WHERE "+where+" ORDER BY "+orderBy+" LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
-      pool.query("SELECT COUNT(*)::int AS total FROM legal_records r WHERE "+where,args),
+      pool.query("SELECT "+cols+(docs?", "+documentViewColumns:"")+" FROM legal_records r "+(docs?documentImageJoin("$1","$2"):"")+" WHERE "+where+" ORDER BY "+orderBy+" LIMIT $"+(args.length+1)+" OFFSET $"+(args.length+2),[...args,limit,(page-1)*limit]),
+      pool.query("SELECT COUNT(*)::int AS total FROM legal_records r "+filteredImages+" WHERE "+where,args),
     ]);
+
     res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
   }));
   router.get("/legal/records/:id",handler(async(req,res)=>{
     const recordId=number(req.params.id),user=actor(req);
     await canRecord(pool,user,recordId);
-    const record=await getRecord(pool,recordId);
+    const record=(await pool.query(`SELECT r.*,${documentViewColumns} FROM legal_records r
+      ${documentImageJoin("$2","$3")} WHERE r.id=$1`,[recordId,user.owner,user.id])).rows[0];
+    if (!record) missing();
     const [cases,links,images]=await Promise.all([
       pool.query("SELECT case_id FROM legal_record_cases WHERE record_id=$1",[recordId]),
       pool.query("SELECT CASE WHEN first_record_id=$1 THEN second_record_id ELSE first_record_id END AS record_id FROM legal_record_links WHERE first_record_id=$1 OR second_record_id=$1",[recordId]),
@@ -502,8 +596,9 @@ export function legalCaseRoutes(pool:Pool):Router {
       await forbidIfDisabled(db);
       const file=input.transcriptionFile ?? (input.kind==="document" && !!input.driveFileId && /^ملف درايف\s*[—–-]/.test(input.title));
       if(file && (input.kind!=="document" || !input.driveFileId)) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
-      const columns=[...recordColumns,"transcription_status","transcription_file","created_by","updated_by"];
-      const values=[...recordValues(input),input.kind==="document"?(input.transcriptionStatus??"unknown"):null,file,user.id,user.id];
+      await validateDocumentReview(db,user,input);
+      const columns=[...recordColumns,"transcription_status","transcription_file","created_by","updated_by","document_review"];
+      const values=[...recordValues(input),input.kind==="document"?(input.transcriptionStatus??"unknown"):null,file,user.id,user.id,JSON.stringify(input.documentReview??{})];
       const next=(await db.query("INSERT INTO legal_records("+columns.join(",")+") VALUES("+values.map((_,i)=>"$"+(i+1)).join(",")+") RETURNING *",values)).rows[0];
       for(const caseId of input.caseIds) await db.query("INSERT INTO legal_record_cases(record_id,case_id) VALUES($1,$2)",[next.id,caseId]);
       await audit(db,user,"legal.create","legalRecord",next.id,null,{...next,caseIds:input.caseIds});
@@ -523,7 +618,9 @@ export function legalCaseRoutes(pool:Pool):Router {
       const file=input.transcriptionFile??old.transcription_file;
       if(file && (!input.driveFileId || input.kind!=="document")) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
       const state=input.kind==="document"?(input.transcriptionStatus??old.transcription_status??"unknown"):null;
-      const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",transcription_status=$17,transcription_file=$18,revision=revision+1,updated_by=$19,updated_at=now() WHERE id=$20 RETURNING *",[...recordValues({...input,caseIds:[]}),state,file,user.id,recordId])).rows[0];
+      await validateDocumentReview(db,user,{...input,caseIds:[]},recordId);
+      const review=input.documentReview===undefined?old.document_review:(input.documentReview??{});
+      const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",transcription_status=$17,transcription_file=$18,revision=revision+1,updated_by=$19,updated_at=now(),document_review=$21 WHERE id=$20 RETURNING *",[...recordValues({...input,caseIds:[]}),state,file,user.id,recordId,JSON.stringify(review??{})])).rows[0];
       await audit(db,user,"legal.update","legalRecord",recordId,old,next);
       return next;
     });
