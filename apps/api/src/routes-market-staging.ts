@@ -339,7 +339,24 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
   router.get("/medicine-market/staging",handler(async(req,res)=>{
     await authorize(req);
     const jobs=await pool.query("SELECT id,bundle_sha256,status,error_code,created_at,updated_at FROM market_import_jobs ORDER BY created_at DESC LIMIT 100");
-    const sources=await pool.query("SELECT s.*, (SELECT count(*)::int FROM market_import_rows r WHERE r.source_id=s.id) AS actual_rows,(SELECT coalesce(sum(octet_length(c.data)),0)::text FROM market_import_chunks c WHERE c.source_id=s.id) AS actual_bytes FROM market_import_sources s ORDER BY id LIMIT 1000");
+    const sources=await pool.query(`
+      SELECT s.*,
+        (SELECT count(*)::int FROM market_import_rows r WHERE r.source_id=s.id) AS actual_rows,
+        (SELECT coalesce(sum(octet_length(c.data)),0)::text FROM market_import_chunks c WHERE c.source_id=s.id) AS actual_bytes,
+        CASE WHEN s.metadata->>'targetTable' = 'market_agent_catalog_staging' THEN (
+          SELECT coalesce(jsonb_agg(jsonb_build_object(
+            'section', grouped.section, 'row_count', grouped.row_count
+          ) ORDER BY grouped.section), '[]'::jsonb)
+          FROM (
+            SELECT r.section, count(*)::int AS row_count
+            FROM market_import_rows r
+            WHERE r.source_id=s.id
+            GROUP BY r.section
+          ) AS grouped
+        ) ELSE '[]'::jsonb END AS sections
+      FROM market_import_sources s
+      ORDER BY s.id LIMIT 1000
+    `);
     res.json({jobs:jobs.rows,sources:sources.rows,stagingVersion:"20261107-title-case"});
   }));
   router.post("/medicine-market/staging/:sourceId/promote-medicines",handler(async(req,res)=>{
