@@ -108,6 +108,10 @@ function useItemChanges(companyId: number) {
         queryKey[1] === user?.id &&
         ((queryKey[0] === "items" && queryKey[2] === companyId &&
           (!skipEditorDetails || !["detail", "invoice-detail"].includes(String(queryKey[3])))) ||
+          // The options list caches the special order threshold separately
+          // from the item card. Refresh it after every successful card save.
+          (["item-options-list", "item-order-levels", "item-order-draft-review"].includes(String(queryKey[0])) &&
+            queryKey[2] === companyId) ||
           (queryKey[0] === "commerce" &&
             queryKey[2] === companyId &&
             queryKey[3] === "item-search") ||
