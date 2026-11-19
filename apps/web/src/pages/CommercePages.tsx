@@ -4653,11 +4653,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         salesScopedTransfer={!context.general && !context.permissions.includes("finance.manage") &&
           !!context.employee?.positions.includes("sales")}
         onClose={() => setPledgeMode(null)}
-        onCreated={(newAccount, points) => {
-          accountManuallyChosen.current = true;
-          setAccount(newAccount);
+        onCreated={(_, points) => {
+          // Creating a pledge does not select a sales invoice account.
           setError("");
-          setItemNotice(points ? `تم إنشاء الرهن ومنح ${points} نقطة.` : "تم إنشاء حساب الرهن.");
+          setItemNotice(points ? `تم إنشاء الرهن ومنح ${points} نقطة. يمكنك اختيار حسابه من البحث.` : "تم إنشاء حساب الرهن. يمكنك اختياره من البحث.");
           void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
         }}
         onSelect={accountId => {
