@@ -3431,9 +3431,6 @@
         "reorderLimit": {
           "type": "string"
         },
-        "orderQuantity": {
-          "type": "string"
-        },
         "reserveQuantity": {
           "type": "string"
         },
@@ -3714,9 +3711,6 @@
               "maximum": 2147483647
             },
             "reorderLimit": {
-              "type": "string"
-            },
-            "orderQuantity": {
               "type": "string"
             },
             "reserveQuantity": {
