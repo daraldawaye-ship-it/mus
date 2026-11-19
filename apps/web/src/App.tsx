@@ -282,6 +282,9 @@ const ItemOptionsListPage = lazy(() =>
 const ItemOrderLevelsPage = lazy(() =>
   import("./pages/ItemOrderLevelsPage").then(m=>({default:m.ItemOrderLevelsPage})),
 );
+const StoppedOrderItemsPage = lazy(() =>
+  import("./pages/StoppedOrderItemsPage").then(m=>({default:m.StoppedOrderItemsPage})),
+);
 const ExpiryAlertFollowUpPage = lazy(() =>
   import("./pages/ExpiryAlertFollowUpPage").then(m=>({default:m.ExpiryAlertFollowUpPage})),
 );
@@ -416,6 +419,7 @@ const companySections = [
   "sales-time-report",
   "item-options-list",
   "item-order-levels",
+  "stopped-order-items",
   "expired-items-follow-up",
   "expiring-items-follow-up",
   "item-order-drafts",
@@ -520,6 +524,7 @@ function Navigation({
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-options-list": <ListTree size={17} />,
     "company.item-order-levels": <Bell size={17} />,
+    "company.stopped-order-items": <Package size={17} />,
     "company.expired-items-follow-up": <Bell size={17} />,
     "company.expiring-items-follow-up": <Bell size={17} />,
     "company.purchase-comparison": <TableProperties size={17} />,
@@ -897,6 +902,10 @@ function CompanyContent({
     case "item-order-levels":
       return <Suspense fallback={<Notice>جارٍ تحميل متابعة حدود طلب الأصناف الخاصة…</Notice>}>
         <ItemOrderLevelsPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "stopped-order-items":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأصناف المتوقف طلبها…</Notice>}>
+        <StoppedOrderItemsPage key={context.company.id} context={context}/>
       </Suspense>;
     case "expired-items-follow-up":
       return <Suspense fallback={<Notice>جارٍ تحميل متابعة الأصناف المنتهية…</Notice>}>
