@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { documentImportanceScores, splitStarterBatch, documentImageLabels, documentPriorityLabels, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImportanceScores, documentImageLabels, documentPriorityLabels, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
 import { transcriptionLabels, type TranscriptionState } from "../../../../packages/contracts/src/legal-transcription";
 import { Field, Select } from "../ui";
 
@@ -40,20 +40,11 @@ export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
  </section>;
 }
 
-export function groupDocumentRows<T extends ReviewEntry>(items:T[],manual:boolean,selectedCase:number|null,firstPage:boolean) {
- if(!manual)return [{key:"default",label:"",items}];
+export function groupDocumentRows<T extends ReviewEntry>(items:T[],manual:boolean,selectedCase:number|null,explicitOrder:boolean) {
+ if(!manual||explicitOrder)return [{key:"default",label:"",items}];
  const groups=new Map<string,{key:string;label:string;items:T[]}>();
- const {starter,rest}=splitStarterBatch(items,firstPage);
- if(starter.length)groups.set("starter",{key:"starter",label:"دفعة البداية",items:starter});
- for(const item of rest){
+ for(const item of items){
   const review=item.document_review, ids=selectedCase?[selectedCase]:(item.document_case_ids??[]);
-  // A scored row must never leapfrog another document because of a hearing group.
-  if(review?.importanceScore!=null){
-   const key="ranked";
-   if(!groups.has(key))groups.set(key,{key,label:"حسب أهمية النقص (الأعلى أولًا)",items:[]});
-   groups.get(key)!.items.push(item);
-   continue;
-  }
   const caseLabel=ids.length?ids.map(id=>"#"+id).join("، "):"دون قضية مرتبطة";
   const hearing=review?.hearingDate||review?.hearingGroup;
   const key=ids.join(",")+(hearing?"|"+hearing:"|record:"+item.id);

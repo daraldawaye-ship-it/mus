@@ -27,16 +27,3 @@ export type LegalDocumentReview = {
   verifiedOn?:string;
 };
 export const documentImportanceScores = [10,9,8,7,6,5,4,3,2,1] as const;
-
-/** The server supplies score-sorted, filtered page data. Never rerank or include a legacy score. */
-export function splitStarterBatch<T extends {document_review?:LegalDocumentReview;transcription_status?:string|null}>(items:T[],firstPage:boolean) {
- if(!firstPage)return {starter:[] as T[],rest:items};
- const scored=items.filter(item=>{
-  const r=item.document_review,score=r?.importanceScore;
-  return score!==undefined&&Number.isInteger(score)&&score>=1&&score<=10&&r?.manualTranscription&&Boolean(r.missingPassage?.trim())&&
-   !["complete","duplicate","archived"].includes(item.transcription_status??"unknown");
- });
- const starter=scored.slice(0,Math.min(5,Math.ceil(scored.length/20)));
- const picked=new Set(starter);
- return {starter,rest:items.filter(item=>!picked.has(item))};
-}

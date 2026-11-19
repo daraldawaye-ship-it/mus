@@ -41,7 +41,7 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
     source:"routes-central-access.ts",queryFields:[],pathParams:["companyId","key","employeeId"],
     bodyContract:"centralPermissionAssignmentSchema",bodySchema:z.toJSONSchema(centralPermissionAssignmentSchema),
   },
-  "GET /legal/records":{source:"routes-legal-cases.ts",queryFields:["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore"]},
+  "GET /legal/records":{source:"routes-legal-cases.ts",queryFields:["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore","importanceOrder"]},
   "GET /legal/transcription-summary":{source:"routes-legal-cases.ts",queryFields:[]},
   "POST /legal/transcription-status":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalTranscriptionBatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalTranscriptionBatchSchema)},
   "POST /legal/records":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"recordSchema",bodySchema:z.toJSONSchema(legalSchemas.recordSchema)},

@@ -540,12 +540,14 @@ export function legalCaseRoutes(pool:Pool):Router {
     const manual=req.query.manual;
     const priority=req.query.priority;
     const importanceScore=req.query.importanceScore;
+    const importanceOrder=req.query.importanceOrder;
     const imageState=req.query.imageState;
     const transcriptionState=req.query.transcriptionState;
     const caseParam=req.query.caseId;
     const selectedCase=caseParam===undefined?null:Number(caseParam);
     if ((manual!==undefined&&manual!=="true"&&manual!=="false")||
       (priority!==undefined&&priority!=="unrated"&&!z.enum(documentPriorities).safeParse(priority).success)||
+      (importanceOrder!==undefined&&importanceOrder!=="asc"&&importanceOrder!=="desc")||
       (importanceScore!==undefined&&(typeof importanceScore!=="string"||!/^(?:[1-9]|10|unrated)$/.test(importanceScore)))||
       (imageState!==undefined&&!z.enum(documentImageStates).safeParse(imageState).success)||
       (transcriptionState!==undefined&&!z.enum(transcriptionStates).safeParse(transcriptionState).success)||
@@ -577,9 +579,11 @@ export function legalCaseRoutes(pool:Pool):Router {
       AND (r.document_review->>'importanceScore' IS NOT NULL OR r.document_review->>'priority'='high')
       AND r.document_review->>'manualTranscription'='true'
       AND NULLIF(btrim(r.document_review->>'missingPassage'),'') IS NOT NULL`;
-    const orderBy = kind === "instruction" ? "r.sort_order, r.id" :
+    const usualOrder = kind === "instruction" ? "r.sort_order, r.id" :
       kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" :
-      manual==="true" ? "(r.document_review->>'importanceScore')::int DESC NULLS LAST, document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
+      manual==="true" ? "document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
+    const orderBy=importanceOrder===undefined?usualOrder:
+      "(r.document_review->>'importanceScore')::int "+(importanceOrder==="asc"?"ASC":"DESC")+" NULLS LAST, "+usualOrder;
     const docs=kind==="document"||manual==="true"||imageState!==undefined;
     const compact=req.query.compact==="true"&&!unlinked&&(kind==="fact"||kind==="document");
     const cols=compact?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.drive_file_id,r.document_review,r.transcription_status,r.transcription_file,r.revision":"r.*";
