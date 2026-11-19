@@ -55,12 +55,6 @@
 .medicine-market .market-offline-status.is-offline,
 .medicine-market .market-offline-status.is-unavailable { color: var(--text); }
 /* Compact the catalog shell only; detail forms and moderation keep their existing layout. */
-.medicine-market.medicine-market-directory .medicine-market-heading { gap: 8px; margin-bottom: 8px; }
-.medicine-market.medicine-market-directory .medicine-market-brand h1 { font-size: 20px; margin: 0; }
-.medicine-market.medicine-market-directory .medicine-market-brand p { margin: 0; font-size: 11px; }
-.medicine-market.medicine-market-directory .medicine-market-heading-actions { gap: 5px; }
-.medicine-market.medicine-market-directory .medicine-market-heading-actions .button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
-.medicine-market.medicine-market-directory .medicine-market-tabs { margin-block: 6px; }
 .medicine-market.medicine-market-directory .medicine-market-toolbar { gap: 7px; margin-block: 8px; }
 .medicine-market.medicine-market-directory .medicine-market-category-bar { gap: 5px; margin-block: 8px; }
 .medicine-market.medicine-market-directory .medicine-market-category-bar button { min-height: 30px; padding: 4px 8px; font-size: 12px; }

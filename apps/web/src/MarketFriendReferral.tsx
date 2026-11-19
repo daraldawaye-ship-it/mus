@@ -18,9 +18,12 @@ const normalizeContactPhone=(input:string)=>input
   .replace(/[۰-۹]/g, digit=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
   .replace(/[\u200e\u200f\u202a-\u202e\s()\-]/g,"")
   .replace(/^00/,"+");
-export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:string|null}){
+export function MarketFriendReferral({cardId,open,onClose}:{
+  cardId:number|null;
+  open:boolean;
+  onClose:()=>void;
+}){
   const {user}=useSession();
-  const [open,setOpen]=useState(false);
   const [phone,setPhone]=useState("");
   const [note,setNote]=useState("");
   const [category,setCategory]=useState<(typeof categories)[number]>("مستخدم");
@@ -77,9 +80,13 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
     }catch(cause){setError(cause instanceof Error?cause.message:"تعذر حفظ البيانات");}
     finally{setBusy(false);}
   }
-  return <>
-    <Button variant="secondary" onClick={()=>{setError("");setSuccess("");setOpen(true);}}>تعريف التطبيق لصديق</Button>
-    <Dialog open={open} onClose={()=>{if(!busy)setOpen(false);}}
+  function close(){
+    if(busy)return;
+    setError("");
+    setSuccess("");
+    onClose();
+  }
+  return <Dialog open={open} onClose={close}
       title="تعريف التطبيق لصديق" className="market-friend-dialog">
       <form onSubmit={event=>void submit(event)} className="form-stack" dir="rtl">
         {error&&<Notice tone="error">{error}</Notice>}
@@ -109,6 +116,5 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
           </Button>
         </div>
       </form>
-    </Dialog>
-  </>;
+    </Dialog>;
 }

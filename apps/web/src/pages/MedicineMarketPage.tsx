@@ -29,6 +29,7 @@ import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
 import { MarketCardIcon } from "../MarketCardIcon";
 import { MarketFriendReferral } from "../MarketFriendReferral";
+import { PageActionsDropdown, type PageAction } from "../SalesHeaderActionsDropdown";
 import { MarketStagingProgress } from "./MarketStagingProgress";
 import { MarketCardCounts, RecordMarketCardOpen } from "./MarketCardStatistics";
 import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
@@ -1218,6 +1219,7 @@ export function MedicineMarketPage({
   const [createOpen, setCreateOpen] = useState(false),
     [newKind, setNewKind] = useState<Kind>("medicine"),
     [newName, setNewName] = useState("");
+  const [referralOpen, setReferralOpen] = useState(false);
   const [prescriptionFile,setPrescriptionFile]=useState<File|null>(null);
   const [prescriptionPhotoUrl,setPrescriptionPhotoUrl]=useState<string|null>(null);
   const [prescriptionLines,setPrescriptionLines]=useState<PrescriptionLine[]>(initialPrescriptionLines);
@@ -1463,13 +1465,34 @@ export function MedicineMarketPage({
       </div>
     </div>
   );
-  const tabs: [string, string, boolean][] = [
-    [ROOT, "الدليل", true],
-    [`${ROOT}/card-coverage`, "اكتمال كروت السوق", !!user?.owner && !visitorOnly],
-    [`${ROOT}/contributions`, "مساهماتي", !!user],
-    [`${ROOT}/review`, "المصادقة", !!permissions?.canModerate],
-    [`${ROOT}/points`, "نقاط الحقول", true],
-  ];
+  const actions: PageAction[] = [{
+    label: "الأحدث تحديثًا أو إضافة",
+    onClick: () => {
+      if (tab === "catalog") {
+        write({ card: null, kind: null, q: null, page: null, archived: null, sort: "updated" });
+      } else {
+        navigate(ROOT);
+      }
+      void client.invalidateQueries({ queryKey: ["medicine-market", user?.id, "cards"] });
+    },
+  }];
+  if (permissions?.canContribute) {
+    actions.push({
+      label: "إضافة كرت",
+      disabled: marketOffline,
+      onClick: () => {
+        setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
+        setNewName("");
+        setCreateOpen(true);
+        setError("");
+      },
+    }, { label: "تعريف التطبيق لصديق", onClick: () => setReferralOpen(true) });
+  } else if (!user) {
+    actions.push({ label: "الدخول للمساهمة", to: "/login" });
+  }
+  if (user) actions.push({ label: "متابعة تعريف الأصدقاء", to: `${ROOT}/friend-referrals` });
+  if (user?.owner && !visitorOnly) actions.push({ label: "اكتمال كروت السوق", to: `${ROOT}/card-coverage` });
+  if (permissions?.canConfigure) actions.push({ label: "نقاط الحقول", to: `${ROOT}/points` });
   // Keep the medicine layout compatible with cached /meta responses from older builds.
   // Do not wait for refreshed metadata to show the new public selling-price field.
   const activeFields:FieldDefinition[]=card?.kind==="medicine" ? (()=>{
@@ -1490,70 +1513,21 @@ export function MedicineMarketPage({
   return (
     <div className={`medicine-market${tab === "catalog" && !selected ? " medicine-market-directory" : ""}`} dir="rtl">
       <header className="medicine-market-heading">
-        <div className="medicine-market-brand">
-          <span className="medicine-market-brand-icon medicine-market-app-brand-icon">
-            <img src="/site-icon.png" className="medicine-market-app-logo" alt="شعار تطبيق الرئيسي" />
+        {user && (
+          <span className="medicine-market-points">
+            <Star size={16} /> {meta.data?.userPoints ?? "0"} نقطة معتمدة
           </span>
-          <div>
-            <p className="medicine-market-eyebrow">الرئيسي / السوق الرئيسي</p>
-            <h1>السوق الرئيسي</h1>
-            <p>دليل نبنيه معًا، معلومةً بعد معلومة.</p>
-          </div>
-        </div>
+        )}
+        {user && !permissions?.canContribute && (
+          <span className="medicine-market-muted">المساهمة غير متاحة لحسابك</span>
+        )}
         <div className="medicine-market-heading-actions">
-          <Button variant="secondary" onClick={() => {
-            write({ card: null, kind: null, q: null, page: null, archived: null, sort: "updated" });
-            void client.invalidateQueries({queryKey:["medicine-market",user?.id,"cards"]});
-          }}>
-            <RefreshCw size={16} /> الأحدث تحديثًا أو إضافة
-          </Button>
-          {user && (
-            <span className="medicine-market-points">
-              <Star size={16} /> {meta.data?.userPoints ?? "0"} نقطة معتمدة
-            </span>
-          )}
-          {permissions?.canContribute && <MarketFriendReferral cardId={selected} cardName={card?.name}/>} 
-          {!!user && <Link className="button button-secondary" to="/medicine-market/friend-referrals">متابعة تعريف الأصدقاء</Link>}
-          {permissions?.canContribute ? (
-            <Button disabled={marketOffline}
-              onClick={() => {
-                setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
-                setNewName("");
-                setCreateOpen(true);
-                setError("");
-              }}
-            >
-              <Plus size={17} /> إضافة كرت
-            </Button>
-          ) : !user ? (
-            <Link className="button button-primary" to="/login">
-              الدخول للمساهمة
-            </Link>
-          ) : (
-            <span className="medicine-market-muted">
-              المساهمة غير متاحة لحسابك
-            </span>
-          )}
+          <PageActionsDropdown label="إجراءات" actions={actions} />
         </div>
       </header>
-      <nav className="medicine-market-tabs" aria-label="أقسام سوق الأدوية">
-        {tabs
-          .filter(([, , show]) => show)
-          .map(([path, label]) => (
-            <Link
-              key={path}
-              to={path}
-              aria-current={
-                (tab === "catalog" && path === ROOT) ||
-                (tab !== "catalog" && path.endsWith(`/${tab}`))
-                  ? "page"
-                  : undefined
-              }
-            >
-              {label}
-            </Link>
-          ))}
-      </nav>
+      {permissions?.canContribute && (
+        <MarketFriendReferral cardId={selected} open={referralOpen} onClose={() => setReferralOpen(false)} />
+      )}
       {message && <Notice tone="success">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {meta.error && <Notice tone="error">{errorMessage(meta.error)}</Notice>}

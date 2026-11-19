@@ -6722,19 +6722,10 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 /* Public medicine directory: shared theme, field-level contributions and cards. */
 .medicine-market { min-width:0; }
-.medicine-market-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-block-end:20px; }
-.medicine-market-brand { display:flex; align-items:center; gap:14px; }
-.medicine-market-brand h1 { margin:2px 0 3px; font-size:26px; line-height:1.35; }
-.medicine-market-brand p { margin:0; color:var(--muted); }
+.medicine-market-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-block-end:8px; }
 .medicine-market-eyebrow { color:var(--muted); font-size:11px; margin:0; }
-.medicine-market-brand-icon { display:grid; place-items:center; flex-shrink:0; width:58px; height:58px; background:var(--soft); color:var(--on-soft); border:1px solid var(--border); border-radius:17px; }
-.medicine-market-app-brand-icon { background:transparent; border:0; border-radius:12px; overflow:visible; }
-.medicine-market-app-logo { display:block; width:100%; height:100%; object-fit:contain; }
-.medicine-market-heading-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.medicine-market-heading-actions { margin-inline-start:auto; }
 .medicine-market-points { display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
-.medicine-market-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-block-end:18px; overflow:auto; }
-.medicine-market-tabs a { padding:10px 17px; color:var(--muted); white-space:nowrap; border-bottom:2px solid transparent; text-decoration:none; }
-.medicine-market-tabs a[aria-current="page"] { color:var(--primary); border-bottom-color:var(--primary); font-weight:bold; }
 .medicine-market-toolbar { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--card-radius); padding:14px; }
 .medicine-market-toolbar > .field { min-width:180px; }
 .medicine-market-search { position:relative; flex:1; min-width:180px; }
@@ -6932,10 +6923,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-contribution-note { display:flex; align-items:flex-start; gap:8px; background:var(--soft); color:var(--on-soft); border-radius:8px; padding:10px; font-size:12px; }
 .medicine-market-contribution-note svg { flex-shrink:0; }
 @media(max-width:680px) {
- .medicine-market-heading { align-items:flex-start; flex-direction:column; gap:13px; }
- .medicine-market-brand-icon { width:48px; height:48px; }
- .medicine-market-brand h1 { font-size:22px; }
- .medicine-market-heading-actions { justify-content:space-between; width:100%; }
  .medicine-market-toolbar { flex-wrap:wrap; padding:12px; }
  .medicine-market-search { flex-basis:100%; }
  .medicine-market-search > svg { top:10px; }
