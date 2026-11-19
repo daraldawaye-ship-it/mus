@@ -32,9 +32,9 @@ test("desktop form remembers only identity, suppresses password autofill and cle
   assert.match(page,/setDraft\(current => \(\{\.\.\.current,password:""\}\)\)/);
   assert.match(policy,/alraesy-login-identifier-v1/);
   assert.doesNotMatch(policy,/localStorage\.setItem\([^,]+,\s*password/);
-  // Desktop retains an offline salted verifier for explicit password login;
-  // it cannot resume the last employee automatically after an offline reload.
-  assert.match(api,/if \(!allowPasswordAutofillOnDevice\(\)\)/);
+  // Password autofill stays disabled independently of resuming the current
+  // verified session during an outage. Explicit local login keeps its verifier.
+  assert.doesNotMatch(api,/allowPasswordAutofillOnDevice/);
   assert.match(api,/authenticateOfflineAccount\(identity,password\)/);
   assert.match(storage,/OFFLINE_PBKDF2_ITERATIONS = 350_000/);
   assert.match(storage,/crypto\.subtle\.deriveBits/);

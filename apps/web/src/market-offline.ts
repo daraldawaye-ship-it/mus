@@ -94,8 +94,8 @@ export function pauseMarketCacheSession() {
   emit({ type: "scope", scope });
 }
 export function setMarketCacheSession(user: Authority | null, visitorOnly?: boolean, forceGuest = false) {
-  // The existing authenticated offline session stores User but not visitorOnly.
-  // Retain only this mode hint; it cannot authorize an expired/missing session.
+  // Legacy offline identities predate the stored visitorOnly flag. Retain this
+  // compatibility hint; it cannot authorize an expired or missing session.
   const authority = user ? marketCacheIdentity(user) : null;
   let visitor = visitorOnly ?? false;
   if (user && !forceGuest && typeof localStorage !== "undefined") {

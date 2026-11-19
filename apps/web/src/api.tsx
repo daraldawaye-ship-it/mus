@@ -10,13 +10,12 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, offlineLoginRequired, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineLoginRequired, setOfflineUser } from "./offline-storage";
+import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, offlineLoginRequired, readOfflineSession, readOfflineSessionState, rememberRead, savedRead, saveOfflineSession, setOfflineLoginRequired, setOfflineUser } from "./offline-storage";
 import { clearOfflineSharedGrants, lookupDownloadedDoctors, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
 import { readApiJson, UnexpectedApiResponse } from "./api-response";
 import { offlineUser } from "./offline-storage";
-import { allowPasswordAutofillOnDevice } from "./device-login-policy";
 import { currentDeviceKind } from "./device-kind";
 import {readEmployeePreview,isAllowedPreviewRead,useEmployeePreview} from "./employee-preview-mode";
 import {
@@ -251,6 +250,13 @@ export async function api<T>(
     data = await readApiJson(response);
   } catch (error) {
     if (!(error instanceof UnexpectedApiResponse)) throw error;
+    // An explicit rejection remains authoritative even when a proxy sends
+    // HTML. It must never turn into an outage that revives a saved identity.
+    if (response.status === 401 || response.status === 403) {
+      markNetworkSuccess();
+      throw new ApiFailure("لم تعد هذه الجلسة أو بياناتها متاحة لهذا الحساب",
+        response.status, response.status === 401 ? "unauthorized" : "forbidden");
+    }
     // A proxy/maintenance HTML page must not be treated as a successful
     // login, a wrong password or a valid API payload. This *is* an HTTP
     // response, so do not mark the transport offline: an immediate retry
@@ -317,7 +323,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   async function applyLiveSession(result: SessionResponse, request: number) {
     if (epoch.current !== request) return;
     csrf = result.csrf;
-    if (result.user) await saveOfflineSession(result.user).catch(() => {});
+    if (result.user) await saveOfflineSession(result.user, !!result.visitorOnly).catch(() => {});
     else {
       const prior=offlineUser();
       await clearOfflineSession().catch(() => {});
@@ -334,6 +340,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }
   async function recoverOffline(error: unknown, request: number): Promise<boolean> {
+    if (epoch.current !== request) return false;
     // An HTTP auth rejection is NOT an offline condition. In particular, do
     // not revive a removed/suspended user from IndexedDB after HTTP 401/403.
     if (error instanceof ApiFailure) {
@@ -357,32 +364,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     if (navigator.onLine && !(error instanceof TypeError) &&
         !(error instanceof ApiFailure && error.status >= 500)) return false;
-    if (!allowPasswordAutofillOnDevice()) {
-      // A shared desktop may retain user-scoped offline card snapshots but
-      // must NEVER silently reopen the last employee on an offline restart.
-      // An employee can still enter their password against the salted local
-      // verifier. Installed phones retain existing offline resume behavior.
-      if (epoch.current !== request) return false;
-      csrf = null;
-      setOfflineUser(null);
-      sharedIdentity(null);
-      setMarketCacheSession(null);
-      setSession({user:null,csrf:null,pendingLogoutRedirect:false});
-      setRequiresOnlineLogin(false);
-      setOfflineMode(true);
-      setError(null);
-      setLoading(false);
-      return true;
-    }
-    const user = await readOfflineSession().catch(() => null);
-    if (!user || epoch.current !== request) return false;
+    // Session continuity is independent of password-manager preferences and
+    // app installation. Resume only the active, previously verified identity;
+    // explicit logout removes it and the existing expiry still applies.
+    const saved = await readOfflineSessionState().catch(() => null);
+    const user = saved?.user;
+    if (!saved || !user || epoch.current !== request) return false;
     csrf = null;
     setOfflineUser(user.id);
     sharedIdentity(user.id);
-    setMarketCacheSession(user, undefined, freshOnlineLoginRequired);
+    setMarketCacheSession(user, saved.visitorOnly, freshOnlineLoginRequired);
     await restoreOfflineSharedGrants(user.id).catch(() => {});
     if(epoch.current!==request) return false;
-    setSession({ user, csrf: null, pendingLogoutRedirect: false });
+    setSession({ user, visitorOnly: saved.visitorOnly, csrf: null, pendingLogoutRedirect: false });
     setOfflineMode(true);
     setError(null);
     setLoading(false);
@@ -466,7 +460,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!freshOnlineLoginRequired) void reloadSession().catch(() => {});
     };
     window.addEventListener("online", reconnect);
-    return () => window.removeEventListener("online", reconnect);
+    window.addEventListener("alraesy-network-restored", reconnect);
+    return () => {
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("alraesy-network-restored", reconnect);
+    };
   }, [offlineMode]);
   async function adoptLiveAuthentication(result: SessionResponse): Promise<void> {
     if (!result.user || !result.csrf) throw new Error("لم يؤكد الخادم جلسة المستخدم");

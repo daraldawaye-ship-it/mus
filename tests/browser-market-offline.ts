@@ -31,6 +31,10 @@ function Fixture(){
  const session=useSession();
  useEffect(()=>{window.marketOfflineTest={api,scope:getMarketCacheScope,status:getMarketReadStatus,
   reloadSession:session.reloadSession,logout:session.logout,returnToOnline,
+  loginWithPassword:session.loginWithPassword,
+  session:()=>({userId:session.user?.id??null,visitorOnly:!!session.visitorOnly,
+   offlineMode:session.offlineMode,requiresOnlineLogin:session.requiresOnlineLogin,
+   loading:session.loading,error:session.error}),
   invalidate:()=>client.invalidateQueries({queryKey:['medicine-market']})};});
  if(session.loading)return <p>جارٍ بدء الاختبار المحلي…</p>;
  const command=async(action)=>{await fetch('/_offline_test/'+action,{method:'POST'});
@@ -69,6 +73,9 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const owner = { id: 71, name: "اختبار", displayName: "مالك محلي", email: "offline@example.test",
   kind: "admin", owner: true, archived: false, suspended: false, editor: true, monitor: true };
 let currentUser: typeof owner | null = null;
+let currentVisitorOnly = false;
+let sessionRequests = 0;
+let sessionResponse: { kind: "transport" } | { kind: "html" | "json"; status: number } | null = null;
 let denyMarket = false;
 let heldCardResponse: Promise<void> | null = null;
 const responses: { path: string; status: number; conditional: boolean }[] = [];
@@ -88,8 +95,32 @@ app.post('/_offline_test/:command', (req, res) => {
   if(req.params.command === 'disconnect') disconnected = true;
 });
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-app.get("/api/auth/session", (_req, res) => res.json({ user: currentUser, csrf: currentUser ? "test-csrf" : null }));
-app.post("/api/auth/logout", (_req, res) => { currentUser = null; res.json({ ok: true }); });
+const liveSession = () => ({ user: currentUser, csrf: currentUser ? "test-csrf" : null,
+  visitorOnly: !!currentUser && currentVisitorOnly });
+app.get("/api/auth/session", (req, res) => {
+  sessionRequests++;
+  if (sessionResponse?.kind === "transport") { req.socket.destroy(); return; }
+  if (sessionResponse?.kind === "html") {
+    res.status(sessionResponse.status).type("text/html").send("<!doctype html><title>Unavailable</title>"); return;
+  }
+  if (sessionResponse?.kind === "json") {
+    res.status(sessionResponse.status).json({ error: { code: "forbidden", message: "انتهى تفويض الجلسة" } }); return;
+  }
+  res.json(liveSession());
+});
+app.post("/api/auth/login", (req, res) => {
+  if (req.body.email !== owner.email || req.body.password !== "offline-test-password") {
+    res.status(401).json({ error: { code: "invalid_login", message: "بيانات الاختبار غير صحيحة" } }); return;
+  }
+  currentUser = owner;
+  currentVisitorOnly = false;
+  res.json(liveSession());
+});
+app.post("/api/auth/logout", (_req, res) => {
+  currentUser = null;
+  currentVisitorOnly = false;
+  res.json({ ok: true });
+});
 app.use("/api/medicine-market", async (req, res) => {
   if (denyMarket) { res.status(403).json({ error: { code: "forbidden", message: "السوق غير متاح لهذا الحساب" } }); return; }
   res.set("Cache-Control", "private, no-cache");
@@ -103,15 +134,15 @@ app.use("/api/medicine-market", async (req, res) => {
   if (req.path === "/meta") {
     const meta: MarketMeta = {
       types: marketTypes.filter(t => ["medicine", "agent", "composition"].includes(t.key)).map(t => ({ ...t,
-        fields: t.fields.filter(f => f.visibility === "public" || currentUser?.owner).map(f => ({ ...f, points: { add: 0, edit: 0 }, policyRevision: 1 })) })),
+        fields: t.fields.filter(f => f.visibility === "public" || currentUser?.owner && !currentVisitorOnly).map(f => ({ ...f, points: { add: 0, edit: 0 }, policyRevision: 1 })) })),
       permissions: { canContribute: !!currentUser, canConfigure: false, canModerate: false,
-        canArchive: false, canSeeAccounting: !!currentUser, canSeeMinistry: !!currentUser },
+        canArchive: false, canSeeAccounting: !!currentUser && !currentVisitorOnly, canSeeMinistry: !!currentUser && !currentVisitorOnly },
       references: [], userPoints: "0",
     };
     json(meta); return;
   }
   const visible = (item: MarketCard) => ({ ...item, data: { ...item.data,
-    ...(currentUser ? { accountingMappings: [{ system: "بيانات المالك الخاصة", identifier: "private-owner-only" }] } : {}) } });
+    ...(currentUser && !currentVisitorOnly ? { accountingMappings: [{ system: "بيانات المالك الخاصة", identifier: "private-owner-only" }] } : {}) } });
   if (req.path === "/cards") {
     if (heldCardResponse) await heldCardResponse;
     const kind = String(req.query.kind ?? "");
@@ -146,6 +177,18 @@ async function api(page: Page, path: string, fresh = false) {
 }
 async function cacheReady(page: Page, path: string) {
   await page.waitForFunction(path => !!(window as any).marketOfflineTest?.status(path)?.savedAt, path);
+}
+async function sessionReady(page: Page, expected: {
+  userId: number | null; offlineMode?: boolean; visitorOnly?: boolean; requiresOnlineLogin?: boolean;
+}) {
+  await page.waitForFunction(expected => {
+    const session = (window as any).marketOfflineTest?.session();
+    return session && !session.loading && Object.entries(expected).every(([key, value]) => session[key] === value);
+  }, expected);
+}
+async function signInOwner(page: Page) {
+  await page.evaluate(() => (window as any).marketOfflineTest.loginWithPassword("offline@example.test", "offline-test-password"));
+  await sessionReady(page, { userId: owner.id, offlineMode: false, visitorOnly: false, requiresOnlineLogin: false });
 }
 try {
   await build({ configFile: false, root, plugins: [react()], publicDir: false,
@@ -246,15 +289,121 @@ try {
   await page.evaluate(() => (window as any).marketOfflineTest.returnToOnline());
   currentUser = owner;
   await page.evaluate(() => (window as any).marketOfflineTest.reloadSession());
+  await sessionReady(page, { userId: owner.id, offlineMode: false });
   const privateDetail = await api(page, "/medicine-market/cards/145", true) as { card: MarketCard };
   assert.equal((privateDetail.card.data.accountingMappings as { identifier: string }[])[0]!.identifier, "private-owner-only");
   const oldScope = await page.evaluate(() => (window as any).marketOfflineTest.scope());
+
+  // An ordinary browser must retain its verified identity across a real
+  // offline reload. A guest-only market test cannot detect a forced logout.
+  assert.equal(await page.evaluate(() => window.matchMedia("(display-mode: standalone)").matches), false);
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sessionReady(page, { userId: owner.id, offlineMode: true, visitorOnly: false, requiresOnlineLogin: false });
+  assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), oldScope);
+  const offlineOwnerDetail = await api(page, "/medicine-market/cards/145") as { card: MarketCard };
+  assert.equal((offlineOwnerDetail.card.data.accountingMappings as { identifier: string }[])[0]!.identifier, "private-owner-only");
+  // The worker must not substitute its cached HTML shell for any API request.
+  assert.equal(await page.evaluate(async () => {
+    try { await fetch("/api/auth/session"); return false; } catch { return true; }
+  }), true);
+  console.log("PASS authenticated browser offline reload keeps identity, scope and saved data");
+
+  await context.setOffline(false);
+  await page.evaluate(() => (window as any).marketOfflineTest.returnToOnline());
+  await sessionReady(page, { userId: owner.id, offlineMode: false });
+
+  // A connected LAN can lose the server while navigator.onLine stays true.
+  sessionResponse = { kind: "transport" };
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sessionReady(page, { userId: owner.id, offlineMode: true });
+  assert.equal(await page.evaluate(() => navigator.onLine), true);
+  assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), oldScope);
+  const requestsBeforeReconnect = sessionRequests;
+  sessionResponse = null;
+  await page.evaluate(async () => {
+    (window as any).marketRestoredEvents = 0;
+    window.addEventListener("alraesy-network-restored", () => { (window as any).marketRestoredEvents++; });
+    await (window as any).marketOfflineTest.returnToOnline();
+  });
+  await sessionReady(page, { userId: owner.id, offlineMode: false });
+  assert(sessionRequests > requestsBeforeReconnect, "Actual network recovery must revalidate the server session");
+  assert((await page.evaluate(() => (window as any).marketRestoredEvents)) > 0,
+    "Recovery must be exercised through alraesy-network-restored, without a browser online event");
+  console.log("PASS connected-LAN outage resumes locally and revalidates on actual network recovery");
+
+  for (const status of [200, 503]) {
+    sessionResponse = { kind: "html", status };
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await sessionReady(page, { userId: owner.id, offlineMode: true });
+    assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), oldScope);
+  }
+  sessionResponse = null;
+  await page.evaluate(() => (window as any).marketOfflineTest.reloadSession());
+  await sessionReady(page, { userId: owner.id, offlineMode: false });
+  console.log("PASS temporary HTML session responses preserve the verified local identity");
+
+  currentVisitorOnly = true;
+  await page.evaluate(() => (window as any).marketOfflineTest.reloadSession());
+  await sessionReady(page, { userId: owner.id, visitorOnly: true, offlineMode: false });
+  const visitorScope = await page.evaluate(() => (window as any).marketOfflineTest.scope());
+  assert.notEqual(visitorScope, oldScope);
+  const visitorDetail = await api(page, "/medicine-market/cards/145", true) as { card: MarketCard };
+  assert.equal(visitorDetail.card.data.accountingMappings, undefined);
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sessionReady(page, { userId: owner.id, visitorOnly: true, offlineMode: true });
+  assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), visitorScope);
+  assert.equal(((await api(page, "/medicine-market/cards/145")) as { card: MarketCard }).card.data.accountingMappings, undefined);
+  console.log("PASS visitor-only identity and cache scope survive an offline reload without private fields");
+
+  currentVisitorOnly = false;
+  await context.setOffline(false);
+  await page.evaluate(() => (window as any).marketOfflineTest.returnToOnline());
+  await sessionReady(page, { userId: owner.id, visitorOnly: false, offlineMode: false });
+  await api(page, "/medicine-market/cards/145", true);
   await page.evaluate(() => (window as any).marketOfflineTest.logout());
+  await sessionReady(page, { userId: null });
   assert.notEqual(await page.evaluate(() => (window as any).marketOfflineTest.scope()), oldScope);
   const publicDetail = await api(page, "/medicine-market/cards/145", true) as { card: MarketCard };
   assert.equal(publicDetail.card.data.accountingMappings, undefined);
   console.log("PASS private account separation and logout isolation");
 
+  await signInOwner(page);
+  await context.setOffline(true);
+  await page.evaluate(() => (window as any).marketOfflineTest.logout());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sessionReady(page, { userId: null });
+  assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), "guest");
+  // The old live cookie still exists; reconnecting must not undo local logout.
+  assert.equal(currentUser?.id, owner.id);
+  await context.setOffline(false);
+  await page.evaluate(() => (window as any).marketOfflineTest.returnToOnline());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sessionReady(page, { userId: null });
+  console.log("PASS explicit offline logout stays signed out after reload and reconnect");
+
+  for (const denial of [{ kind: "json", status: 401 }, { kind: "html", status: 403 }] as const) {
+    sessionResponse = null;
+    await signInOwner(page);
+    await api(page, "/medicine-market/cards/145", true);
+    sessionResponse = denial;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await sessionReady(page, { userId: null, offlineMode: false });
+    await context.setOffline(true);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await sessionReady(page, { userId: null });
+    assert.equal(await page.evaluate(() => (window as any).marketOfflineTest.scope()), "guest");
+    await context.setOffline(false);
+    await page.evaluate(() => (window as any).marketOfflineTest.returnToOnline());
+  }
+  console.log("PASS 401 JSON and 403 HTML revoke local identity and cannot resume offline");
+
+  sessionResponse = null;
+  currentUser = null;
+  await page.evaluate(() => (window as any).marketOfflineTest.reloadSession());
+  await sessionReady(page, { userId: null });
+  await api(page, "/medicine-market/cards/145", true);
   denyMarket = true;
   await assert.rejects(api(page, "/medicine-market/cards/145", true));
   await context.setOffline(true);

@@ -124,6 +124,7 @@ export function offlineChanged(listener: () => void) {
 function changed() { window.dispatchEvent(new Event(CHANGED)); }
 type OfflineSessionRow = {
   key: "last"; user: import("../../../packages/contracts/src/index").User;
+  visitorOnly?: boolean;
   savedAt: number;
 };
 const OFFLINE_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -192,17 +193,24 @@ export function validOfflineSession(
 }
 export async function saveOfflineSession(
   user: import("../../../packages/contracts/src/index").User,
+  visitorOnly = false,
 ): Promise<void> {
   if (!Number.isSafeInteger(user.id) || user.id <= 0 || user.suspended || user.archived) return;
   // An offline session is a limited, local continuation of an authenticated
   // session, not a password or CSRF token; financial writes still require API.
-  await resumeWrite({key:"last",user,savedAt:Date.now()});
+  await resumeWrite({key:"last",user,visitorOnly,savedAt:Date.now()});
 }
 export async function readOfflineSession():
   Promise<import("../../../packages/contracts/src/index").User | null> {
+  return (await readOfflineSessionState())?.user ?? null;
+}
+export async function readOfflineSessionState():
+  Promise<Pick<OfflineSessionRow, "user" | "visitorOnly"> | null> {
   const row = await resumeRead();
   if (!validOfflineSession(row)) return null;
-  return row!.user;
+  // Old rows have no visitorOnly; preserve the existing market mode hint for
+  // them until the next successful online check writes the complete identity.
+  return {user:row!.user,visitorOnly:row!.visitorOnly};
 }
 export async function clearOfflineSession(): Promise<void> {
   await resumeClear();
