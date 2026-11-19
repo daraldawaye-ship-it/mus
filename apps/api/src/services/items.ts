@@ -150,11 +150,14 @@ export async function checkItemReferences(
     "salePrice3",
     "purchasePrice",
   ] as const) {
-    if ((input[field].split(".")[1]?.length ?? 0) > places)
+    // Weighted purchase averages retain four decimals independently of the
+    // currency's posting quantum. Sale prices keep the currency precision.
+    const allowedPlaces = field === "purchasePrice" ? Math.max(4, places) : places;
+    if ((input[field].split(".")[1]?.length ?? 0) > allowedPlaces)
       throw new HttpError(
         400,
         "currency_precision",
-        "سعر الصنف يتجاوز دقة العملة المختارة",
+        "سعر الصنف يتجاوز الدقة المسموحة للعملة ونوع السعر",
       );
   }
   if (input.shelfId !== null) {
