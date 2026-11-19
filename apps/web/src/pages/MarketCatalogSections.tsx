@@ -18,9 +18,21 @@ type CardPage = { items: MarketCard[]; total: number; page: number; pageSize: nu
 const ROOT = "/medicine-market";
 const SECTION_SIZE = 10;
 const SECTION_ORDER: MarketKind[] = [
-  "medicine", "composition", "scientific-name", "agent", "wholesaler",
+  "agent", "wholesaler", "medicine", "composition", "scientific-name",
   "manufacturer", "pharmacy", "prescription", "doctor", "hospital", "clinic", "college",
 ];
+
+/** Keep all market browsing menus and section previews in the same order. */
+export function orderPublicMarketTypes(types: MarketType[]): MarketType[] {
+  return types.filter(type => !isMarketAdministrativeKind(type.key))
+    .sort((a, b) => {
+      const rank = (kind: MarketKind) => {
+        const index = SECTION_ORDER.indexOf(kind);
+        return index < 0 ? SECTION_ORDER.length : index;
+      };
+      return rank(a.key) - rank(b.key);
+    });
+}
 const hasValue = (value: unknown) => value !== null && value !== undefined && value !== "" &&
   (!Array.isArray(value) || value.length > 0);
 
@@ -175,14 +187,7 @@ export function MarketCatalogSections({ types, q, sort, archived, references, on
   onOpen: (id: number) => void;
   onBrowse: (kind: MarketKind) => void;
 }) {
-  const ordered = types.filter(type => !isMarketAdministrativeKind(type.key))
-    .sort((a, b) => {
-      const rank = (kind: MarketKind) => {
-        const index = SECTION_ORDER.indexOf(kind);
-        return index < 0 ? SECTION_ORDER.length : index;
-      };
-      return rank(a.key) - rank(b.key);
-    });
+  const ordered = orderPublicMarketTypes(types);
   return <div className="market-catalog-sections">
     <p className="market-catalog-section-note">
       {q ? "نتائج البحث حسب القسم — حتى 10 كروت لكل قسم" :
