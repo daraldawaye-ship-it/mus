@@ -15,7 +15,6 @@ type Report = {
   asOf:string;total:number;page:number;pageSize:number;
   summary:{currentCount:number;endedCount:number};items:Row[];
 };
-type Status = "current"|"ended"|"all";
 type Sort = "stopDate"|"name"|"code";
 const format = (value:number)=>value.toLocaleString("en-US");
 
@@ -116,7 +115,7 @@ export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
               {sort("name","الصنف")}
               {sort("code","الكود")}
               {sort("stopDate","توقف الطلب حتى")}
-              <th>كمية الطلب للتنبيه</th>
+              <th>كمية الطلب</th>
               <th>حالة الإيقاف</th>
             </tr></thead>
             <tbody>
