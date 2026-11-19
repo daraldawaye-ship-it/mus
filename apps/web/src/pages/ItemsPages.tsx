@@ -1119,7 +1119,6 @@ type ItemFields = {
   minOrderQuantity: string;
   reviewed: boolean;
   reorderLimit: string;
-  orderQuantity: string;
   reserveQuantity: string;
   searchKeys: string;
   shortcut: string;
@@ -1164,7 +1163,6 @@ function initialItemFields(item: Item | null): ItemFields {
     minOrderQuantity: item?.minOrderQuantity ?? "1",
     reviewed: item?.reviewed ?? false,
     reorderLimit: item?.reorderLimit ?? "0",
-    orderQuantity: item?.orderQuantity ?? "0",
     reserveQuantity: item?.reserveQuantity ?? "0",
     searchKeys: item?.searchKeys ?? "",
     shortcut: item?.shortcut ?? "",
