@@ -19,6 +19,7 @@ import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { businessRoutes } from "./business-routes.ts";
 import { systemMonitorRoutes } from "./routes-system-monitor.ts";
 import { ownerSqlConsoleRoutes } from "./routes-owner-sql.ts";
+import { ownerAdministrativeNotesRoutes } from "./routes-owner-administrative-notes.ts";
 import { callOwnerSqlMcp } from "./services/owner-sql-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
@@ -148,6 +149,7 @@ export async function createApp(options: AppOptions = {}) {
     quickMessagesRoutes(pool),
     monitor,
     ownerSqlConsoleRoutes(pool,marketOptions),
+    ownerAdministrativeNotesRoutes(pool),
     business,
     pledgeRoutes(pool),
   );
