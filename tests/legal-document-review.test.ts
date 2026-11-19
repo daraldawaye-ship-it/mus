@@ -15,7 +15,9 @@ test("catalog advertises document review updates and filters",()=>{
  const router=legalCaseRoutes({} as Pool);
  const list=apiCatalog(router,{operation:"GET /legal/records"}).operations[0];
  const put=apiCatalog(router,{operation:"PUT /legal/records/:id"}).operations[0];
+ assert.ok(list && "queryFields" in list);
  assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState"]);
+ assert.ok(put && "bodySchema" in put);
  assert.ok(put.bodySchema && JSON.stringify(put.bodySchema).includes("\"documentReview\""));
 });
 
