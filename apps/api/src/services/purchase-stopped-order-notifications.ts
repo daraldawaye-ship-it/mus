@@ -36,7 +36,9 @@ export async function notifyPurchaseOfStoppedOrderItem(
         AND purchase.kind='purchase' AND purchase.posted
         AND line.smallest_quantity::numeric>0
         AND item.order_stopped_until>(purchase.created_at AT TIME ZONE 'Asia/Aden')::date
-        AND COALESCE(item.order_quantity,0)=0
+        -- The visible special-order threshold is the authoritative field.
+        -- Only an unset (NULL) threshold permits this alert; zero is set.
+        AND item.order_alert_quantity IS NULL
         AND NOT ${thirdPartyGoodsSql("item","item.company_id","item.id")}
       GROUP BY line.item_id`,
     [companyId, invoiceId],
@@ -48,8 +50,8 @@ export async function notifyPurchaseOfStoppedOrderItem(
       subjectKey: `purchase:${invoiceId}:item:${item.item_id}`,
       eventKey: `purchase:stopped-order:${invoiceId}:${item.item_id}`,
       title: "تم شراء صنف متوقف طلبه",
-      message: `تم شراء الصنف «${item.item_name}» (الرمز: ${item.item_code}) في فاتورة المشتريات رقم ${invoiceNumber}، رغم أن طلب الصنف متوقف حتى ${item.stopped_until} وكمية الطلب في كرت الصنف فارغة (صفر). راجع الفاتورة والصنف.`,
-      href: `/companies/${companyId}/invoices`,
+      message: `تم شراء الصنف «${item.item_name}» (الرمز: ${item.item_code}) في فاتورة المشتريات رقم ${invoiceNumber}، رغم أن طلب الصنف متوقف حتى ${item.stopped_until} وكمية الطلب في كرت الصنف غير محددة (فارغة). راجع الفاتورة والصنف.`,
+      href: `/companies/${companyId}/stopped-order-items?itemId=${item.item_id}&invoiceId=${invoiceId}`,
     });
   }
 }
