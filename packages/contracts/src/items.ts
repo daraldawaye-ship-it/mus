@@ -210,7 +210,6 @@ const itemFields = z
     reviewed: z.boolean().default(false),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
-    orderQuantity: itemWholeQuantitySchema.default("0"),
     reserveQuantity: itemWholeQuantitySchema.default("0"),
     searchKeys: z.string().trim().max(1000).default(""),
     purchaseNotes: z.string().trim().max(1000).default(""),
@@ -400,7 +399,6 @@ export interface Item extends ItemIdentity {
   currencyDecimalPlaces: number;
   currencyActive: boolean;
   reorderLimit: string;
-  orderQuantity: string;
   /** Exact quantity in the smallest enabled item unit. */
   reserveQuantity: string;
   /** Combined available stock in exact smallest-unit integers; null without stock access. */
@@ -530,7 +528,6 @@ export const itemCatalog = {
     settlementDisplayDate: null,
     purchaseFactor: 1,
     reorderLimit: "0",
-    orderQuantity: "0",
     reserveQuantity: "0",
     hasExpiry: true,
     active: true,
