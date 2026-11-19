@@ -688,6 +688,16 @@ page(
     keywords: ["حد الطلب", "كمية الطلب", "الأصناف الخاصة", "تنبيه كمية الطلب", "مبيعات", "متوفر"] },
 );
 page(
+  "company.stopped-order-items",
+  "الأصناف المتوقف طلبها",
+  "الأصناف والمخزون",
+  "/companies/:companyId/stopped-order-items",
+  { view: permission("items.view") },
+  "متابعة الأصناف التي أُوقف طلبها، مع البحث وحالة انتهاء الإيقاف ورابط الصنف والفاتورة المرتبطة بالتنبيه.",
+  { parentKey: "company.item-options-list", type: "report",
+    keywords: ["توقف الطلب", "الأصناف الموقوفة", "شراء صنف متوقف", "إيقاف الطلب"] },
+);
+page(
   "company.expired-items-follow-up",
   "متابعة الأصناف المنتهية الصلاحية",
   "الأصناف والمخزون",
