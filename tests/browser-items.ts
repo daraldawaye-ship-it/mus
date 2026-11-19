@@ -224,7 +224,6 @@ function patchBody(item: Item, overrides: Record<string, unknown> = {}) {
     purchaseFactor: item.purchaseFactor,
     currencyId: item.currencyId,
     reorderLimit: item.reorderLimit,
-    orderQuantity: item.orderQuantity,
     searchKeys: item.searchKeys,
     purchaseNotes: item.purchaseNotes,
     orderStoppedUntil: item.orderStoppedUntil,
