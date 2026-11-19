@@ -801,6 +801,8 @@ export function itemRoutes(pool: Pool): Router {
               "i.barcode",
               "i.legacy_id",
               "i.search_keys",
+              // Search owner administrative notes without returning their text to staff.
+              "i.administrative_notes",
               "a.name",
               "f.arabic_name",
               "f.english_name",
