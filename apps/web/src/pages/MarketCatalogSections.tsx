@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, RefreshCw } from "lucide-react";
-import { api, useSession } from "../api";
+import { useSession } from "../api";
+import { useMarketQuery } from "../market-query";
+import { MarketOfflineStatus } from "../MarketOfflineStatus";
 import { Button, Notice } from "../ui";
 import { errorMessage } from "../phase2";
 import { isMarketAdministrativeKind } from "../../../../packages/contracts/src/medicine-market";
@@ -26,9 +27,9 @@ const hasValue = (value: unknown) => value !== null && value !== undefined && va
 function CompactRelation({ id }: { id: number }) {
   const { user } = useSession();
   // Share the existing relation cache; changing this layout never changes market records.
-  const result = useQuery({
+  const result = useMarketQuery<MarketDetail>({
     queryKey: ["medicine-market", user?.id, "relation", id],
-    queryFn: ({ signal }) => api<MarketDetail>(`${ROOT}/cards/${id}`, { signal }),
+    path: `${ROOT}/cards/${id}`,
     enabled: id > 0,
     staleTime: 60_000,
   });
@@ -119,11 +120,11 @@ function MarketSection({ type, q, sort, archived, references, onOpen, onBrowse }
     observer.observe(section.current);
     return () => observer.disconnect();
   }, []);
-  const list = useQuery({
+  const list = useMarketQuery<CardPage>({
     queryKey: ["medicine-market", user?.id, "cards", "section", type.key, q, archived, sort],
-    queryFn: ({ signal }) => api<CardPage>(`${ROOT}/cards?${new URLSearchParams({
+    path: `${ROOT}/cards?${new URLSearchParams({
       kind: type.key, q, sort, archived: String(archived), page: "1", pageSize: String(SECTION_SIZE),
-    })}`, { signal }),
+    })}`,
     enabled: visited || !!q,
     staleTime: 20_000,
     refetchInterval: nearViewport ? 20_000 : false,
@@ -135,11 +136,12 @@ function MarketSection({ type, q, sort, archived, references, onOpen, onBrowse }
     aria-labelledby={`market-section-${type.key}`} data-market-section={type.key}>
     <header className="market-catalog-section-heading">
       <h2 id={`market-section-${type.key}`}>{type.label}</h2>
-      {list.data && <small>{list.data.total} كرت</small>}
+      {list.data && <small>{list.data.total} كرت{list.marketStatus?.partial ? " محفوظ" : ""}</small>}
       <Button variant="ghost" size="compact" onClick={() => onBrowse(type.key)}>
         عرض الكل <ChevronLeft size={14} />
       </Button>
     </header>
+    <MarketOfflineStatus path={list.marketPath}/>
     {list.error ? <div className="market-section-error">
       <Notice tone="error">{errorMessage(list.error)}</Notice>
       <Button variant="secondary" size="compact" onClick={() => void list.refetch()}
@@ -149,7 +151,8 @@ function MarketSection({ type, q, sort, archived, references, onOpen, onBrowse }
         {list.data.items.map(item => <MarketCompactCard key={item.id} item={item}
           type={type} references={references} onOpen={onOpen} />)}
       </div>
-      {list.data.items.length === 0 && <p className="market-section-empty">لا توجد كروت في هذا القسم بعد.</p>}
+      {list.data.items.length === 0 && <p className="market-section-empty">{list.marketStatus?.partial
+        ? "لا توجد كروت محفوظة لهذا البحث على الجهاز." : "لا توجد كروت في هذا القسم بعد."}</p>}
       <footer className="market-catalog-section-footer">
         <small>{list.data.items.length} من {list.data.total}</small>
         <Button variant="secondary" size="compact" onClick={() => onBrowse(type.key)}>

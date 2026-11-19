@@ -19,6 +19,13 @@ import { offlineUser } from "./offline-storage";
 import { allowPasswordAutofillOnDevice } from "./device-login-policy";
 import { currentDeviceKind } from "./device-kind";
 import {readEmployeePreview,isAllowedPreviewRead,useEmployeePreview} from "./employee-preview-mode";
+import {
+  captureMarketCacheContext, clearMarketCacheScope, confirmMarketRead,
+  getMarketCacheScope, isCurrentMarketCacheContext, isMarketCachePath,
+  invalidateMarketCardRead,
+  normalizeMarketPath, pauseMarketCacheSession, publishMarketRead, readMarketCache, saveMarketRead,
+  setMarketCacheSession, setMarketReadStatus,
+} from "./market-offline";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -38,9 +45,133 @@ export class ApiFailure extends Error {
 let csrf: string | null = null;
 let freshOnlineLoginRequired = false;
 export function sessionRequiresLogin(): boolean { return freshOnlineLoginRequired; }
+const marketReads = new Map<string, Promise<unknown>>();
+/** Read-only market data has its own scoped cache, independent of money APIs. */
+async function marketApiRead<T>(path: string, options: { signal?: AbortSignal; marketFresh?: boolean }): Promise<T> {
+  path = normalizeMarketPath(path);
+  const context = captureMarketCacheContext();
+  const current = () => {
+    if (options.signal?.aborted || !isCurrentMarketCacheContext(context))
+      throw new DOMException("تغيّرت جلسة السوق", "AbortError");
+  };
+  const saved = await readMarketCache<T>(context, path).catch(() => undefined);
+  current();
+  const savedStatus = (refreshing: boolean, error?: string) => setMarketReadStatus(context, path, {
+    source: saved ? "saved" : "missing", savedAt: saved?.savedAt ?? null,
+    checkedAt: saved?.checkedAt ?? null, partial: saved?.partial ?? false, refreshing,
+    ...(error ? { error } : {}),
+  });
+  if (isOfflineNow()) {
+    savedStatus(false, saved ? undefined : "هذه البيانات لم تُحفظ على هذا الجهاز بعد؛ افتحها مرة أثناء الاتصال.");
+    if (saved) return saved.data;
+    throw new TypeError("هذه البيانات لم تُحفظ على هذا الجهاز بعد؛ افتحها مرة أثناء الاتصال.");
+  }
+  const key = `${context.scope}|${context.generation}|${path}`;
+  const refresh = () => {
+    const pending = marketReads.get(key);
+    if (pending) return pending as Promise<T>;
+    const request = (async (): Promise<T> => {
+      current();
+      const requestedAt = Date.now();
+      let response: Response;
+      try {
+        response = await fetch(`/api${path}`, {
+          credentials: context.scope === "guest" ? "omit" : "same-origin",
+          cache: "no-store", signal: options.signal,
+          headers: {
+            Accept: "application/json", "X-Alraesy-Device": currentDeviceKind(),
+            ...(saved?.etag && !saved.partial ? { "If-None-Match": saved.etag } : {}),
+          },
+        });
+      } catch (error) {
+        if (!options.signal?.aborted && error instanceof TypeError) markNetworkFailure();
+        throw error;
+      }
+      current();
+      if ([401, 403, 404].includes(response.status)) {
+        // Rejection remains authoritative even if a proxy returned HTML.
+        const data = await readApiJson(response).catch(() => null);
+        current();
+        const failure = data && typeof data === "object" ?
+          (data as { error?: { message?: string; code?: string } }).error : undefined;
+        const error = new ApiFailure(failure?.message ?? "هذه البيانات لم تعد متاحة لهذا الحساب",
+          response.status, failure?.code ?? "forbidden");
+        markNetworkSuccess();
+        await (response.status === 404 ? invalidateMarketCardRead(context, path) :
+          clearMarketCacheScope(context.scope)).catch(() => {});
+        const afterClear = captureMarketCacheContext();
+        if (afterClear.scope === context.scope && afterClear.generation === context.generation + 1)
+          setMarketReadStatus(afterClear, path, { source: "missing", savedAt: null, checkedAt: null,
+            partial: false, refreshing: false, error: error.message });
+        throw error;
+      }
+      if (response.status === 304 && saved && !saved.partial) {
+        markNetworkSuccess();
+        await confirmMarketRead(context, path).catch(() => {});
+        current();
+        // Another list may have delivered a newer card while validation was in
+        // flight. The 304 verifies the old body only; retain the newer card.
+        const latest = await readMarketCache<T>(context, path).catch(() => undefined) ?? saved;
+        current();
+        setMarketReadStatus(context, path, { source: "network", savedAt: latest.savedAt,
+          checkedAt: latest.partial ? latest.checkedAt : Date.now(), partial: latest.partial, refreshing: false });
+        if (latest.partial) publishMarketRead(context, path, latest.data);
+        return latest.data;
+      }
+      let data: unknown;
+      try { data = await readApiJson(response); }
+      catch (error) {
+        if (error instanceof UnexpectedApiResponse)
+          throw new ApiFailure(error.message, response.status >= 500 ? response.status : 503, "invalid_api_response");
+        throw error;
+      }
+      current();
+      markNetworkSuccess();
+      if (!response.ok) {
+        const failure = data && typeof data === "object" ?
+          (data as { error?: { message?: string; code?: string } }).error : undefined;
+        const error = new ApiFailure(failure?.message ?? "تعذر تحديث بيانات السوق", response.status, failure?.code ?? "unknown");
+        throw error;
+      }
+      const persisted = await saveMarketRead(context, path, data, response.headers.get("etag"), requestedAt).catch(() => false);
+      current();
+      setMarketReadStatus(context, path, { source: "network", savedAt: persisted ? Date.now() : null,
+        checkedAt: Date.now(), partial: false, refreshing: false,
+        ...(!persisted ? { error: "تعذر حفظ نسخة محلية لهذه البيانات على الجهاز" } : {}),
+      });
+      publishMarketRead(context, path, data);
+      return data as T;
+    })();
+    marketReads.set(key, request);
+    void request.then(() => { marketReads.delete(key); }, () => { marketReads.delete(key); });
+    return request;
+  };
+  const recover = (error: unknown) => {
+    if (options.signal?.aborted && isCurrentMarketCacheContext(context)) {
+      savedStatus(false);
+      throw error;
+    }
+    // HTTP rejection is authoritative. Only outages can retain saved data.
+    if (saved && (error instanceof TypeError || error instanceof ApiFailure && error.status >= 500)) {
+      current();
+      savedStatus(false, "تعذر التحقق من التحديث؛ المعروض هو المحفوظ على الجهاز.");
+      return saved.data;
+    }
+    if (isCurrentMarketCacheContext(context) && !options.signal?.aborted)
+      savedStatus(false, error instanceof Error ? error.message : "تعذر تحميل بيانات السوق");
+    throw error;
+  };
+  if (saved && !options.marketFresh) {
+    savedStatus(true);
+    void refresh().catch(error => { try { recover(error); } catch { /* Status/event carries the failure. */ } });
+    return saved.data;
+  }
+  savedStatus(true);
+  try { return await refresh(); } catch (error) { return recover(error); }
+}
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; marketFresh?: boolean } = {},
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const mutation = method !== "GET" && method !== "HEAD";
@@ -56,6 +187,12 @@ export async function api<T>(
   const previewRequest=!!preview && path!=="/auth/session";
   if(previewRequest && !isAllowedPreviewRead(path,preview!.companyId))
     throw new ApiFailure("هذه المعاينة مقتصرة على صفحات الشركة المختارة",403,"preview_scope");
+  if (!preview && method === "GET" && isMarketCachePath(path)) {
+    if (anonymousMarketRead) setMarketCacheSession(null, false, true);
+    if (getMarketCacheScope() === null)
+      throw new ApiFailure("يلزم تأكيد جلسة السوق؛ حدّث الصفحة أو أعد تسجيل الدخول.", 409, "market_session_unverified");
+    return marketApiRead<T>(path, options);
+  }
   // A manual offline switch uses the same user-authorized read cache as
   // a physical outage. Never send new financial mutations while offline.
   async function fallbackRead(): Promise<T | undefined> {
@@ -187,6 +324,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
     }
     if (epoch.current !== request) return;
+    setMarketCacheSession(result.user, !!result.visitorOnly, freshOnlineLoginRequired);
     setOfflineUser(result.user?.id ?? null);
     sharedIdentity(result.user?.id ?? null);
     setSession({ ...result, pendingLogoutRedirect: false });
@@ -201,12 +339,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (error instanceof ApiFailure) {
       if (error.status === 401 || error.status === 403) {
         const prior=offlineUser();
+        if (epoch.current === request) await clearMarketCacheScope().catch(() => {});
         await clearOfflineSession().catch(() => {});
         if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
         if (epoch.current === request) {
           csrf = null;
           setOfflineUser(null);
           sharedIdentity(null);
+          setMarketCacheSession(null);
           setSession({ user: null, csrf: null, pendingLogoutRedirect: false });
           setOfflineMode(false);
         }
@@ -226,6 +366,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       csrf = null;
       setOfflineUser(null);
       sharedIdentity(null);
+      setMarketCacheSession(null);
       setSession({user:null,csrf:null,pendingLogoutRedirect:false});
       setRequiresOnlineLogin(false);
       setOfflineMode(true);
@@ -238,6 +379,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     csrf = null;
     setOfflineUser(user.id);
     sharedIdentity(user.id);
+    setMarketCacheSession(user, undefined, freshOnlineLoginRequired);
     await restoreOfflineSharedGrants(user.id).catch(() => {});
     if(epoch.current!==request) return false;
     setSession({ user, csrf: null, pendingLogoutRedirect: false });
@@ -291,6 +433,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         csrf = null;
         setOfflineUser(last?.id ?? null);
         sharedIdentity(last?.id ?? null);
+        setMarketCacheSession(last, false, true);
         if (last) await restoreOfflineSharedGrants(last.id).catch(() => {});
         if (controller.signal.aborted || epoch.current !== request) return;
         setSession({user:last,csrf:null,pendingLogoutRedirect:false});
@@ -306,6 +449,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (controller.signal.aborted || epoch.current !== request) return;
         if (await recoverOffline(error, request)) return;
         if (controller.signal.aborted || epoch.current !== request) return;
+        setMarketCacheSession(null);
         setError(error instanceof ApiFailure ? error.message :
           "تعذر الاتصال. إذا لم تحفظ جلسة على هذا الجهاز، اتصل بالإنترنت وسجّل الدخول مرة واحدة.");
         setLoading(false);
@@ -327,6 +471,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   async function adoptLiveAuthentication(result: SessionResponse): Promise<void> {
     if (!result.user || !result.csrf) throw new Error("لم يؤكد الخادم جلسة المستخدم");
     const request=++epoch.current;
+    pauseMarketCacheSession();
     await client.cancelQueries();
     client.clear();
     // An IndexedDB permission/quota denial must not turn a successful server
@@ -376,6 +521,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     const request=++epoch.current;
     freshOnlineLoginRequired=true;
+    setMarketCacheSession(null, false, true);
     await setOfflineLoginRequired(true);
     await client.cancelQueries();
     client.clear();
@@ -384,6 +530,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     csrf=null;
     setOfflineUser(offlineUserRecord.id);
     sharedIdentity(offlineUserRecord.id);
+    setMarketCacheSession(offlineUserRecord, false, true);
     await restoreOfflineSharedGrants(offlineUserRecord.id).catch(()=>{});
     if (epoch.current!==request) return;
     setSession({user:offlineUserRecord,csrf:null,pendingLogoutRedirect:false});
@@ -409,6 +556,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // server cookie usable. A confirmed online logout revoked that cookie,
     // so OAuth and ordinary online login must remain available as before.
     freshOnlineLoginRequired = !serverSignedOut;
+    await clearMarketCacheScope().catch(() => {});
+    setMarketCacheSession(null);
     await setOfflineLoginRequired(!serverSignedOut,true);
     await client.cancelQueries();
     client.clear();

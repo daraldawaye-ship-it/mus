@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useId, useRef } from "react";
 import type { MarketCard, MarketKind, MarketMeta, MarketReferenceEntry, MarketRelatedMedicinesPage } from "../../../../packages/contracts/src/medicine-market";
-import { api, useSession } from "../api";
+import { useSession } from "../api";
+import { useMarketInfiniteQuery } from "../market-query";
+import { MarketOfflineStatus } from "../MarketOfflineStatus";
 import { errorMessage } from "../phase2";
 import { Button, Card, Notice } from "../ui";
 import { MarketCompactCard } from "./MarketCatalogSections";
@@ -23,12 +24,12 @@ export function MarketRelatedMedicines({ card, medicineType, references, onOpen 
   const titleId = useId();
   const loadMore = useRef<HTMLDivElement>(null);
   const title = titles[card.kind];
-  const list = useInfiniteQuery({
+  const path = useCallback((cursor: number | null) =>
+    `/medicine-market/cards/${card.id}/related-medicines${cursor === null ? "" : `?cursor=${cursor}`}`,
+  [card.id]);
+  const list = useMarketInfiniteQuery<MarketRelatedMedicinesPage, number | null>({
     queryKey: ["medicine-market", user?.id, "related-medicines", card.id, card.revision],
-    queryFn: ({ pageParam, signal }) => api<MarketRelatedMedicinesPage>(
-      `/medicine-market/cards/${card.id}/related-medicines${pageParam === null ? "" : `?cursor=${pageParam}`}`,
-      { signal },
-    ),
+    path,
     initialPageParam: null as number | null,
     getNextPageParam: last => last.nextCursor,
     enabled: !!title,
@@ -48,13 +49,15 @@ export function MarketRelatedMedicines({ card, medicineType, references, onOpen 
   }, [fetchNextPage, hasNextPage, isFetching, isFetchNextPageError, card.id]);
 
   if (!title) return null;
-  const items = list.data?.pages.flatMap(page => page.items) ?? [];
+  const items = [...new Map((list.data?.pages.flatMap(page => page.items) ?? [])
+    .map(item => [item.id, item])).values()];
   return (
     <Card className="market-related-medicines">
       <section aria-labelledby={titleId}>
         <header className="market-catalog-section-heading">
           <h2 id={titleId}>{title}</h2>
         </header>
+        <MarketOfflineStatus path={list.marketPath}/>
         {list.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}
         {!!list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
         {list.isLoadingError && (
@@ -63,7 +66,8 @@ export function MarketRelatedMedicines({ card, medicineType, references, onOpen 
         )}
         {list.isSuccess && items.length === 0 && (
           <p className="market-section-empty">
-            {card.kind !== "medicine" ? "لا توجد أصناف مرتبطة." :
+            {list.marketStatus?.partial ? "لا توجد أصناف مرتبطة محفوظة على هذا الجهاز." :
+              card.kind !== "medicine" ? "لا توجد أصناف مرتبطة." :
               card.data.compositionId ? "لا توجد أصناف أخرى مرتبطة بنفس التركيب." :
               "لم يُربط هذا الصنف بتركيب بعد."}
           </p>

@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ImagePreviewModal } from "./ImagePreviewModal";
+import { useMarketImage } from "./market-offline-images";
 
 /**
  * Existing market photos were saved as 512x512 with a synthetic white frame.
@@ -7,7 +8,7 @@ import { ImagePreviewModal } from "./ImagePreviewModal";
  * and uploaded picture intact. New uploads keep their true aspect ratio.
  */
 export function MarketProductImage({
-  src,alt,className,style,trimLegacyPadding=true,previewOnClick=true,
+  src,alt,className,style,trimLegacyPadding=true,previewOnClick=true,cardId,revision,
 }:{
   src:string;
   alt:string;
@@ -15,9 +16,13 @@ export function MarketProductImage({
   style?:CSSProperties;
   trimLegacyPadding?:boolean;
   previewOnClick?:boolean;
+  cardId?:number;
+  revision?:number;
 }){
-  const preferred=trimLegacyPadding&&/^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(src)
-    ?src+"?variant=main":src;
+  const externalDerivative = /^https:\/\//i.test(src) && cardId && revision
+    ? `/api/medicine-market/cards/${cardId}/image-variants/preview?v=${revision}` : null;
+  const preferred=externalDerivative??(trimLegacyPadding&&/^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(src)
+    ?src+"?variant=main":src);
   const [display,setDisplay]=useState(preferred);
   useEffect(()=>{
     let active=true;
@@ -62,10 +67,14 @@ export function MarketProductImage({
     photo.src=src;
     return()=>{active=false;photo.onload=null;};
   },[src,preferred,trimLegacyPadding]);
-  const picture=<img src={display} alt={alt} className={className}
+  const stored = useMarketImage(display);
+  useEffect(() => {
+    if (stored.failed && display !== src) setDisplay(src);
+  }, [stored.failed, display, src]);
+  const picture=stored.failed ? <span role="img" aria-label={alt}>الصورة غير محفوظة على هذا الجهاز.</span> : <img src={stored.src} alt={alt} className={className}
     style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
     loading="lazy" decoding="async" onError={()=>{if(display!==src)setDisplay(src);}}/>;
   return previewOnClick
-    ? <ImagePreviewModal src={src} alt={alt}>{picture}</ImagePreviewModal>
+    ? <ImagePreviewModal src={display} alt={alt} marketImage>{picture}</ImagePreviewModal>
     : picture;
 }

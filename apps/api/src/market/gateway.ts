@@ -59,13 +59,18 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
     const marketUser = req.auth?.visitorOnly && user
       ? { ...user, owner: false, kind: "member" as const, editor: false, monitor: false } : user;
     const headers = signMarketRequest(options.secret, req.method, path, marketUser, settings.rows.map(r => r.page_key), body);
+    // Conditional validators affect transfer size only. Authority and page access
+    // above are checked anew even when the remote result is unchanged.
+    const conditional = ["GET", "HEAD"].includes(req.method) ? req.get("if-none-match") : undefined;
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
     const disconnect = () => { if (!res.writableEnded) abort.abort(); };
     res.once("close", disconnect);
     try {
       const response = await fetch(new URL(path, endpoint), {
-        method: req.method, headers: { ...headers, "content-type": "application/json" },
+        method: req.method, headers: { ...headers, "content-type": "application/json",
+          ...(conditional && conditional.length <= 1000 ? { "if-none-match": conditional } : {}),
+        },
         body: body || undefined, signal: abort.signal, redirect: "error",
       });
       // Bound retained response memory; do not forward cookies, redirects or internal headers.
@@ -80,7 +85,12 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
       }
       if (response.status >= 500) { failures++; if (failures >= 3) openUntil = Date.now() + 10000; }
       else failures = 0;
-      if (req.method === "HEAD") res.status(response.status).end();
+      // Never parse an empty 304 body as JSON. Keep the remote validator so the
+      // browser's user-scoped local copy can be checked on its next read.
+      const etag = response.headers.get("etag");
+      if (etag) res.set("ETag", etag);
+      res.set("Cache-Control", response.headers.get("cache-control") ?? "no-store").vary("Cookie");
+      if (req.method === "HEAD" || response.status === 304) res.status(response.status).end();
       else if(imageFetch && response.ok && response.headers.get("content-type")?.startsWith("image/webp")) {
         if(bytes>512000)throw unavailable();
         res.status(response.status).set("Cache-Control",response.headers.get("cache-control")??"no-store")

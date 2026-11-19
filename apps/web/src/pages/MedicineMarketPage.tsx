@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import { api, useScopeGuard, useSession } from "../api";
+import { useMarketOffline, useMarketQuery } from "../market-query";
+import { MarketOfflineStatus } from "../MarketOfflineStatus";
 import { recordInterest } from "../InterestTracker";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
@@ -121,9 +123,9 @@ function RelationName({
   bilingual?: boolean;
 }) {
   const { user } = useSession();
-  const result = useQuery({
+  const result = useMarketQuery<Detail>({
     queryKey: ["medicine-market", user?.id, "relation", id],
-    queryFn: ({ signal }) => api<Detail>(`${ROOT}/cards/${id}`, { signal }),
+    path: `${ROOT}/cards/${id}`,
     enabled: id > 0,
     staleTime: 60000,
   });
@@ -220,13 +222,11 @@ function RelationPicker({
       window.removeEventListener("scroll",position,true);
     };
   },[expanded,search,page]);
-  const data=useQuery({
+  const data=useMarketQuery<Page<MarketCard>>({
     queryKey:["medicine-market",user?.id,"lookup",kind,search,page],
-    queryFn:({signal})=>api<Page<MarketCard>>(
-      `${ROOT}/cards?${new URLSearchParams({
-        kind,q:search,page:String(page),pageSize:"20",
-      })}`,{signal},
-    ),
+    path: `${ROOT}/cards?${new URLSearchParams({
+      kind,q:search,page:String(page),pageSize:"20",
+    })}`,
     enabled:expanded&&current&&search.length>=minChars,
     staleTime:30000,
   });
@@ -872,12 +872,16 @@ function FieldValue({
   onOpen,
   references = [],
   cardKind,
+  cardId,
+  cardRevision,
 }: {
   field: FieldDefinition;
   value: unknown;
   onOpen: (id: number) => void;
   references?: MarketReferenceEntry[];
   cardKind?:Kind;
+  cardId?:number;
+  cardRevision?:number;
 }) {
   if (!present(value))
     return <span className="medicine-market-unset">أكمل هذه المعلومة</span>;
@@ -939,7 +943,8 @@ function FieldValue({
   if (field.key === "image" && typeof value === "string" &&
       (/^https:\/\//i.test(value) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value)))
     return <div className="medicine-market-prescription-image">
-      <MarketProductImage src={value} trimLegacyPadding={cardKind!=="prescription"}
+      <MarketProductImage src={value} cardId={cardId} revision={cardRevision}
+        trimLegacyPadding={cardKind!=="prescription"}
         alt={cardKind==="prescription"?"صورة الوصفة الطبية":"صورة الصنف"}
         style={{maxWidth:cardKind==="prescription"?"100%":260,maxHeight:cardKind==="prescription"?950:340,
           width:"auto",height:"auto",objectFit:"contain",borderRadius:8}}/>
@@ -1117,7 +1122,8 @@ export function MarketInlineField({card,field,references,canEdit,disabled,onOpen
         </div>
       </form>:<>
         <span className="medicine-market-field-label">{field.label}{field.visibility!=="public"&&<ShieldCheck size={13}/>}</span>
-        <FieldValue field={field} value={value} onOpen={onOpen} references={references} cardKind={card.kind}/>
+        <FieldValue field={field} value={value} onOpen={onOpen} references={references}
+          cardKind={card.kind} cardId={card.id} cardRevision={card.revision}/>
         {message&&<small className="medicine-market-inline-message" role="status">{message}</small>}
       </>}
     </div>
@@ -1138,17 +1144,23 @@ function PrescriptionReviewPhoto({
   onReject:()=>void;
 }){
   const {user}=useSession();
+  const marketOffline=useMarketOffline();
   const [checked,setChecked]=useState(false);
-  const result=useQuery({
+  const result=useMarketQuery<Detail>({
     queryKey:["medicine-market",user?.id,"card",cardId],
-    queryFn:({signal})=>api<Detail>(`${ROOT}/cards/${cardId}`,{signal}),
+    path: `${ROOT}/cards/${cardId}`,
+    fresh:true,
     staleTime:0,
   });
+  const verificationReady=!marketOffline&&result.isSuccess&&!result.isFetching&&
+    !result.marketStatus?.refreshing&&result.marketStatus?.source==="network"&&
+    !result.marketStatus.partial;
   const image=proposedImage??(typeof result.data?.card.data.image==="string"
     ?result.data.card.data.image:null);
   useEffect(()=>setChecked(false),[image]);
   return <div className="medicine-market-prescription-review">
     <strong>مراجعة صورة الوصفة قبل النشر</strong>
+    <MarketOfflineStatus path={result.marketPath} detail/>
     {result.isFetching&&<small className="muted">جارٍ تحميل الصورة الحالية…</small>}
     {result.error&&<Notice tone="error">{errorMessage(result.error)}</Notice>}
     {image&&<div className="medicine-market-prescription-review-image">
@@ -1166,16 +1178,16 @@ function PrescriptionReviewPhoto({
     <small className="muted">يمكن تنزيل الصورة، وإخفاء بيانات المريض، ثم رفع نسخة بديلة إلى الكرت قبل اعتمادها.</small>
     <label className="medicine-market-check">
       <input type="checkbox" checked={checked}
-        disabled={busy||!image||result.isFetching}
+        disabled={busy||!image||!verificationReady}
         onChange={e=>setChecked(e.target.checked)}/>
       راجعت الصورة الحالية وتأكدت أنها لا تُظهر اسم المريض أو بياناته الشخصية
     </label>
     <div className="page-actions">
-      <Button size="compact" disabled={busy||!image||!checked||result.isFetching}
-        onClick={()=>{if(image&&checked)onApprove(image);}}>
+      <Button size="compact" disabled={busy||!image||!checked||!verificationReady}
+        onClick={()=>{if(image&&checked&&verificationReady)onApprove(image);}}>
         <Check size={14}/> اعتماد الوصفة ونشرها
       </Button>
-      <Button variant="danger" size="compact" disabled={busy}
+      <Button variant="danger" size="compact" disabled={busy||marketOffline||result.isFetching||result.marketStatus?.refreshing}
         onClick={onReject}><X size={14}/> رفض</Button>
     </div>
   </div>;
@@ -1190,6 +1202,7 @@ export function MedicineMarketPage({
     client = useQueryClient(),
     guard = useScopeGuard(`public:medicine-market:${tab}`);
   const navigate=useNavigate();
+  const marketOffline = useMarketOffline();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "",
     kind = params.get("kind") ?? "",
@@ -1226,9 +1239,9 @@ export function MedicineMarketPage({
     edit: string;
   } | null>(null);
   const keys = useRef(new Map<string, { json: string; key: string }>());
-  const meta = useQuery({
+  const meta = useMarketQuery<Meta>({
     queryKey: ["medicine-market", user?.id, "meta"],
-    queryFn: ({ signal }) => api<Meta>(`${ROOT}/meta`, { signal }),
+    path: `${ROOT}/meta`,
   });
   const permissions = meta.data?.permissions;
   const types = meta.data?.types ?? [];
@@ -1237,10 +1250,9 @@ export function MedicineMarketPage({
   const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
   const sectionedCatalog = tab === "catalog" && !selected && !kind && !q;
-  const dosageList = useQuery({
+  const dosageList = useMarketQuery<Page<MarketCard>>({
     queryKey: ["medicine-market", user?.id, "fixed-dosage-forms"],
-    queryFn: ({signal}) => api<Page<MarketCard>>(
-      `${ROOT}/cards?kind=dosage-form&pageSize=100`, {signal}),
+    path: `${ROOT}/cards?kind=dosage-form&pageSize=100`,
     enabled: tab === "catalog" && !!permissions?.canConfigure,
     staleTime: 60_000,
   });
@@ -1252,21 +1264,16 @@ export function MedicineMarketPage({
         else p.set(k, v);
       return p;
     });
-  const list = useQuery({
+  const list = useMarketQuery<Page<MarketCard>>({
     queryKey: ["medicine-market", user?.id, "cards", kind, q, page, archived, sort],
-    queryFn: ({ signal }) =>
-      api<Page<MarketCard>>(
-        `${ROOT}/cards?${new URLSearchParams({ kind, q, page: String(page), pageSize: "18", archived: String(archived), sort })}`,
-        { signal },
-      ),
+    path: `${ROOT}/cards?${new URLSearchParams({ kind, q, page: String(page), pageSize: "18", archived: String(archived), sort })}`,
     enabled: tab === "catalog" && !sectionedCatalog,
     refetchInterval: tab === "catalog" && !selected && !sectionedCatalog ? 20_000 : false,
     refetchIntervalInBackground: false,
   });
-  const detail = useQuery({
+  const detail = useMarketQuery<Detail>({
     queryKey: ["medicine-market", user?.id, "card", selected],
-    queryFn: ({ signal }) =>
-      api<Detail>(`${ROOT}/cards/${selected}`, { signal }),
+    path: `${ROOT}/cards/${selected}`,
     enabled: tab === "catalog" && selected !== null,
   });
   const contributions = useQuery({
@@ -1291,13 +1298,9 @@ export function MedicineMarketPage({
     enabled:
       tab === "review" && !!permissions?.canModerate && status !== "conflict",
   });
-  const duplicate = useQuery({
+  const duplicate = useMarketQuery<Page<MarketCard>>({
     queryKey: ["medicine-market", user?.id, "duplicate", newKind, newName],
-    queryFn: ({ signal }) =>
-      api<Page<MarketCard>>(
-        `${ROOT}/cards?kind=${newKind}&q=${encodeURIComponent(newName.trim())}&pageSize=5`,
-        { signal },
-      ),
+    path: `${ROOT}/cards?kind=${newKind}&q=${encodeURIComponent(newName.trim())}&pageSize=5`,
     enabled: createOpen && newKind!=="prescription" && newName.trim().length >= 2,
   });
   const card = detail.data?.card;
@@ -1512,7 +1515,7 @@ export function MedicineMarketPage({
           {permissions?.canContribute && <MarketFriendReferral cardId={selected} cardName={card?.name}/>} 
           {!!user && <Link className="button button-secondary" to="/medicine-market/friend-referrals">متابعة تعريف الأصدقاء</Link>}
           {permissions?.canContribute ? (
-            <Button
+            <Button disabled={marketOffline}
               onClick={() => {
                 setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
                 setNewName("");
@@ -1554,6 +1557,7 @@ export function MedicineMarketPage({
       {message && <Notice tone="success">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {meta.error && <Notice tone="error">{errorMessage(meta.error)}</Notice>}
+      {sectionedCatalog && <MarketOfflineStatus path={meta.marketPath}/>}
       {tab === "catalog" && permissions?.canConfigure && (
         <details className="medicine-market-admin-references">
           <summary>إدارة بيانات السوق والبيانات المرجعية</summary>
@@ -1656,6 +1660,7 @@ export function MedicineMarketPage({
                   <span className="medicine-market-badge">كرت #{card.id}</span>
                 )}
               </div>
+              <MarketOfflineStatus path={detail.marketPath} detail/>
               {detail.isLoading && <Notice>جارٍ تحميل الكرت…</Notice>}
               {detail.error && (
                 <Notice tone="error">{errorMessage(detail.error)}</Notice>
@@ -1691,14 +1696,14 @@ export function MedicineMarketPage({
                     {detailFields.map(field=><MarketInlineField
                       key={`${user?.id??"guest"}:${card.id}:${field.key}`}
                       card={card} field={field} references={references}
-                      canEdit={!!permissions?.canContribute&&!card.archived&&(!isMarketAdministrativeKind(card.kind)||(field.key==="image"&&!!permissions?.canConfigure))}
+                      canEdit={!marketOffline&&!!permissions?.canContribute&&!card.archived&&(!isMarketAdministrativeKind(card.kind)||(field.key==="image"&&!!permissions?.canConfigure))}
                       disabled={busy} onOpen={openCard}/>)}
                   </div>
                   <div className="medicine-market-engagement">
                     <Button
                       variant="secondary"
                       size="compact"
-                      disabled={!permissions?.canContribute || busy}
+                      disabled={marketOffline || !permissions?.canContribute || busy}
                       aria-pressed={card.myLiked}
                       onClick={() =>
                         void mutate(
@@ -1727,7 +1732,7 @@ export function MedicineMarketPage({
                       <Select
                         label="تقييمك"
                         value={card.myRating ?? ""}
-                        disabled={busy}
+                        disabled={busy || marketOffline}
                         onChange={(e) =>
                           void mutate(
                             () =>
@@ -1757,7 +1762,7 @@ export function MedicineMarketPage({
                       <Button
                         variant="secondary"
                         size="compact"
-                        disabled={busy}
+                        disabled={busy || marketOffline}
                         onClick={() =>
                           void mutate(
                             () =>
@@ -1816,7 +1821,7 @@ export function MedicineMarketPage({
                     <h3>
                       <MessageCircle size={18} /> التعليقات
                     </h3>
-                    {detail.data?.comments.length === 0 && (
+                    {!detail.marketStatus?.partial && detail.data?.comments.length === 0 && (
                       <p className="medicine-market-muted">
                         لا توجد تعليقات منشورة بعد.
                       </p>
@@ -1876,7 +1881,7 @@ export function MedicineMarketPage({
                         <div>
                           <Button
                             type="submit"
-                            disabled={busy || !comment.trim()}
+                            disabled={marketOffline || busy || !comment.trim()}
                           >
                             إرسال التعليق
                           </Button>
@@ -1900,12 +1905,13 @@ export function MedicineMarketPage({
     onBrowse={nextKind => write({ kind: nextKind, page: null, card: null })} />
 ) : (
   <>
+    <MarketOfflineStatus path={list.marketPath}/>
     <div className="medicine-market-list-heading">
                 <h2>{currentType?.label ?? "كروت الدليل"}</h2>
-                <span>{list.data?.total ?? "—"} كرت</span>
-                <Button variant="secondary" size="compact" disabled={list.isFetching}
+                <span>{list.data?.total ?? "—"} كرت{list.marketStatus?.partial ? " محفوظ" : ""}</span>
+                <Button variant="secondary" size="compact" disabled={list.isFetching || list.marketStatus?.refreshing}
                   onClick={() => void list.refetch()}>
-                  <RefreshCw size={15} /> {list.isFetching ? "يُحدّث…" : "تحديث الآن"}
+                  <RefreshCw size={15} /> {list.isFetching || list.marketStatus?.refreshing ? "يُحدّث…" : "تحديث الآن"}
                 </Button>
               </div>
               {list.isLoading && <Notice>جارٍ تحميل الدليل…</Notice>}
@@ -1917,14 +1923,17 @@ export function MedicineMarketPage({
                   <span>
                     <Pill size={42} />
                   </span>
-                  <h2>{q ? "لا توجد نتائج مطابقة" : "نبدأ الدليل معًا"}</h2>
+                  <h2>{list.marketStatus?.partial ? "لا توجد نتائج محفوظة مطابقة" :
+                    q ? "لا توجد نتائج مطابقة" : "نبدأ الدليل معًا"}</h2>
                   <p>
-                    {q
+                    {list.marketStatus?.partial
+                      ? "يبحث هذا الجهاز في الكروت التي حُمّلت سابقًا. اتصل بالإنترنت للبحث في السوق كاملًا."
+                      : q
                       ? "جرّب الاسم بالإنجليزية أو جزءًا منه، أو اختر نوعًا آخر."
                       : "أضف اسم الكرت أولًا، ثم أكمل المعلومات المتوفرة. كل مساهمة معتمدة تجعل الدليل أكثر فائدة."}
                   </p>
                   {permissions?.canContribute && (
-                    <Button
+                    <Button disabled={marketOffline}
                       onClick={() => {
                         setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
                         setNewName(q);

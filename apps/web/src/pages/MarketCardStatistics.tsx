@@ -4,6 +4,7 @@ import { Eye, Heart, MessageCircle, Star } from "lucide-react";
 import type { MarketCard, MarketDetail } from "../../../../packages/contracts/src/medicine-market";
 import { api } from "../api";
 import { interestCollectionEnabled } from "../InterestTracker";
+import { useMarketCacheScope, useMarketOffline } from "../market-query";
 
 const relationLabels = {
   medicines: "الأصناف", compositions: "التراكيب", scientificNames: "الأسماء العلمية",
@@ -38,6 +39,8 @@ export function MarketCardCounts({card, compact = false}: {card: MarketCard; com
 /** Mount only for the displayed detail. List/lookup GETs and polling cannot record opens. */
 export function RecordMarketCardOpen({cardId,userId}: {cardId: number;userId: number}) {
   const client = useQueryClient();
+  const scope = useMarketCacheScope();
+  const offline = useMarketOffline();
   const requestKey = useRef<string | null>(null);
   useEffect(() => {
     let sent = false;
@@ -45,16 +48,18 @@ export function RecordMarketCardOpen({cardId,userId}: {cardId: number;userId: nu
     let retry: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const submit = async (attempt = 0) => {
-      if (stopped || !interestCollectionEnabled() || document.visibilityState !== "visible") return;
+      if (stopped || offline || scope === null || !interestCollectionEnabled() || document.visibilityState !== "visible") return;
       requestKey.current ??= crypto.randomUUID();
       try {
         const {opens} = await api<{opens: number}>(`/medicine-market/cards/${cardId}/open`, {
           method: "POST", body: {idempotencyKey: requestKey.current}, signal: controller.signal,
         });
         if (stopped) return;
-        client.setQueryData<MarketDetail>(["medicine-market", userId, "card", cardId], old =>
+        client.setQueriesData<MarketDetail>({queryKey:["medicine-market", userId, "card", cardId],
+          predicate: query => query.queryKey.at(-1) === scope}, old =>
           old?.card.statistics ? {...old,card:{...old.card, statistics:{...old.card.statistics,opens}}} : old);
-        client.setQueriesData<{items: MarketCard[]}>({queryKey:["medicine-market",userId,"cards"]}, page =>
+        client.setQueriesData<{items: MarketCard[]}>({queryKey:["medicine-market",userId,"cards"],
+          predicate: query => query.queryKey.at(-1) === scope}, page =>
           page?.items.some(item => item.id === cardId && item.statistics)
             ? {...page,items:page.items.map(item => item.id === cardId && item.statistics
               ? {...item,statistics:{...item.statistics,opens}} : item)} : page);
@@ -74,6 +79,6 @@ export function RecordMarketCardOpen({cardId,userId}: {cardId: number;userId: nu
       stopped = true; controller.abort(); clearTimeout(retry);
       document.removeEventListener("visibilitychange", whenVisible);
     };
-  }, [cardId,userId,client]);
+  }, [cardId,userId,client,scope,offline]);
   return null;
 }

@@ -1,0 +1,50 @@
+name: Market offline browsing
+on:
+  push:
+    branches: ['preview/render-2026-10-23']
+    paths:
+      - 'apps/web/src/market-offline*'
+      - 'apps/web/src/market-query*'
+      - 'apps/web/src/MarketOfflineStatus.tsx'
+      - 'apps/web/src/MarketProductImage.tsx'
+      - 'apps/web/src/MarketCardIcon.tsx'
+      - 'apps/web/src/ImagePreviewModal.tsx'
+      - 'apps/web/src/api.tsx'
+      - 'apps/web/src/pages/MedicineMarketPage.tsx'
+      - 'apps/web/src/pages/MarketCatalogSections*'
+      - 'apps/web/src/pages/MarketRelatedMedicines.tsx'
+      - 'apps/api/src/market/conditional-read.ts'
+      - 'apps/api/src/market/gateway.ts'
+      - 'apps/api/src/routes-medicine-market.ts'
+      - 'tests/browser-market-offline.ts'
+      - 'tests/market-offline*'
+      - 'tests/market-conditional-read.test.ts'
+      - '.github/workflows/market-offline-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: market-offline-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Conditional reads, saved revisions, isolated relations, paging and existing shell
+        run: node --import tsx --test tests/market-conditional-read.test.ts tests/market-offline-storage.test.ts tests/market-offline-query-race.test.ts tests/medicine-market-related-medicines.test.ts tests/pwa-shell-upgrade.test.ts
+      - run: npx playwright install --with-deps chromium
+      - name: Saved browsing, real outage, refresh, pictures and identity isolation
+        run: node --import tsx tests/browser-market-offline.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: market-offline-browser
+          path: artifacts/market-offline-*.png
+          if-no-files-found: ignore

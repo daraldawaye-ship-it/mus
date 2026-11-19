@@ -45,6 +45,15 @@
 .medicine-market .market-section-error { display: grid; justify-items: start; gap: 6px; }
 .medicine-market .medicine-market-detail-top { scroll-margin-top: 90px; }
 .medicine-market .market-related-medicines { margin-block-start: 12px; }
+.medicine-market .market-offline-status {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 9px;
+  margin: 4px 0 6px; color: var(--muted); font-size: 11px; line-height: 1.55;
+}
+.medicine-market .market-offline-status > span + span {
+  border-inline-start: 1px solid var(--border); padding-inline-start: 9px;
+}
+.medicine-market .market-offline-status.is-offline,
+.medicine-market .market-offline-status.is-unavailable { color: var(--text); }
 /* Compact the catalog shell only; detail forms and moderation keep their existing layout. */
 .medicine-market.medicine-market-directory .medicine-market-heading { gap: 8px; margin-bottom: 8px; }
 .medicine-market.medicine-market-directory .medicine-market-brand h1 { font-size: 20px; margin: 0; }

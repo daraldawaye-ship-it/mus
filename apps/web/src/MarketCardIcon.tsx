@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import type { MarketCard } from "../../../packages/contracts/src/medicine-market";
 import "./MarketCardIcon.css";
+import { useMarketImage } from "./market-offline-images";
 
 type ImageCard = Pick<MarketCard, "id" | "kind" | "revision" | "data">;
 export function hasMarketCardImage(card: ImageCard): boolean {
@@ -15,11 +16,12 @@ export function marketCardImageVariant(card: ImageCard, variant: "icon" | "previ
 /** Never fall back to the large original in a search row or catalog list. */
 export function MarketCardIcon({ card }: { card: ImageCard }) {
   const src = marketCardImageVariant(card, "icon");
+  const saved = useMarketImage(hasMarketCardImage(card) ? src : null);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
   if (!hasMarketCardImage(card)) return null;
   return <span className="market-card-photo-icon" aria-hidden="true">
-    {failed ? <ImageIcon size={20} /> : <img key={src} src={src} alt="" width={38} height={38}
+    {failed || saved.failed ? <ImageIcon size={20} /> : <img key={src} src={saved.src} alt="" width={38} height={38}
       loading="lazy" decoding="async" onError={() => setFailed(true)} />}
   </span>;
 }

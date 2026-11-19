@@ -1,4 +1,5 @@
 import { marketCardCoverage } from "./market/card-coverage.ts";
+import { marketNotModified, sendMarketRead } from "./market/conditional-read.ts";
 import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
   startMarketImageBackfill, marketImageBackfillStatus, downloadPublicImage, validateModernProductImageUrl } from "./market/image-variants.ts";
@@ -737,7 +738,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     if(!bytes)missing("الصورة المصغرة غير جاهزة");
     res.set("Cache-Control",card.status==="published"&&!card.archived?"private, max-age=3600":"no-store");
     res.set("Content-Security-Policy","default-src 'none'; sandbox");
-    res.type("image/webp").send(bytes);
+    if (!marketNotModified(req, res, bytes)) res.type("image/webp").send(bytes);
   }));
   router.get(root + "/image-variants/status",handler(async(req,res)=>{
     const u=await viewer(pool,req);
@@ -932,7 +933,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         bytes=versions[variant==="icon"?"icon":"preview"];
       }
     }
-    res.type("image/webp").send(bytes);
+    if (!marketNotModified(req, res, bytes)) res.type("image/webp").send(bytes);
   }));
   // User initiated referral log only; sending messages remains external/manual.
   router.post(root+"/friend-referrals",handler(async(req,res)=>{
@@ -1007,7 +1008,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       const policies = (
         await pool.query("SELECT * FROM medicine_market_policies")
       ).rows;
-      res.json({
+      sendMarketRead(req, res, {
         types: marketTypes.map((t) => ({
           ...t,
           fields: t.fields
@@ -1062,7 +1063,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         `SELECT count(*)::int total FROM medicine_market_cards c WHERE ($1::integer IS NULL OR $1::integer IS NOT NULL) AND ${condition}`,
         [...args],
       );
-      res.json({
+      sendMarketRead(req, res, {
         items: rows.rows.map((r) => cardOutput(r, p)),
         total: count.rows[0].total,
         page: v.page,
@@ -1087,7 +1088,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           " WHERE p.card_id=$1 AND p.field_key=ANY($2::text[]) AND (p.status='approved' OR p.author_id=$3 OR $4) ORDER BY p.id DESC LIMIT 100",
         [card.id, readableKeys(p), u?.id ?? null, p.canModerate],
       );
-      res.json({
+      sendMarketRead(req, res, {
         card: cardOutput(card, p),
         comments: comments.rows.map(commentOutput),
         contributions: contributions.rows.map(contributionOutput),
@@ -1109,7 +1110,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       if (!["agent", "manufacturer", "composition", "medicine"].includes(source.kind) ||
           (typeof relationId !== "number" && typeof relationId !== "string") ||
           !/^[1-9][0-9]{0,9}$/.test(String(relationId)) || Number(relationId) > 2147483647) {
-        res.json({ items: [], nextCursor: null } satisfies MarketRelatedMedicinesPage);
+        sendMarketRead(req, res, { items: [], nextCursor: null } satisfies MarketRelatedMedicinesPage);
         return;
       }
       // The isolated market uses the existing partial relation indexes.
@@ -1128,7 +1129,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         const { englishName } = card.data;
         return { ...card, englishName: typeof englishName === "string" ? englishName : null };
       });
-      res.json({
+      sendMarketRead(req, res, {
         items,
         nextCursor: rows.length > pageSize ? items[pageSize - 1]!.id : null,
       } satisfies MarketRelatedMedicinesPage);
