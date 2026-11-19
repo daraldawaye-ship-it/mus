@@ -14,7 +14,7 @@ const item = z.object({
 }).strict();
 const input = z.object({
   expectedRevision: z.number().int().min(0).max(2147483646),
-  classifications: z.array(item).max(60),
+  classifications: z.array(item).max(300),
 }).strict().superRefine(({ classifications }, ctx) => {
   const titles = classifications.map(row => row.title.normalize("NFKC").toLocaleLowerCase("ar").replace(/\s+/g, " "));
   if (new Set(classifications.map(row => row.id)).size !== classifications.length || new Set(titles).size !== classifications.length)

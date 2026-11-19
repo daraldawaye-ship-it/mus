@@ -61,7 +61,7 @@ export default function MarketMedicineTaxonomyPage() {
             </label>
           </fieldset>)}
           <div className="page-actions">
-            <Button type="button" variant="secondary" disabled={classifications.length >= 60} onClick={() => change([...classifications, blank()])}>إضافة تصنيف</Button>
+            <Button type="button" variant="secondary" disabled={classifications.length >= 300} onClick={() => change([...classifications, blank()])}>إضافة تصنيف</Button>
             <Button type="submit" disabled={!edits}>{saving ? "جارٍ الحفظ…" : "حفظ المسودة"}</Button>
             {edits && <Button type="button" variant="secondary" onClick={() => { setEdits(null); setError(""); void query.refetch(); }}>إلغاء تعديلات غير محفوظة</Button>}
           </div>
