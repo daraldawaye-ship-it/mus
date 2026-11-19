@@ -170,7 +170,7 @@ export function LegalCasesPage() {
  </nav>
  {globalKind?<Card title={manual?"يحتاج تفريغًا يدويًا"+(manualCase?" · القضية #"+manualCase:" — جميع القضايا"):globalLists.find(item=>item.id===globalKind)?.label+" — جميع القضايا"}>
  <div className="legal-directory-head">
- <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="العنوان أو التفاصيل"/>
+ <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="#رقم السجل أو العنوان أو التفاصيل"/>
  {globalRecords.data&&<span>إجمالي السجلات: {globalRecords.data.total}</span>}
  </div>
  {globalKind==="document"&&<div className="legal-review-controls">

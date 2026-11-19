@@ -550,8 +550,20 @@ export function legalCaseRoutes(pool:Pool):Router {
       throw new HttpError(400,"invalid_query","مرشح المستندات غير صالح");
     if (selectedCase!==null) await canCase(pool,user,selectedCase);
     const q=String(req.query.q??"").trim().slice(0,120),limit=unlinked?30:100;
-    let where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4 OR COALESCE(r.document_review->>'documentTitle','') ILIKE $4 OR COALESCE(r.document_review->>'sourceFilename','') ILIKE $4 OR COALESCE(r.document_review->>'keywords','') ILIKE $4 OR COALESCE(r.document_review->>'evidenceSummary','') ILIKE $4 OR COALESCE(r.document_review->>'missingPassage','') ILIKE $4) AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
-    const args:unknown[]=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
+    const digits=q.replace(/[٠-٩۰-۹]/g,d=>String(d.charCodeAt(0)-(d.charCodeAt(0)<0x06f0?0x0660:0x06f0)));
+    const exactMarker=/^#\s*[0-9]+$/.test(digits);
+    const parsed=exactMarker?digits.slice(1).trim():digits;
+    const numeric=/^[0-9]+$/.test(parsed)?Number(parsed):0;
+    const validRecordId=Number.isSafeInteger(numeric)&&numeric>=1&&numeric<=2147483647;
+    const textSearch="%"+q.replace(/[%_\\]/g,"\\$&")+"%";
+    const args:unknown[]=[user.owner,user.id,kind??null,exactMarker?(validRecordId?numeric:0):textSearch,unlinked];
+    const keywordMatch="(r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4 OR COALESCE(r.document_review->>'documentTitle','') ILIKE $4 OR COALESCE(r.document_review->>'sourceFilename','') ILIKE $4 OR COALESCE(r.document_review->>'keywords','') ILIKE $4 OR COALESCE(r.document_review->>'evidenceSummary','') ILIKE $4 OR COALESCE(r.document_review->>'missingPassage','') ILIKE $4)";
+    let searchCondition=exactMarker?"r.id=$4::int":keywordMatch;
+    if(!exactMarker&&validRecordId){
+      args.push(numeric);
+      searchCondition="("+keywordMatch+" OR r.id=$"+args.length+"::int)";
+    }
+    let where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND "+searchCondition+" AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
     const filter=(fragment:string,value:unknown)=>{args.push(value);where+=" AND "+fragment.replace("?", "$"+args.length);};
     if (selectedCase!==null) filter("EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id AND rc.case_id=?)",selectedCase);
     if (priority!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'priority','unrated')=?",priority);

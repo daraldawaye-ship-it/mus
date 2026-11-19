@@ -53,7 +53,7 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
     ('document','Resolved','','',1,1,'complete'),
     ('document','Duplicate','','',1,1,'duplicate'),
     ('document','Private original','','',1,1,'partial'),
-    ('document','Public reference','','',1,1,'partial');
+    ('document','Public reference','body mention #1 869','',1,1,'partial');
  `);
  await db.query("UPDATE legal_records SET document_review=$1 WHERE id<=4",[tagged]);
  await db.exec(`UPDATE legal_records SET document_review=document_review||'{"canonicalRecordId":1}'::jsonb WHERE id=3;
@@ -78,6 +78,19 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
  assert.equal(queued.data.items[0].document_image_state,"internal");
  assert.deepEqual(queued.data.items[0].document_case_ids,[1]);
  assert.equal((await call("/records?kind=document&manual=true&caseId=2",2)).status,403);
+ for(const q of ["#1","# 1","#١","#۱"]){
+  const found=await call("/records?kind=document&manual=true&caseId=1&q="+encodeURIComponent(q),2);
+  assert.equal(found.status,200,JSON.stringify(found.data));
+  assert.deepEqual(found.data.items.map((r:{id:number})=>r.id),[1]);
+ }
+ assert.equal((await call("/records?kind=document&q=%234",2)).data.total,0);
+ assert.equal((await call("/records?kind=document&manual=true&q=%232",2)).data.total,0);
+ assert.equal((await call("/records?kind=document&caseId=1&q=%234",1)).data.total,0);
+ assert.equal((await call("/records?kind=document&q=Original",2)).data.items[0].id,1);
+ assert.deepEqual((await call("/records?kind=document&q=5",2)).data.items.map((r:{id:number})=>r.id),[5]);
+ assert.deepEqual((await call("/records?kind=document&q=869",2)).data.items.map((r:{id:number})=>r.id),[5]);
+ assert.equal((await call("/records?kind=document&q=%23869",2)).data.total,0);
+ assert.equal((await call("/records?kind=document&manual=true&q=p17.pdf",2)).data.total,1);
  const filtered=await call("/records?kind=document&imageState=canonical&transcriptionState=duplicate",2);
  assert.equal(filtered.status,200,JSON.stringify(filtered.data));assert.equal(filtered.data.total,1);
  assert.deepEqual(filtered.data.items.map((i:{id:number;document_image_id:number})=>[i.id,i.document_image_id]),[[3,100]]);
