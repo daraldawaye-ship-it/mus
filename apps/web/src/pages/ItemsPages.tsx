@@ -56,6 +56,7 @@ import { errorMessage, ServerLookup } from "../phase2";
 import { CompositionAlternativeLookup } from "../CompositionAlternativeLookup";
 import { MarketMedicineLookup } from "../MarketMedicineLookup";
 import { RecordOptionCard } from "../RecordOptionCard";
+import { OwnerAdministrativeNotes } from "../OwnerAdministrativeNotes";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
 import { ExpiryMonthField } from "../ExpiryMonthField";
@@ -2381,6 +2382,7 @@ function ItemEditor({
           />
         )}
       </form>
+      {item && <OwnerAdministrativeNotes key={item.id} companyId={companyId} kind="items" recordId={item.id} />}
       {item && !embedded && (
         <RecordOptionCard
           companyId={companyId}
