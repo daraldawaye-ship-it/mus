@@ -155,6 +155,8 @@ export interface AccountLedgerLine {
   documentId: number;
   documentNumber: string;
   documentDate: string;
+  /** Actual system recording timestamp; distinct from the accounting document date. */
+  recordedAt?: string | null;
   kind: FinancialDocumentKind;
   status: FinancialDocumentStatus;
   description: string;
