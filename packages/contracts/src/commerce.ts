@@ -246,6 +246,58 @@ export function netPurchasePriceFirstUnit(
   return amount(fourDecimals * 100n);
 }
 
+/** Combine duplicate positive receipt lines before recalculating the item-card price.
+ * The quantities already include gifts and use the item's smallest stock unit.
+ * Net totals include both line and invoice-level discounts.
+ */
+export function groupPurchaseReceiptPrices(
+  lines: readonly { itemId: number; quantitySmallest: string; netTotal: string }[],
+): { itemId: number; quantitySmallest: string; netTotal: string }[] {
+  const grouped = new Map<number, { quantity: bigint; net: bigint }>();
+  for (const line of lines) {
+    const quantity = BigInt(line.quantitySmallest);
+    const net = units(line.netTotal);
+    if (quantity <= 0n || net < 0n)
+      throw new Error("كمية أو صافي مشتريات غير صالح لحساب المتوسط");
+    const existing = grouped.get(line.itemId);
+    if (existing) {
+      existing.quantity += quantity;
+      existing.net += net;
+    } else grouped.set(line.itemId, { quantity, net });
+  }
+  return [...grouped.entries()].map(([itemId, value]) => ({
+    itemId,
+    quantitySmallest: value.quantity.toString(),
+    netTotal: amount(value.net),
+  }));
+}
+
+/** Weighted item-card purchase price, in the item's currency, per FIRST unit.
+ * Value the existing stock at its previous card price. Add all new purchases at
+ * their net billed value, with any free bonus included only in stock quantity.
+ * All math is exact bigint and rounded once to four price decimals.
+ */
+export function weightedPurchasePriceFirstUnit(
+  previousPrice: string,
+  previousQuantitySmallest: string,
+  purchaseNetTotal: string,
+  incomingQuantitySmallest: string,
+  smallestPerFirstUnit: number | bigint,
+): string {
+  const priorQuantity = BigInt(previousQuantitySmallest);
+  const incomingQuantity = BigInt(incomingQuantitySmallest);
+  const factor = BigInt(smallestPerFirstUnit);
+  const priorPrice = units(amountSchema.parse(previousPrice));
+  const purchasedNet = units(purchaseNetTotal);
+  if (priorQuantity < 0n || incomingQuantity <= 0n || factor <= 0n ||
+      priorPrice < 0n || purchasedNet < 0n)
+    throw new Error("سعر أو كمية غير صالح لحساب متوسط الشراء");
+  const totalQuantity = priorQuantity + incomingQuantity;
+  const valueNumerator = priorQuantity * priorPrice + purchasedNet * factor;
+  const fourDecimals = (valueNumerator + totalQuantity * 50n) / (totalQuantity * 100n);
+  return amount(fourDecimals * 100n);
+}
+
 /** Distribute the entered header discount according to the gross invoice sign.
  * A net-negative invoice applies the new amount to returning lines; the
  * inherited discount of a linked return is kept separately and never replaced.
