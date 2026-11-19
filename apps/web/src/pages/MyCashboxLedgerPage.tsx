@@ -35,6 +35,15 @@ const todayInAden = () => {
   const part = (key: string) => parts.find(value => value.type === key)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}`;
 };
+const custodyDateTime = (line: AccountLedgerLine) => {
+  if (!line.recordedAt) return line.documentDate;
+  const recorded = new Date(line.recordedAt);
+  if (Number.isNaN(recorded.getTime())) return line.documentDate;
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Aden", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(recorded);
+  return `${line.documentDate} ${time}`;
+};
 const balanceText = (amount: string) =>
   amount.startsWith("-")
     ? <><bdi>{formatMoney(amount.slice(1))}</bdi>{" "}<span className="text-error">دائن</span></>
@@ -101,36 +110,42 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
     const visible: ColumnDef<AccountLedgerLine, unknown>[] = [
       {
         accessorKey: "runningBalance", header: "الرصيد", enableSorting: false,
-        size: isCustody ? 150 : undefined,
+        size: isCustody ? 130 : undefined,
         cell: ({ row }) => <span>{balanceText(row.original.runningBalance)}</span>,
       },
       {
         accessorKey: "baseDebit", header: "مدين", enableSorting: false,
-        size: isCustody ? 100 : undefined,
+        size: isCustody ? 90 : undefined,
         cell: ({ row }) => <bdi>{formatMoney(row.original.baseDebit)}</bdi>,
       },
       {
         accessorKey: "baseCredit", header: "دائن", enableSorting: false,
-        size: isCustody ? 100 : undefined,
+        size: isCustody ? 90 : undefined,
         cell: ({ row }) => <bdi>{formatMoney(row.original.baseCredit)}</bdi>,
       },
       {
         accessorKey: "counterpartAccounts", header: "الحساب المقابل", enableSorting: false,
-        size: isCustody ? 230 : undefined,
+        size: isCustody ? 190 : undefined,
         cell: ({ row }) => <span>{row.original.counterpartAccounts || "—"}</span>,
       },
       {
         accessorKey: "description", header: "البيان", enableSorting: false,
-        size: isCustody ? 560 : undefined,
+        size: isCustody ? 410 : undefined,
       },
       {
         id: "kind", accessorKey: "kind", header: "النوع", enableSorting: false,
         cell: ({ row }) => row.original.reversesDocumentId
           ? "قيد عكسي" : documentKindLabels[row.original.kind],
       },
-      { accessorKey: "documentDate", header: "التاريخ", enableSorting: false },
+      {
+        accessorKey: "documentDate", header: isCustody ? "التاريخ والوقت" : "التاريخ",
+        enableSorting: false, size: isCustody ? 178 : undefined,
+        cell: ({ row }) => isCustody
+          ? <span dir="ltr" title="التاريخ المحاسبي مع وقت تسجيل المستند">{custodyDateTime(row.original)}</span>
+          : row.original.documentDate,
+      },
       { id: "documentNumber", accessorKey: "documentNumber", header: "المستند", enableSorting: false },
-      { accessorKey: "currencyCode", header: "العملة", enableSorting: false },
+      { accessorKey: "currencyCode", header: "العملة", enableSorting: false, size: isCustody ? 75 : undefined },
     ];
     return isCustody
       ? visible.filter(column => column.id !== "kind" && column.id !== "documentNumber")
@@ -279,7 +294,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
                   </span>
                 </div>
                 <div className="my-cashbox-mobile-second">
-                  <span className="my-cashbox-mobile-date" dir="ltr">{line.documentDate}</span>
+                  <span className="my-cashbox-mobile-date" dir="ltr">{isCustody ? custodyDateTime(line) : line.documentDate}</span>
                   <span className="my-cashbox-mobile-kind">
                     {line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}
                   </span>
@@ -353,7 +368,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
       <Dialog open={selectedMovement!==null}
         onClose={()=>setSelectedMovement(null)} title={`تفاصيل حركة ${isCustody ? "العهدة" : "الصندوق"}`}>
         {selectedMovement&&<div className="my-cashbox-mobile-details">
-          <p><strong>التاريخ:</strong> {selectedMovement.documentDate}</p>
+          <p><strong>{isCustody ? "التاريخ والوقت" : "التاريخ"}:</strong> {isCustody ? custodyDateTime(selectedMovement) : selectedMovement.documentDate}</p>
           <p><strong>النوع:</strong> {selectedMovement.reversesDocumentId
             ? "قيد عكسي":documentKindLabels[selectedMovement.kind]}</p>
           <p><strong>الحساب المقابل:</strong> {selectedMovement.counterpartAccounts||"—"}</p>
