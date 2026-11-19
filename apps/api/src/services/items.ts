@@ -93,7 +93,6 @@ export type ItemFields = Pick<
   | "purchaseFactor"
   | "currencyId"
   | "reorderLimit"
-  | "orderQuantity"
   | "reserveQuantity"
   | "searchKeys"
   | "shortcut"
@@ -239,7 +238,6 @@ export const itemFieldColumns = [
   ["reviewed", "reviewed"],
   ["currencyId", "currency_id"],
   ["reorderLimit", "reorder_limit"],
-  ["orderQuantity", "order_quantity"],
   ["reserveQuantity", "reserve_quantity"],
   ["searchKeys", "search_keys"],
   ["shortcut", "shortcut"],
