@@ -156,7 +156,16 @@ const orderLevelReportHref = (r: QueryResultRow): string | null => {
   return match ? `/companies/${r.company_id}/item-order-levels?itemId=${match[1]}` : null;
 };
 
-// Older return alerts were stored with the non-existent /invoices list URL.
+// Route historical stopped-purchase alerts through the actual source identity,
+ // without touching protected notification records.
+ const stoppedPurchaseHref = (r: QueryResultRow): string | null => {
+   if (r.code !== "PURCHASE_STOPPED_ORDER" || !r.company_id) return null;
+   const match = /^purchase:([1-9]\d*):item:([1-9]\d*)$/.exec(String(r.subject_key ?? ""));
+   const base = `/companies/${r.company_id}/stopped-order-items`;
+   return match ? `${base}?itemId=${match[2]}&invoiceId=${match[1]}` : base;
+ };
+ 
+ // Older return alerts were stored with the non-existent /invoices list URL.
 // Their subject key retains the original invoice ID, so existing alerts can
 // open the exact sale-return invoice without rewriting stored notifications.
 const salesReturnInvoiceHref = (r: QueryResultRow): string | null => {
@@ -195,7 +204,7 @@ export const notificationDTO = (
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
   canAssign: !r.completed_at && general && r.company_id !== null && !memoNotificationCodes.includes(r.code) && !pendingCashboxCodes.includes(r.code),
-  href: salesReturnInvoiceHref(r) ?? expiryFollowUpHref(r) ?? orderLevelReportHref(r) ?? r.href ?? null,
+  href: stoppedPurchaseHref(r) ?? salesReturnInvoiceHref(r) ?? expiryFollowUpHref(r) ?? orderLevelReportHref(r) ?? r.href ?? null,
 });
 export async function nextReminder(
   client: PoolClient,
