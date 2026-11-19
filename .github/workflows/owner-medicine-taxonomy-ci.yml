@@ -8,6 +8,14 @@ on:
       - "apps/api/migrations/*owner_medicine_taxonomy_draft.sql"
       - "tests/owner-medicine-taxonomy.test.ts"
       - ".github/workflows/owner-medicine-taxonomy-ci.yml"
+  pull_request:
+    branches: [preview/render-2026-10-23]
+    paths:
+      - "apps/api/src/routes-owner-medicine-taxonomy.ts"
+      - "apps/web/src/pages/MarketMedicineTaxonomyPage.tsx"
+      - "apps/api/migrations/*owner_medicine_taxonomy_draft.sql"
+      - "tests/owner-medicine-taxonomy.test.ts"
+      - ".github/workflows/owner-medicine-taxonomy-ci.yml"
 permissions:
   contents: read
 jobs:
