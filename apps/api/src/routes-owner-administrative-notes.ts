@@ -67,7 +67,7 @@ export function ownerAdministrativeNotesRoutes(pool: Pool): Router {
           );
           // Record the operation, not the secret text: audit reports may be
           // visible to employees with broader operational permissions.
-          await audit(client, user, `${entity}.administrative-notes.update`,
+          await audit(client, user, kind === "items" ? "item.update" : "account.update",
             entity, recordId,
             { field: "administrativeNotes", private: true, changed: true },
             { field: "administrativeNotes", private: true, changed: true },
