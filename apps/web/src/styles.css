@@ -3402,6 +3402,25 @@ ul {
   padding-inline: 8px;
   font-size: 12px;
 }
+/* Only the non-default sales save action is highlighted. Keep focus and disabled behavior standard. */
+.commerce-save-footer .button.invoice-save-credit-alert {
+  background: linear-gradient(115deg, #803500, #934217, #711d42, #803500);
+  background-size: 230% 100%;
+  color: #fff;
+  border-color: #c67a34;
+}
+.commerce-save-footer .button.invoice-save-credit-alert:not(:disabled) {
+  animation: invoice-save-credit-gradient 2.2s ease-in-out 2 alternate;
+}
+@keyframes invoice-save-credit-gradient {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .commerce-save-footer .button.invoice-save-credit-alert:not(:disabled) {
+    animation: none;
+  }
+}
 .commerce-save-footer .commerce-totals {
   display: flex;
   align-items: center;

@@ -2013,6 +2013,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     !account.cashOrBank;
   const selectedSupplier = creditPurchase ? account : supplier;
   const defaultCashbox = useEmployeeCashbox(context);
+  const saveOnCreditAccount = kind === "sale" && !!account && !!defaultCashbox && account.id !== defaultCashbox.id;
   const [cashboxDraft,setCashboxDraft]=useState<{
     kind:"pouch"|"electronic"|"close";
     amount:string;notes:string;idempotencyKey:string;
@@ -4307,14 +4308,20 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
               >
                 تصفير الفاتورة
               </Button>
-              <Button id={fixedInputId("invoice-save")} type="submit" disabled={saving || localQueued || !selectedLines.length}>
+              <Button
+                id={fixedInputId("invoice-save")}
+                type="submit"
+                className={saveOnCreditAccount ? "invoice-save-credit-alert" : undefined}
+                title={saveOnCreditAccount ? `حساب الفاتورة: ${account?.name}` : undefined}
+                disabled={saving || localQueued || !selectedLines.length}
+              >
                 {saving
                   ? "جارٍ الحفظ والترحيل…"
                   : localQueued
                     ? "محفوظة محليًا — بانتظار المزامنة"
                   : unknown
                     ? "تأكيد نتيجة الطلب نفسه"
-                    : "حفظ وترحيل الفاتورة"}
+                    : saveOnCreditAccount ? "حفظ فاتورة آجل" : "حفظ وترحيل الفاتورة"}
               </Button>
             </div>
           </div>
