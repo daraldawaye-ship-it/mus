@@ -66,6 +66,7 @@ import { QuickMessageDeliveryStatus } from "./QuickMessageDelivery";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
+import { WorkPanelLayout } from "./WorkPanelLayout";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
@@ -1426,6 +1427,7 @@ function Workspace() {
               )}
             </div>
           </header>
+          <WorkPanelLayout enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
               <strong>تصفح بصلاحيات: {employeePreview.employeeName}</strong>
@@ -1639,6 +1641,7 @@ function Workspace() {
             <span title="يسجل الموقع فتح الصفحات والكروت والتفاعلات وعمليات البحث المسموح بها لأغراض الإدارة والإحصاء، دون كلمات المرور أو بيانات الحقول الخاصة. تُحترم إشارات منع التتبع الصادرة من المتصفح.">تسجيل حركة الاستخدام والإحصاءات</span>
             <span>الحسابات · الشركات · فريق العمل</span>
           </footer>
+          </WorkPanelLayout>
         </div>
       </div>
       <InterestTracker />
