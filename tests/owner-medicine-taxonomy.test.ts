@@ -8,6 +8,7 @@ import type { Pool } from "pg";
 import type { User } from "../packages/contracts/src/index.ts";
 import { ownerMedicineTaxonomyRoutes } from "../apps/api/src/routes-owner-medicine-taxonomy.ts";
 import { HttpError } from "../apps/api/src/errors.ts";
+import { ZodError } from "zod";
 
 test("medicine taxonomy stays private and saves independent classifications without loss", async t => {
   const db = new PGlite();
@@ -32,7 +33,7 @@ test("medicine taxonomy stays private and saves independent classifications with
   });
   app.use("/api", ownerMedicineTaxonomyRoutes({ query, connect: async () => client } as unknown as Pool));
   const errors: ErrorRequestHandler = (e, _req, res, _next) => {
-    res.status(e instanceof HttpError ? e.status : 500).json({ code: e.code, message: e.message });
+    res.status(e instanceof HttpError ? e.status : e instanceof ZodError ? 400 : 500).json({ code: e.code, message: e.message });
   };
   app.use(errors);
   const server = app.listen(0, "127.0.0.1");
