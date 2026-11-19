@@ -4,7 +4,8 @@ import type { z } from "zod";
 import {
   calculateInvoiceTotals,
   invoiceLineGross,
-  netPurchasePriceFirstUnit,
+  groupPurchaseReceiptPrices,
+  weightedPurchasePriceFirstUnit,
   normalizeRate,
   type Invoice,
   type InvoiceLine,
@@ -1046,37 +1047,81 @@ export async function createInvoice(
       [moneyString(cost), companyId, lineId],
     );
   }
-  // For bonused purchase receipts only, refresh the default card purchase price
-  // to the effective price per FIRST unit in the item's own currency. This is
-  // an optional UI convenience; value/quantity postings above remain exact.
-  // Do not overwrite today's card price from a backdated purchase when a
-  // newer purchase exists, and do not rewrite defaults for historical imports.
+  // Recalculate the saved default purchase price from the on-hand quantity
+  // valued at the existing card price and the new net purchase value. All
+  // positive rows for the SAME item are combined first, even if they use
+  // different purchase units, line prices, discounts, or free bonus.
+  // "smallest" includes bonus already, so never add it a second time.
+  // This is a card-price convenience ONLY; stock valuation and journals stay
+  // under the existing accounting engine. Historical imports are unchanged.
   if (input.kind === "purchase" && !importContext) {
-    for (const line of prepared) {
-      if (line.bonusQuantity <= 0n || line.quantity <= 0n ||
-          line.smallest <= 0n || line.total < 0n ||
-          line.item.currency_id !== input.currencyId) continue;
-      const effectivePrice = netPurchasePriceFirstUnit(
-        moneyString(line.total), line.smallest.toString(),
-        stockUnitMultiplier({factor2:Number(line.item.factor2), factor3:Number(line.item.factor3)}, 1));
-      const updated = await client.query(
-        `UPDATE items SET purchase_price=$3::numeric,
-           revision=revision+1,updated_at=clock_timestamp()
-         WHERE company_id=$1 AND id=$2 AND purchase_price IS DISTINCT FROM $3::numeric
-           AND NOT EXISTS (
-             SELECT 1 FROM invoice_lines prior_line
-             JOIN invoices prior ON prior.company_id=prior_line.company_id
-               AND prior.id=prior_line.invoice_id
-             WHERE prior.company_id=$1 AND prior.kind='purchase'
-               AND prior.posted AND prior.document_date>$4::date
-               AND prior_line.item_id=$2 AND prior_line.quantity>0
-           ) RETURNING id`,
-        [companyId, line.item.id, effectivePrice, input.documentDate],
+    const grouped = groupPurchaseReceiptPrices(
+      prepared.filter(line =>
+        line.quantity > 0n && line.smallest > 0n && line.total >= 0n &&
+        line.item.currency_id === input.currencyId,
+      ).map(line => ({
+        itemId: Number(line.item.id),
+        quantitySmallest: line.smallest.toString(),
+        netTotal: moneyString(line.total),
+      })),
+    );
+    if (grouped.length) {
+      // Stock movements for this invoice have been written. Subtract only
+      // its positive receipts from the final pooled quantity to recover the
+      // stock still on hand BEFORE the new receipts. This also handles
+      // returns in the same invoice without counting returned stock twice.
+      const valuations = await client.query(
+        "SELECT item_id, quantity_smallest FROM stock_item_valuations WHERE company_id=$1 AND item_id=ANY($2::integer[])",
+        [companyId, grouped.map(row => row.itemId)],
       );
-      if (updated.rowCount)
-        await audit(client, user, "item.field.update", "item", line.item.id,
-          {purchasePrice:normalizeRate(line.item.purchase_price)},
-          {purchasePrice:effectivePrice,reason:"purchase-bonus",invoiceId}, companyId);
+      const currentQuantities = new Map<number, bigint>(
+        valuations.rows.map(row => [
+          Number(row.item_id), BigInt(row.quantity_smallest),
+        ]),
+      );
+      for (const group of grouped) {
+        const item = items.rows.find(row => Number(row.id) === group.itemId)!;
+        const currentQuantity = currentQuantities.get(group.itemId);
+        if (currentQuantity === undefined)
+          conflict("تعذر قراءة الكمية المجمعة للصنف بعد ترحيل المشتريات");
+        const beforeNewPurchases = currentQuantity - BigInt(group.quantitySmallest);
+        // A negative inventory position does not represent owned stock to
+        // value at the old card price; weight only positive on-hand units.
+        const previousQuantity = beforeNewPurchases > 0n ? beforeNewPurchases : 0n;
+        const previousPrice = normalizeRate(item.purchase_price);
+        const newPrice = weightedPurchasePriceFirstUnit(
+          previousPrice,
+          previousQuantity.toString(),
+          group.netTotal,
+          group.quantitySmallest,
+          stockUnitMultiplier({
+            factor2: Number(item.factor2), factor3: Number(item.factor3),
+          }, 1),
+        );
+        const updated = await client.query(
+          `UPDATE items SET purchase_price=$3::numeric,
+             revision=revision+1,updated_at=clock_timestamp()
+           WHERE company_id=$1 AND id=$2
+             AND purchase_price IS DISTINCT FROM $3::numeric
+             AND NOT EXISTS (
+               SELECT 1 FROM invoice_lines prior_line
+               JOIN invoices prior ON prior.company_id=prior_line.company_id
+                 AND prior.id=prior_line.invoice_id
+               WHERE prior.company_id=$1 AND prior.kind='purchase'
+                 AND prior.posted AND prior.document_date>$4::date
+                 AND prior_line.item_id=$2 AND prior_line.quantity>0
+             ) RETURNING id`,
+          [companyId, group.itemId, newPrice, input.documentDate],
+        );
+        if (updated.rowCount)
+          await audit(client, user, "item.field.update", "item", group.itemId,
+            { purchasePrice: previousPrice },
+            { purchasePrice: newPrice, reason: "purchase-weighted-average",
+              invoiceId, previousQuantitySmallest: previousQuantity.toString(),
+              incomingQuantitySmallest: group.quantitySmallest,
+              netPurchaseTotal: group.netTotal },
+            companyId);
+      }
     }
   }
   // The item card is the authoritative nearest-expiry value.
