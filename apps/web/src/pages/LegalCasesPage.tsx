@@ -1,5 +1,5 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
-import { documentImageStates, documentPriorities, documentImageLabels, documentPriorityLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImageStates, documentImportanceScores, documentImageLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
 import { DocumentReviewCard, DocumentReviewFields, groupDocumentRows, type ReviewEntry } from "./LegalDocumentReview";
 import { Fragment, useState } from "react";
 import "./LegalCasesPage.css";
@@ -79,7 +79,7 @@ export function LegalCasesPage() {
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
  const globalKind=globalLists.find(k=>k.id===params.get("list"))?.id??null;
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
- const [imageFilter,setImageFilter]=useState(""),[priorityFilter,setPriorityFilter]=useState(""),[transcriptionFilter,setTranscriptionFilter]=useState("");
+ const [imageFilter,setImageFilter]=useState(""),[importanceFilter,setImportanceFilter]=useState(""),[transcriptionFilter,setTranscriptionFilter]=useState("");
  const manual=globalKind==="document"&&params.get("manual")==="1";
  const manualCase=manual?(Number(params.get("manualCase"))||null):null;
  const [expandedId,setExpandedId]=useState<number|null>(null);
@@ -97,13 +97,13 @@ export function LegalCasesPage() {
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
- const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,priorityFilter,transcriptionFilter],queryFn:({signal})=>{
+ const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter],queryFn:({signal})=>{
   const query=new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"});
   if(globalKind==="document"){
    if(manual)query.set("manual","true");
    if(manualCase)query.set("caseId",String(manualCase));
    if(imageFilter)query.set("imageState",imageFilter);
-   if(priorityFilter&&!manual)query.set("priority",priorityFilter);
+   if(importanceFilter)query.set("importanceScore",importanceFilter);
    if(transcriptionFilter)query.set("transcriptionState",transcriptionFilter);
   }
   return api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+query,{signal});
@@ -117,7 +117,7 @@ export function LegalCasesPage() {
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
  const resetGlobalPage=()=>{setGlobalPage(1);setExpandedId(null);setFocus(null);};
- const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setPriorityFilter("");setTranscriptionFilter("");};
+ const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImportanceFilter("");setTranscriptionFilter("");};
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
   resetGlobalContext();
   setParams(p=>{const next=new URLSearchParams(p);next.delete("manual");next.delete("manualCase");if(kind)next.set("list",kind);else next.delete("list");return next;});
@@ -178,7 +178,7 @@ export function LegalCasesPage() {
   {manualCase&&<Button variant="secondary" onClick={()=>openManual()}>كل القضايا</Button>}
   <Select label="حالة الصورة" value={imageFilter} onChange={e=>{setImageFilter(e.target.value);resetGlobalPage();}}><option value="">كل الصور</option>{documentImageStates.map(s=><option key={s} value={s}>{documentImageLabels[s]}</option>)}</Select>
   <Select label="حالة التفريغ" value={transcriptionFilter} onChange={e=>{setTranscriptionFilter(e.target.value);resetGlobalPage();}}><option value="">كل حالات التفريغ</option>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
-  {!manual&&<Select label="أهمية النقص" value={priorityFilter} onChange={e=>{setPriorityFilter(e.target.value);resetGlobalPage();}}><option value="">كل الأولويات</option><option value="unrated">غير مقيّمة</option>{documentPriorities.map(p=><option key={p} value={p}>{documentPriorityLabels[p]}</option>)}</Select>}
+  <Select label="أهمية النقص" value={importanceFilter} onChange={e=>{setImportanceFilter(e.target.value);resetGlobalPage();}}><option value="">كل الدرجات</option>{documentImportanceScores.map(score=><option key={score} value={score}>{score} / 10</option>)}<option value="unrated">غير مقيّمة من 10</option></Select>
  </div>}
  {globalKind==="document"&&entryEditor}
  {globalKind==="document"&&!manual&&transcription.data&&<div className="legal-tags"><strong>المتبقي لاستكمال التسجيل {transcription.data.remaining}</strong>{transcriptionStates.map(s=><span key={s}>{transcriptionLabels[s]} {transcription.data!.counts[s]}</span>)}</div>}
@@ -189,7 +189,7 @@ export function LegalCasesPage() {
  {globalRecords.isPending&&<Notice>جارٍ تحميل القائمة…</Notice>}
  {globalRecords.error&&<Notice tone="error">{errorMessage(globalRecords.error)} <Button variant="secondary" onClick={()=>void globalRecords.refetch()}>إعادة المحاولة</Button></Notice>}
  {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>{manual?"لا توجد أوراق مميزة للتفريغ اليدوي في هذا النطاق.":"لا توجد سجلات مطابقة للبحث."}</Notice>}
- {groupDocumentRows(globalRecords.data?.items??[],manual,manualCase).map(group=><Fragment key={group.key}>
+ {groupDocumentRows(globalRecords.data?.items??[],manual,manualCase,globalPage===1).map(group=><Fragment key={group.key}>
  {group.label&&<h3 className="legal-review-group">{group.label}</h3>}
  {group.items.map(r=><article key={r.id} className="legal-entry">
  <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div>

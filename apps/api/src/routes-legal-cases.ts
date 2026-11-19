@@ -55,11 +55,12 @@ const documentReviewSchema=z.object({
   nextAction:z.string().trim().max(4000).optional(),
   priority:z.enum(documentPriorities).optional(),
   manualTranscription:z.boolean().optional(),
+  importanceScore:z.number().int().min(1).max(10).optional(),
   hearingDate:z.iso.date().optional(),
   hearingGroup:z.string().trim().min(1).max(180).optional(),
   canonicalRecordId:z.number().int().min(1).max(2147483647).optional(),
   verifiedOn:z.iso.date().optional(),
-}).strict().refine(v=>!v.manualTranscription||(v.priority==="high"&&!!v.missingPassage),"يلزم تحديد أهمية عالية وموضع النقص لإضافته إلى التفريغ اليدوي");
+}).strict().refine(v=>!v.manualTranscription||((v.importanceScore!==undefined||v.priority==="high")&&!!v.missingPassage),"يلزم تقييم أهمية النقص وتحديد موضعه لإضافته إلى التفريغ اليدوي");
 
 const kindSchema = z.enum(["fact","document","event","explanation","task","report","hearing","instruction"]);
 const recordSchema = z.object({
@@ -538,12 +539,14 @@ export function legalCaseRoutes(pool:Pool):Router {
     if(unlinked) ownerOnly(user);
     const manual=req.query.manual;
     const priority=req.query.priority;
+    const importanceScore=req.query.importanceScore;
     const imageState=req.query.imageState;
     const transcriptionState=req.query.transcriptionState;
     const caseParam=req.query.caseId;
     const selectedCase=caseParam===undefined?null:Number(caseParam);
     if ((manual!==undefined&&manual!=="true"&&manual!=="false")||
       (priority!==undefined&&priority!=="unrated"&&!z.enum(documentPriorities).safeParse(priority).success)||
+      (importanceScore!==undefined&&(typeof importanceScore!=="string"||!/^(?:[1-9]|10|unrated)$/.test(importanceScore)))||
       (imageState!==undefined&&!z.enum(documentImageStates).safeParse(imageState).success)||
       (transcriptionState!==undefined&&!z.enum(transcriptionStates).safeParse(transcriptionState).success)||
       (caseParam!==undefined&&(typeof caseParam!=="string"||!/^[0-9]+$/.test(caseParam)||!Number.isSafeInteger(selectedCase)||Number(selectedCase)<1||Number(selectedCase)>2147483647)))
@@ -567,14 +570,16 @@ export function legalCaseRoutes(pool:Pool):Router {
     const filter=(fragment:string,value:unknown)=>{args.push(value);where+=" AND "+fragment.replace("?", "$"+args.length);};
     if (selectedCase!==null) filter("EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id AND rc.case_id=?)",selectedCase);
     if (priority!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'priority','unrated')=?",priority);
+    if (importanceScore!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'importanceScore','unrated')=?",importanceScore);
     if (imageState!==undefined) filter("("+documentImageState+")=?",imageState);
     if (transcriptionState!==undefined) filter("r.kind='document' AND COALESCE(r.transcription_status,'unknown')=?",transcriptionState);
     if (manual==="true") where+=` AND r.kind='document' AND COALESCE(r.transcription_status,'unknown') NOT IN ('complete','duplicate','archived')
-      AND r.document_review->>'priority'='high' AND r.document_review->>'manualTranscription'='true'
+      AND (r.document_review->>'importanceScore' IS NOT NULL OR r.document_review->>'priority'='high')
+      AND r.document_review->>'manualTranscription'='true'
       AND NULLIF(btrim(r.document_review->>'missingPassage'),'') IS NOT NULL`;
     const orderBy = kind === "instruction" ? "r.sort_order, r.id" :
       kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" :
-      manual==="true" ? "document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
+      manual==="true" ? "(r.document_review->>'importanceScore')::int DESC NULLS LAST, document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
     const docs=kind==="document"||manual==="true"||imageState!==undefined;
     const compact=req.query.compact==="true"&&!unlinked&&(kind==="fact"||kind==="document");
     const cols=compact?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.drive_file_id,r.document_review,r.transcription_status,r.transcription_file,r.revision":"r.*";

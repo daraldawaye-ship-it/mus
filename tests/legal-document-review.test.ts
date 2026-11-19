@@ -10,15 +10,32 @@ import { apiCatalog } from "../apps/api/src/services/mcp-api.ts";
 import { legalCaseRoutes } from "../apps/api/src/routes-legal-cases.ts";
 import { HttpError } from "../apps/api/src/errors.ts";
 import { ZodError } from "zod";
+import { splitStarterBatch } from "../packages/contracts/src/legal-document-review.ts";
+
+test("starter batch selects only the first five percent of eligible scored results",()=>{
+ const list=(size:number)=>Array.from({length:size},(_,i)=>({
+  id:i,transcription_status:"partial",document_review:{importanceScore:10-Math.min(i,9),manualTranscription:true,missingPassage:"موضع محدد"},
+ }));
+ for(const [size,pick] of [[0,0],[11,1],[100,5]]){
+  const items=list(size),{starter,rest}=splitStarterBatch(items,true);
+  assert.equal(starter.length,pick);
+  assert.deepEqual([...starter,...rest],items);
+  assert.deepEqual(splitStarterBatch(items,false),{starter:[],rest:items});
+ }
+ const legacy={id:999,transcription_status:"partial",document_review:{manualTranscription:true,missingPassage:"موضع محدد"}};
+ const resolved={...list(1)[0],id:998,transcription_status:"complete"};
+ assert.deepEqual(splitStarterBatch([resolved,legacy,...list(1)],true).starter.map(x=>x.id),[0]);
+});
 
 test("catalog advertises document review updates and filters",()=>{
  const router=legalCaseRoutes({} as Pool);
  const list=apiCatalog(router,{operation:"GET /legal/records"}).operations[0];
  const put=apiCatalog(router,{operation:"PUT /legal/records/:id"}).operations[0];
  assert.ok(list && "queryFields" in list);
- assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState"]);
+ assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore"]);
  assert.ok(put && "bodySchema" in put);
  assert.ok(put.bodySchema && JSON.stringify(put.bodySchema).includes("\"documentReview\""));
+ assert.ok(JSON.stringify(put.bodySchema).includes("\"importanceScore\""));
 });
 
 test("legal document reviews stay revision-safe and manual queue excludes resolved and duplicate records",async t=>{
@@ -109,4 +126,31 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
  assert.equal(unlinked.status,400);
  const revised=await call("/records/1",1,{...payload,revision:rev,documentReview:{...prev.document_review,verifiedOn:"2026-11-19"}});
  assert.equal(revised.status,200,JSON.stringify(revised.data));assert.equal(revised.data.record.document_review.verifiedOn,"2026-11-19");
+ const scoreUpdate=await call("/records/1",1,{...payload,revision:revised.data.record.revision,documentReview:{...prev.document_review,priority:undefined,importanceScore:10}});
+ assert.equal(scoreUpdate.status,200,JSON.stringify(scoreUpdate.data));
+ assert.equal(scoreUpdate.data.record.document_review.importanceScore,10);
+ for(const invalid of [0,1.5,-1,11,"1"]){
+  const rejected=await call("/records/1",1,{...payload,revision:scoreUpdate.data.record.revision,documentReview:{...prev.document_review,importanceScore:invalid}});
+  assert.equal(rejected.status,400,JSON.stringify(rejected.data));
+ }
+ await db.query("UPDATE legal_records SET document_review=document_review||$1::jsonb WHERE id=4",[JSON.stringify({importanceScore:2})]);
+ await db.query("UPDATE legal_records SET document_review=$1 WHERE id=5",[JSON.stringify({...prev.document_review,priority:undefined,importanceScore:3})]);
+ const unranked=await db.query<{id:number}>("INSERT INTO legal_records(kind,title,created_by,updated_by,transcription_status,document_review) VALUES('document','Unranked',1,1,'partial',$1) RETURNING id",[JSON.stringify(prev.document_review)]);
+ await db.query("INSERT INTO legal_record_cases VALUES($1,1)",[unranked.rows[0].id]);
+ const order=await call("/records?kind=document&manual=true&compact=true");
+ assert.deepEqual(order.data.items.map((r:{id:number})=>r.id),[1,5,4,unranked.rows[0].id]);
+ const scoped=await call("/records?kind=document&manual=true&caseId=1",2);
+ assert.deepEqual(scoped.data.items.map((r:{id:number})=>r.id),[1,5,unranked.rows[0].id]);
+ assert.deepEqual((await call("/records?kind=document&manual=true&importanceScore=3",2)).data.items.map((r:{id:number})=>r.id),[5]);
+ assert.deepEqual((await call("/records?kind=document&manual=true&importanceScore=unrated",2)).data.items.map((r:{id:number})=>r.id),[unranked.rows[0].id]);
+ assert.equal((await call("/records?kind=document&importanceScore=11",2)).status,400);
+ const idSearch=await call("/records?kind=document&manual=true&q=%231",2);
+ assert.deepEqual(idSearch.data.items.map((r:{id:number})=>r.id),[1]);
+ const bulk=JSON.stringify({...prev.document_review,priority:undefined,importanceScore:5});
+ await db.query("WITH added AS (INSERT INTO legal_records(kind,title,created_by,updated_by,transcription_status,document_review) SELECT 'document','Bulk '||n,1,1,'partial',$1 FROM generate_series(1,101) n RETURNING id) INSERT INTO legal_record_cases SELECT id,1 FROM added",[bulk]);
+ const firstPage=await call("/records?kind=document&manual=true&caseId=1&page=1",2);
+ const secondPage=await call("/records?kind=document&manual=true&caseId=1&page=2",2);
+ assert.equal(firstPage.data.items.length,100);assert.equal(firstPage.data.items[0].id,1);
+ assert.equal(secondPage.data.items.at(-1).id,unranked.rows[0].id);
+ assert.equal(new Set([...firstPage.data.items,...secondPage.data.items].map((r:{id:number})=>r.id)).size,104);
 });
