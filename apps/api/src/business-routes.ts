@@ -23,6 +23,7 @@ import { accountStatisticsRoutes } from "./routes-account-statistics.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
 import { generalTableRoutes } from "./routes-general-table.ts";
+import { aiTaskRoutes } from "./routes-ai-tasks.ts";
 import { legalCaseRoutes } from "./routes-legal-cases.ts";
 import { archiveRoutes } from "./routes-archive.ts";
 import { explanationRoutes } from "./routes-explanations.ts";
@@ -102,6 +103,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     currencyRoutes(pool),
     locationRoutes(pool),
     generalTableRoutes(pool),
+    aiTaskRoutes(pool),
     legalCaseRoutes(pool),
     archiveRoutes(pool),
     explanationRoutes(pool),

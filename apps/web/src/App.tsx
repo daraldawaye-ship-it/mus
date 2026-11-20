@@ -129,6 +129,7 @@ const ExplanationsTopicIndex = lazy(() => import("./pages/ExplanationsReader").t
 const ExplanationsContinuousReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsContinuousReader})));
 const ExplanationsTopicReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicReader})));
 const InquiriesPage = lazy(() => import("./pages/InquiriesPage").then(m=>({default:m.InquiriesPage})));
+const AiTasksPage = lazy(() => import("./pages/AiTasksPage").then(m => ({ default: m.AiTasksPage })));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -480,6 +481,7 @@ function Navigation({
     "public.system-monitor": <LayoutDashboard size={17} />,
     "public.owner-sql-console": <TableProperties size={17} />,
     "public.last-present": <FileClock size={17} />,
+    "public.ai-tasks": <TableProperties size={17} />,
     "public.general-table": <TableProperties size={17} />,
     "public.explanations-reader": <BookOpen size={17}/>,
     "public.explanations-editor": <FileText size={17}/>,
@@ -1556,6 +1558,14 @@ function Workspace() {
               <Route path="/explanations/access" element={<Protected><PageRouteGuard pageKey="public.explanations-access"><Suspense fallback={<Notice>جارٍ تحميل منح الصلاحيات…</Notice>}><ExplanationsAccessPage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/archive" element={<Protected><PageRouteGuard pageKey="public.archive"><Suspense fallback={<Notice>جارٍ تحميل أرشيف المستندات…</Notice>}><ArchivePage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
+              <Route
+                path="/ai-tasks"
+                element={<Protected><PageRouteGuard pageKey="public.ai-tasks">
+                  {user?.owner && !employeePreview
+                    ? <Suspense fallback={<Notice>جارٍ تحميل المهام…</Notice>}><AiTasksPage /></Suspense>
+                    : <Notice tone="error">للمالك فقط</Notice>}
+                </PageRouteGuard></Protected>}
+              />
               <Route
                 path="/general-table"
                 element={

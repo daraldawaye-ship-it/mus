@@ -268,6 +268,7 @@ export async function directoryEntries(
               resolveGrant(definition.key, action) !== "deny") &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
+            (definition.key !== "public.ai-tasks" || user.owner) &&
             (definition.key !== "public.explanations-reader" || explanationRead) &&
             (definition.key !== "public.explanations-editor" || explanationEdit) &&
             (user.owner ||
@@ -472,7 +473,9 @@ export async function requestPageKeys(
               ? ["public.users"]
               : prefix === "general-table"
                 ? ["public.general-table"]
-                : prefix === "audit"
+                : prefix === "ai-tasks"
+                  ? ["public.ai-tasks"]
+                  : prefix === "audit"
                   ? ["public.audit"]
                   : [],
     };

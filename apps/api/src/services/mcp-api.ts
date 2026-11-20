@@ -11,7 +11,19 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import {ownerSqlMcpPreviewSchema,ownerSqlMcpExecuteSchema} from "./owner-sql-mcp.ts";
 import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
+import { aiTaskInput, aiTaskArchiveInput } from "../routes-ai-tasks.ts";
+
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "GET /ai-tasks": { source: "routes-ai-tasks.ts", queryFields: [] },
+  "GET /ai-tasks/:id/history": { source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"] },
+  "POST /ai-tasks": {
+    source: "routes-ai-tasks.ts", queryFields: [], bodyContract: "aiTaskInput",
+    bodySchema: z.toJSONSchema(aiTaskInput),
+  },
+  "PATCH /ai-tasks/:id/archive": {
+    source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"], bodyContract: "aiTaskArchiveInput",
+    bodySchema: z.toJSONSchema(aiTaskArchiveInput),
+  },
   "POST /owner-bulk-sql/preview": {
     source:"app.ts OAuth-dispatched owner SQL",queryFields:[],
     bodyContract:"ownerSqlMcpPreviewSchema",bodySchema:z.toJSONSchema(ownerSqlMcpPreviewSchema),
