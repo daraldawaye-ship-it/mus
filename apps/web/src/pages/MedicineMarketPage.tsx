@@ -131,7 +131,7 @@ function RelationName({
     staleTime: 60000,
   });
   const label = result.data?.card.name ?? `كرت #${id}`;
-  const english = bilingual && result.data?.card.kind==="medicine" &&
+  const english = (result.data?.card.kind==="drug-classification" || (bilingual && result.data?.card.kind==="medicine")) &&
     typeof result.data.card.data.englishName==="string" &&
     result.data.card.data.englishName.trim() &&
     result.data.card.data.englishName.trim().toLowerCase()!==label.trim().toLowerCase()
@@ -1535,7 +1535,6 @@ export function MedicineMarketPage({
       {tab === "catalog" && permissions?.canConfigure && (
         <details className="medicine-market-admin-references">
           <summary>إدارة بيانات السوق والبيانات المرجعية</summary>
-          {user?.owner && !visitorOnly && <Link to={`${ROOT}/owner/medicine-taxonomy`}>التصنيف الدوائي — مسودة إدارية</Link>}
           <p className="medicine-market-muted">للاطلاع والاختيار فقط. إضافة وتصحيح القوائم تتم إداريًا، وليس من أزرار كروت المستخدمين.</p>
           <div className="medicine-market-reference-cards">
             <details>
@@ -1589,11 +1588,11 @@ export function MedicineMarketPage({
                 </option>
               ))}
             </Select>
-            <Select label="ترتيب النتائج" value={sort}
+            {kind !== "drug-classification" && <Select label="ترتيب النتائج" value={sort}
               onChange={(e) => write({ sort: e.target.value === "updated" ? "updated" : "created", page: null, card: null })}>
               <option value="updated">الأحدث تحديثًا أو إضافة</option>
               <option value="created">الأحدث إضافة</option>
-            </Select>
+            </Select>}
             {permissions?.canModerate && (
               <label className="medicine-market-check">
                 <input
@@ -1651,6 +1650,8 @@ export function MedicineMarketPage({
                         {types.find((t) => t.key === card.kind)?.label}
                       </span>
                       <h2>{card.name}</h2>
+                      {card.kind === "drug-classification" && typeof card.data.englishName === "string" && card.data.englishName &&
+                        <small dir="ltr" lang="en">{card.data.englishName}</small>}
                       <p>
                         {statusLabels[card.status] ?? card.status}
                         {card.archived ? " · مؤرشف" : ""} · آخر تحديث{" "}

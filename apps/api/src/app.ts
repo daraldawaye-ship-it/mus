@@ -19,7 +19,6 @@ import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { businessRoutes } from "./business-routes.ts";
 import { systemMonitorRoutes } from "./routes-system-monitor.ts";
 import { ownerSqlConsoleRoutes } from "./routes-owner-sql.ts";
-import { ownerMedicineTaxonomyRoutes } from "./routes-owner-medicine-taxonomy.ts";
 import { ownerAdministrativeNotesRoutes } from "./routes-owner-administrative-notes.ts";
 import { callOwnerSqlMcp } from "./services/owner-sql-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
@@ -151,7 +150,6 @@ export async function createApp(options: AppOptions = {}) {
     monitor,
     ownerSqlConsoleRoutes(pool,marketOptions),
     ownerAdministrativeNotesRoutes(pool),
-    ownerMedicineTaxonomyRoutes(pool),
     business,
     pledgeRoutes(pool),
   );

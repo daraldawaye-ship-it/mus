@@ -18,7 +18,7 @@ type CardPage = { items: MarketCard[]; total: number; page: number; pageSize: nu
 const ROOT = "/medicine-market";
 const SECTION_SIZE = 10;
 const SECTION_ORDER: MarketKind[] = [
-  "agent", "wholesaler", "medicine", "composition", "scientific-name",
+  "agent", "wholesaler", "medicine", "composition", "drug-classification", "scientific-name",
   "manufacturer", "pharmacy", "prescription", "doctor", "hospital", "clinic", "college",
 ];
 
@@ -59,6 +59,7 @@ export function MarketCompactCard({ item, type, references, onOpen }: {
     ? ["compositionId", "agentId", "englishName", "dosageFormId"]
     : item.kind === "composition" ? ["dosageFormId", "ingredients"]
     : item.kind === "scientific-name" ? ["englishName", "details"]
+    : item.kind === "drug-classification" ? ["englishName"]
     : item.kind === "prescription" ? ["prescriptionLines"]
     : ["address", "phone", "landlinePhone", "cityCode", "agentId", "country", "countryCode", "specialty"];
   const preview = priorities.map(key => publicFields.find(field => field.key === key))

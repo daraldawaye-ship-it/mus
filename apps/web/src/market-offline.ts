@@ -352,7 +352,7 @@ export function searchSavedMarketCards(cards: readonly MarketCard[], path: strin
     (kind ? item.kind === kind : item.kind !== "dosage-form") &&
     (!query || String(item.id) === query || [item.name, item.data.arabicSearchKey, item.data.englishName, item.data.keywords]
       .some(value => normalizedText(value).includes(query))))
-    .sort((a, b) => String(b[sort]).localeCompare(String(a[sort])) || b.id - a.id);
+    .sort((a, b) => kind === "drug-classification" ? a.id - b.id : String(b[sort]).localeCompare(String(a[sort])) || b.id - a.id);
   return { items: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, page, pageSize };
 }
 

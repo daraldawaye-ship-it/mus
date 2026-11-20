@@ -1056,7 +1056,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR COALESCE(c.data->>'arabicSearchKey','') LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
       const args = [u?.id ?? null, archived, kind, `%${query}%`, v.q];
       const rows = await pool.query(
-        `${cardSelect} WHERE ${condition} ORDER BY c.${sort==="created"?"created_at":"updated_at"} DESC,c.id DESC LIMIT $6 OFFSET $7`,
+        `${cardSelect} WHERE ${condition} ORDER BY ${kind === "drug-classification" ? "c.id ASC" : `c.${sort==="created"?"created_at":"updated_at"} DESC,c.id DESC`} LIMIT $6 OFFSET $7`,
         [...args, v.pageSize, v.offset],
       );
       const count = await pool.query(

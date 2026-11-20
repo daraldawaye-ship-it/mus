@@ -3,6 +3,7 @@ export const marketKinds = [
   "prescription",
   "composition",
   "scientific-name",
+  "drug-classification",
   "dosage-form",
   "pharmacy",
   "wholesaler",
@@ -138,6 +139,7 @@ export const marketTypes: MarketType[] = [
       f("dosageFormId", "الشكل الصيدلاني", "relation", {
         relationKind: "dosage-form",
       }),
+      f("drugClassificationId", "التصنيف الدوائي", "relation", { relationKind: "drug-classification" }),
       f("ingredients", "الأسماء العلمية والقوة", "ingredients"),
       f("hasExpiry", "له تاريخ انتهاء", "boolean"),
       keywords,
@@ -155,6 +157,11 @@ export const marketTypes: MarketType[] = [
       f("wikipediaAr", "ويكيبيديا العربية", "url"),
       keywords,
     ],
+  },
+  {
+    key: "drug-classification",
+    label: "التصانيف الدوائية",
+    fields: [f("name", "الاسم بالعربي"), f("englishName", "الاسم بالإنجليزي"), keywords],
   },
   {
     key: "dosage-form",
