@@ -57,7 +57,7 @@ test("Medawee verification and current agent link are owner-only, atomic and rev
     const after = (await (await call("GET")).json()).items;
     assert.deepEqual(after[0], {
       agentName: "Agent", manufacturerName: "Alpha", agentUrl, completionStatus: "pending",
-      revision: 1, manufacturerVerified: true, manufacturerAgentLinked: false,
+      revision: 1, manufacturerVerified: true, manufacturerAgentLinked: false, duplicateAgent: false,
       linkedManufacturerCardId: null, linkedAgentCardId: null, manufacturerVerificationLabel: "تم التأكد من الإضافة فقط",
     });
     assert.equal(after[1].manufacturerVerified, false);
@@ -79,6 +79,18 @@ test("Medawee verification and current agent link are owner-only, atomic and rev
     };
     assert.deepEqual((await linked.json()).items[0], expectedLinkedRow);
     assert.deepEqual((await (await call("GET")).json()).items[0], expectedLinkedRow);
+
+    const anotherAgentUrl = `https://medawee.com/medicines/entity/agent/${"2".repeat(24)}`;
+    assert.equal((await call("POST", [
+      { agentName: "Other", manufacturerName: "Alpha", agentUrl: anotherAgentUrl },
+    ])).status, 200);
+    const repeated = (await (await call("GET")).json()).items;
+    assert.deepEqual(repeated.filter((row: { manufacturerName: string }) => row.manufacturerName === "Alpha")
+      .map((row: { duplicateAgent: boolean; manufacturerVerificationLabel: string }) =>
+        [row.duplicateAgent, row.manufacturerVerificationLabel]), [[true, "وكيل مكرر"], [true, "وكيل مكرر"]]);
+    assert.equal(repeated.find((row: { manufacturerName: string }) => row.manufacturerName === "Beta").duplicateAgent, false);
+    assert.equal(repeated[0].manufacturerAgentLinked, true);
+    await db.query("DELETE FROM medawee_agent_manufacturers_staging WHERE agent_url=$1", [anotherAgentUrl]);
 
     await db.exec("UPDATE medicine_market_cards SET archived=true WHERE id=1");
     const stale = (await (await call("GET")).json()).items[0];

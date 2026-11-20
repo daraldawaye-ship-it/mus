@@ -65,7 +65,9 @@ function selectMedaweeAgents(source: "medawee_agent_manufacturers_staging" | "up
     staging.linked_manufacturer_card_id AS "linkedManufacturerCardId",
     staging.linked_agent_card_id AS "linkedAgentCardId",
     link.confirmed AS "manufacturerAgentLinked",
-    CASE WHEN link.confirmed THEN 'تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل'
+    link.duplicate_agent AS "duplicateAgent",
+    CASE WHEN link.duplicate_agent THEN 'وكيل مكرر'
+         WHEN link.confirmed THEN 'تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل'
          WHEN staging.manufacturer_verified THEN 'تم التأكد من الإضافة فقط'
          ELSE '' END AS "manufacturerVerificationLabel"
     FROM ${source} AS staging
@@ -74,7 +76,12 @@ function selectMedaweeAgents(source: "medawee_agent_manufacturers_staging" | "up
         SELECT 1 ${medaweeMarketLink}
           AND manufacturer.id=staging.linked_manufacturer_card_id
           AND agent.id=staging.linked_agent_card_id
-      ) AS confirmed
+      ) AS confirmed,
+      EXISTS (
+        SELECT 1 FROM medawee_agent_manufacturers_staging AS other
+          WHERE other.manufacturer_name=staging.manufacturer_name
+            AND other.agent_url<>staging.agent_url
+      ) AS duplicate_agent
     ) AS link`;
 }
 
