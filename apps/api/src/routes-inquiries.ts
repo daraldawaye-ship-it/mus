@@ -69,6 +69,37 @@ export async function editInquiryTaskName(
   await audit(db,user,"inquiry.taskName","inquiry",requestId,{taskName:before},{taskName:input.taskName},companyId);
   return {id:requestId,taskName:input.taskName,updatedAt:new Date(updated.rows[0].updated_at).toISOString()};
 }
+export const shortenCashboxQuestionSchema = inquiryTaskNameSchema.pick({expectedUpdatedAt:true});
+const cashboxQuestionPrefix = "السلام عليكم، بعد احتساب المدين والدائن في حساب عجز وزيادة الصناديق (5499999000) لتاريخ ";
+const cashboxQuestionTail = /^\d{4}-\d{2}-\d{2}، ظهر في صندوقك صافي (?:عجز|زيادة) قدره (?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)? ريال\. هل توضح السبب أو تذكر أي فاتورة أو تسوية مرتبطة بالفرق؟$/u;
+export async function shortenCashboxQuestion(
+  db:PoolClient,user:ReturnType<typeof actor>,companyId:number|null,requestId:number,row:QueryResultRow,
+  input:z.infer<typeof shortenCashboxQuestionSchema>,
+) {
+  if(companyId!==2 || row.company_id!==companyId ||
+    row.linked_table!=="مهام الذكاء الاصطناعي" || Number(row.linked_record_id)!==434)
+    missing("الاستفسار غير مرتبط بمهمة متابعة صناديق الشركة");
+  const updatedAt=new Date(row.updated_at).toISOString();
+  if(updatedAt!==new Date(input.expectedUpdatedAt).toISOString())
+    throw new HttpError(409,"inquiry_changed","تغير الاستفسار؛ أعد قراءته قبل اختصار السؤال");
+  const before=String(row.request_text);
+  if(before.startsWith("تاريخ ") && cashboxQuestionTail.test(before.slice("تاريخ ".length)))
+    return {id:requestId,requestText:before,updatedAt};
+  const tail=before.slice(cashboxQuestionPrefix.length);
+  if(!before.startsWith(cashboxQuestionPrefix) || !cashboxQuestionTail.test(tail))
+    throw new HttpError(409,"cashbox_question_template","لا يطابق السؤال صيغة الجولات المعتمدة للاختصار");
+  const requestText="تاريخ "+tail;
+  const updated=await db.query<{updated_at:Date}>(
+    `UPDATE inquiry_requests SET request_text=$1,
+       updated_at=GREATEST(clock_timestamp(),date_trunc('milliseconds',updated_at)+interval '1 millisecond')
+     WHERE id=$2 AND company_id=$3 RETURNING updated_at`,
+    [requestText,requestId,companyId],
+  );
+  if(!updated.rows[0])missing();
+  await audit(db,user,"inquiry.shortenCashboxQuestion","inquiry",requestId,
+    {requestText:before},{requestText},companyId);
+  return {id:requestId,requestText,updatedAt:new Date(updated.rows[0].updated_at).toISOString()};
+}
 const answerSchema = z.object({
   answerValue:z.string().trim().max(2000).default(""),
   optionNumber:z.number().int().min(1).max(4).nullable().default(null),
@@ -315,6 +346,18 @@ export function inquiryRoutes(pool:Pool):Router {
       return {id:Number(inserted.rows[0].id),reused:false};
     });
     res.status(201).json(result);
+  }));
+  router.patch("/companies/:companyId/inquiries/:inquiryId/shorten-cashbox-question",handler(async(req,res)=>{
+    const input=parse(shortenCashboxQuestionSchema,req.body);
+    const requestId=id(req.params.inquiryId);
+    const result=await transaction(pool,async db=>{
+      const {user,companyId,page}=await scope(db,req,true);
+      if(!user.owner || user.suspended)throw new HttpError(403,"owner_only","للمالك فقط");
+      assertDirectoryAccess(page,"edit");
+      const old=await visibleRow(db,requestId,companyId,user.id,true,true);
+      return shortenCashboxQuestion(db,user,companyId,requestId,old,input);
+    });
+    res.json(result);
   }));
   router.patch(roots.map(root=>root+"/:inquiryId/task-name"),handler(async(req,res)=>{
     const input=parse(inquiryTaskNameSchema,req.body);
