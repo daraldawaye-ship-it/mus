@@ -26,6 +26,14 @@ export const stagingImportSchema = z.object({
   idempotencyKey: z.string().uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
+export const medaweeAgentBatchSchema = z.object({
+  entries: z.array(z.object({
+    agentName: z.string().trim().min(1).max(180),
+    manufacturerName: z.string().trim().min(1).max(180),
+    agentUrl: z.string().trim().max(1200)
+      .regex(/^https:\/\/medawee\.com\/medicines\/entity\/agent\/[a-f0-9]{24}(?:\/[^\s/?#]+)?$/),
+  }).strict()).min(1).max(30),
+}).strict();
 const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
 const followupField = z.string().trim().min(1).max(80);
 const followupCardRef = z.object({
@@ -288,6 +296,35 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     if(!isolated)throw new HttpError(503,"market_isolation_required","الاستقبال متاح في قاعدة السوق المنفصلة فقط");
     return u;
   };
+
+  router.get("/medicine-market/staging/medawee-agents",handler(async(req,res)=>{
+    await authorize(req);
+    const page=parse(z.coerce.number().int().min(1).max(100000).default(1),req.query.page);
+    const pageSize=parse(z.coerce.number().int().min(1).max(100).default(50),req.query.pageSize);
+    const result=await pool.query(
+      `SELECT agent_name AS "agentName", manufacturer_name AS "manufacturerName",
+              agent_url AS "agentUrl", completion_status AS "completionStatus"
+         FROM medawee_agent_manufacturers_staging
+        ORDER BY agent_url, manufacturer_name
+        LIMIT $1 OFFSET $2`,
+      [pageSize+1,(page-1)*pageSize],
+    );
+    res.json({items:result.rows.slice(0,pageSize),page,pageSize,hasMore:result.rows.length>pageSize});
+  }));
+
+  router.post("/medicine-market/staging/medawee-agents",handler(async(req,res)=>{
+    await authorize(req);
+    const {entries}=parse(medaweeAgentBatchSchema,req.body);
+    const result=await pool.query(
+      `INSERT INTO medawee_agent_manufacturers_staging(agent_name, manufacturer_name, agent_url)
+       SELECT entry."agentName", entry."manufacturerName", entry."agentUrl"
+         FROM jsonb_to_recordset($1::jsonb) AS entry("agentName" text, "manufacturerName" text, "agentUrl" text)
+        ORDER BY entry."agentUrl", entry."manufacturerName", entry."agentName"
+       ON CONFLICT (agent_url, manufacturer_name) DO NOTHING`,
+      [JSON.stringify(entries)],
+    );
+    res.json({submitted:entries.length,inserted:result.rowCount,alreadyPresent:entries.length-(result.rowCount??0)});
+  }));
 
   router.post("/medicine-market/saba-2024/import",handler(async(req,res)=>{
     const user=await authorize(req);
