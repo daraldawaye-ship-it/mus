@@ -36,19 +36,48 @@ export const medaweeAgentBatchSchema = z.object({
     agentUrl: medaweeAgentUrl,
   }).strict()).min(1).max(30),
 }).strict();
+const medaweeCardId = z.number().int().positive().max(2147483647);
+const medaweeAgentLinkSchema = z.object({
+  manufacturerCardId: medaweeCardId,
+  agentCardId: medaweeCardId,
+}).strict();
 export const medaweeManufacturerVerificationSchema = z.object({
   entries: z.array(z.object({
     agentUrl: medaweeAgentUrl,
     manufacturerName: medaweeManufacturerName,
     expectedRevision: z.number().int().nonnegative().max(2147483646),
     manufacturerVerified: z.boolean(),
+    agentLink: medaweeAgentLinkSchema.nullable().optional(),
   }).strict()).min(1).max(50),
 }).strict();
-const medaweeAgentColumns = `agent_name AS "agentName",
-  manufacturer_name AS "manufacturerName", agent_url AS "agentUrl",
-  completion_status AS "completionStatus", revision,
-  manufacturer_verified AS "manufacturerVerified",
-  CASE WHEN manufacturer_verified THEN 'تم التأكد من الإضافة فقط' ELSE '' END AS "manufacturerVerificationLabel"`;
+
+const medaweeMarketLink = `
+  FROM medicine_market_cards AS manufacturer
+  JOIN medicine_market_cards AS agent ON manufacturer.data->>'agentId' = agent.id::text
+  WHERE manufacturer.kind='manufacturer' AND manufacturer.status='published' AND NOT manufacturer.archived
+    AND agent.kind='agent' AND agent.status='published' AND NOT agent.archived`;
+
+function selectMedaweeAgents(source: "medawee_agent_manufacturers_staging" | "updated") {
+  return `SELECT staging.agent_name AS "agentName",
+    staging.manufacturer_name AS "manufacturerName", staging.agent_url AS "agentUrl",
+    staging.completion_status AS "completionStatus", staging.revision,
+    staging.manufacturer_verified AS "manufacturerVerified",
+    staging.linked_manufacturer_card_id AS "linkedManufacturerCardId",
+    staging.linked_agent_card_id AS "linkedAgentCardId",
+    link.confirmed AS "manufacturerAgentLinked",
+    CASE WHEN link.confirmed THEN 'تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل'
+         WHEN staging.manufacturer_verified THEN 'تم التأكد من الإضافة فقط'
+         ELSE '' END AS "manufacturerVerificationLabel"
+    FROM ${source} AS staging
+    CROSS JOIN LATERAL (
+      SELECT staging.manufacturer_verified AND EXISTS (
+        SELECT 1 ${medaweeMarketLink}
+          AND manufacturer.id=staging.linked_manufacturer_card_id
+          AND agent.id=staging.linked_agent_card_id
+      ) AS confirmed
+    ) AS link`;
+}
+
 const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
 const followupField = z.string().trim().min(1).max(80);
 const followupCardRef = z.object({
@@ -317,9 +346,8 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const page=parse(z.coerce.number().int().min(1).max(100000).default(1),req.query.page);
     const pageSize=parse(z.coerce.number().int().min(1).max(100).default(50),req.query.pageSize);
     const result=await pool.query(
-      `SELECT ${medaweeAgentColumns}
-         FROM medawee_agent_manufacturers_staging
-        ORDER BY agent_url, manufacturer_name
+      `${selectMedaweeAgents("medawee_agent_manufacturers_staging")}
+        ORDER BY staging.agent_url, staging.manufacturer_name
         LIMIT $1 OFFSET $2`,
       [pageSize+1,(page-1)*pageSize],
     );
@@ -351,12 +379,30 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const items=await transaction(pool,async db=>{
       const updated=[];
       for(const e of sorted){
+        if(e.agentLink){
+          if(!e.manufacturerVerified)
+            throw new HttpError(400,"medawee_manufacturer_not_verified","يجب تأكيد وجود كرت المصنع قبل تسجيل الربط");
+          const link=await db.query(
+            `SELECT 1 ${medaweeMarketLink}
+               AND manufacturer.id=$1 AND agent.id=$2
+              FOR SHARE OF manufacturer, agent`,
+            [e.agentLink.manufacturerCardId,e.agentLink.agentCardId],
+          );
+          if(!link.rowCount)
+            throw new HttpError(409,"medawee_agent_link_missing","لا يوجد رابط فعّال بين كرت المصنع وكرت الوكيل المحددين");
+        }
         const result=await db.query(
-          `UPDATE medawee_agent_manufacturers_staging
-              SET manufacturer_verified=$3, revision=revision+1
-            WHERE agent_url=$1 AND manufacturer_name=$2 AND revision=$4
-            RETURNING ${medaweeAgentColumns}`,
-          [e.agentUrl,e.manufacturerName,e.manufacturerVerified,e.expectedRevision],
+          `WITH updated AS (
+            UPDATE medawee_agent_manufacturers_staging
+               SET manufacturer_verified=$3, revision=revision+1,
+                   linked_manufacturer_card_id=CASE WHEN NOT $3::boolean OR $5::boolean THEN $6 ELSE linked_manufacturer_card_id END,
+                   linked_agent_card_id=CASE WHEN NOT $3::boolean OR $5::boolean THEN $7 ELSE linked_agent_card_id END
+             WHERE agent_url=$1 AND manufacturer_name=$2 AND revision=$4
+             RETURNING *
+          )
+          ${selectMedaweeAgents("updated")}`,
+          [e.agentUrl,e.manufacturerName,e.manufacturerVerified,e.expectedRevision,
+           e.agentLink!==undefined,e.agentLink?.manufacturerCardId??null,e.agentLink?.agentCardId??null],
         );
         if(!result.rows[0])
           throw new HttpError(409,"conflict","السجل غير موجود أو تغيّر؛ أعد قراءته قبل التعديل");

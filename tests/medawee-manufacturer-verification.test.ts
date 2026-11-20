@@ -11,9 +11,9 @@ import { marketStagingRoutes } from "../apps/api/src/routes-market-staging.ts";
 import { apiCatalog } from "../apps/api/src/services/mcp-api.ts";
 import { HttpError } from "../apps/api/src/errors.ts";
 
-test("Medawee manufacturer-only verification is owner-only, atomic and revisioned", async () => {
+test("Medawee verification and current agent link are owner-only, atomic and revisioned", async () => {
   const db = new PGlite();
-  for (const migration of ["20261120_medawee_agent_manufacturers_staging", "20261120_medawee_manufacturer_verification"])
+  for (const migration of ["001_market", "20261120_medawee_agent_manufacturers_staging", "20261120_medawee_manufacturer_verification", "20261120_medawee_manufacturer_verification_link"])
     await db.exec(await readFile(new URL(`../apps/api/market-migrations/${migration}.sql`, import.meta.url), "utf8"));
   const query = db.query.bind(db);
   const pool = { query, connect: async () => ({ query, release() {} }) } as unknown as Pool;
@@ -57,9 +57,38 @@ test("Medawee manufacturer-only verification is owner-only, atomic and revisione
     const after = (await (await call("GET")).json()).items;
     assert.deepEqual(after[0], {
       agentName: "Agent", manufacturerName: "Alpha", agentUrl, completionStatus: "pending",
-      revision: 1, manufacturerVerified: true, manufacturerVerificationLabel: "تم التأكد من الإضافة فقط",
+      revision: 1, manufacturerVerified: true, manufacturerAgentLinked: false,
+      linkedManufacturerCardId: null, linkedAgentCardId: null, manufacturerVerificationLabel: "تم التأكد من الإضافة فقط",
     });
     assert.equal(after[1].manufacturerVerified, false);
+
+    await db.exec(`INSERT INTO users(id,display_name) VALUES(1,'Owner');
+      INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key,data) VALUES
+        ('agent','Agent','agent','published',1,'d0000001-0000-4000-8000-000000000001','{}'),
+        ('agent','Other','other','published',1,'d0000001-0000-4000-8000-000000000002','{}'),
+        ('manufacturer','Alpha','alpha','published',1,'d0000001-0000-4000-8000-000000000003','{"agentId":1}')`);
+    const link = { ...first, expectedRevision: 1, agentLink: { manufacturerCardId: 3, agentCardId: 1 } };
+    assert.equal((await call("PATCH", [link], false)).status, 403);
+    assert.equal((await call("PATCH", [{ ...link, manufacturerVerified: false }])).status, 400);
+    assert.equal((await call("PATCH", [{ ...link, agentLink: { manufacturerCardId: 3, agentCardId: 2 } }])).status, 409);
+    const linked = await call("PATCH", [link]);
+    assert.equal(linked.status, 200);
+    const expectedLinkedRow = {
+      ...after[0], revision: 2, manufacturerAgentLinked: true, linkedManufacturerCardId: 3, linkedAgentCardId: 1,
+      manufacturerVerificationLabel: "تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل",
+    };
+    assert.deepEqual((await linked.json()).items[0], expectedLinkedRow);
+    assert.deepEqual((await (await call("GET")).json()).items[0], expectedLinkedRow);
+
+    await db.exec("UPDATE medicine_market_cards SET archived=true WHERE id=1");
+    const stale = (await (await call("GET")).json()).items[0];
+    assert.equal(stale.manufacturerAgentLinked, false);
+    assert.equal(stale.manufacturerVerificationLabel, "تم التأكد من الإضافة فقط");
+    const cleared = await call("PATCH", [{ ...first, expectedRevision: 2, manufacturerVerified: false }]);
+    assert.equal(cleared.status, 200);
+    assert.deepEqual((await cleared.json()).items[0], {
+      ...after[0], revision: 3, manufacturerVerified: false, manufacturerVerificationLabel: "",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.close();
