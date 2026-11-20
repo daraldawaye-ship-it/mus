@@ -22,6 +22,11 @@ export const aiTaskInput = z.object({
 }).strict().refine(input => (input.section === companySection) === (input.companyId !== null), {
   message: "حدد الشركة للمهام التي تتبع قسم الشركة",
 });
+export const aiTaskCompanyScheduleInput = z.object({
+  companyId: z.number().int().positive(),
+  cadenceHours: z.number().int().min(1).max(8760),
+  expectedUpdatedAt: z.string().datetime({ offset: true }),
+}).strict();
 export const aiTaskArchiveInput = z.object({ archived: z.boolean() }).strict();
 const taskQuery = `SELECT t.*, g.*, c.name AS company_name
   FROM ai_tasks t JOIN general_table g ON g.general_table_id=t.task_id
@@ -147,6 +152,7 @@ function taskDTO(row: QueryResultRow, history: Run[]) {
     companyName: row.company_name as string | null,
     cadenceHours,
     cadenceLabel: row.cadence_label as string | null,
+    updatedAt: new Date(row.updated_at).toISOString(),
     archived,
     lastFinishedAt: embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null,
     lastResult: embeddedIsNewer ? notes[2] : lastRun?.detail || lastRun?.title || notes[2],
@@ -214,6 +220,44 @@ export function aiTaskRoutes(pool: Pool) {
       return taskId;
     });
     res.status(201).json({ id: taskId });
+  }));
+
+  router.patch("/ai-tasks/:id/company-schedule", handler(async (req, res) => {
+    const taskId = id(req.params.id);
+    const input = parse(aiTaskCompanyScheduleInput, req.body);
+    const settings = await transaction(pool, async db => {
+      const user = await currentActor(db, actor(req));
+      if (!user.owner || user.suspended) throw new HttpError(403, "owner_only", "للمالك فقط");
+      const found = await db.query(taskQuery + " AND t.task_id=$2 FOR UPDATE OF g,t", [tasksTable, taskId]);
+      const row = found.rows[0];
+      if (!row || row.section === personalSection || row.private_title !== null ||
+          row.private_description !== null) missing();
+      if (row.archived_at || row.general_table_category === archivedCategory)
+        throw new HttpError(409, "ai_task_archived", "استعد المهمة المؤرشفة قبل تعديل جدولها");
+      const updatedAt = new Date(row.updated_at).toISOString();
+      if (updatedAt !== new Date(input.expectedUpdatedAt).toISOString())
+        throw new HttpError(409, "ai_task_changed", "تغير السجل؛ أعد قراءته قبل التعديل");
+      const company = await db.query<{ id: number; name: string }>(
+        "SELECT id,name FROM companies WHERE id=$1 FOR KEY SHARE", [input.companyId]);
+      if (!company.rows[0]) missing();
+      const before = { section: row.section, companyId: row.company_id,
+        cadenceHours: row.cadence_hours, cadenceLabel: row.cadence_label };
+      const after = { section: companySection, companyId: input.companyId,
+        cadenceHours: input.cadenceHours, cadenceLabel: null };
+      if (before.section === after.section && before.companyId === after.companyId &&
+          before.cadenceHours === after.cadenceHours && before.cadenceLabel === after.cadenceLabel &&
+          row.general_table_category === companySection)
+        return { id: taskId, ...after, companyName: company.rows[0].name, updatedAt };
+      await db.query("UPDATE ai_tasks SET section=$2,company_id=$3,cadence_hours=$4,cadence_label=NULL WHERE task_id=$1",
+        [taskId, after.section, after.companyId, after.cadenceHours]);
+      const changed = await db.query<{ updated_at: Date }>(`UPDATE general_table
+        SET general_table_category=$2, updated_at=GREATEST(clock_timestamp(),date_trunc('milliseconds',updated_at)+interval '1 millisecond')
+        WHERE general_table_id=$1 RETURNING updated_at`, [taskId, after.section]);
+      await audit(db, user, "generalTable.update", "aiTask", taskId, before, after);
+      return { id: taskId, ...after, companyName: company.rows[0].name,
+        updatedAt: new Date(changed.rows[0].updated_at).toISOString() };
+    });
+    res.json(settings);
   }));
 
   router.patch("/ai-tasks/:id/archive", handler(async (req, res) => {

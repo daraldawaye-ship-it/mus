@@ -12,7 +12,7 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import {ownerSqlMcpPreviewSchema,ownerSqlMcpExecuteSchema} from "./owner-sql-mcp.ts";
 import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
-import { aiTaskInput, aiTaskArchiveInput } from "../routes-ai-tasks.ts";
+import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput } from "../routes-ai-tasks.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
   "GET /ai-tasks": { source: "routes-ai-tasks.ts", queryFields: [] },
@@ -20,6 +20,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "POST /ai-tasks": {
     source: "routes-ai-tasks.ts", queryFields: [], bodyContract: "aiTaskInput",
     bodySchema: z.toJSONSchema(aiTaskInput),
+  },
+  "PATCH /ai-tasks/:id/company-schedule": {
+    source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"],
+    bodyContract: "aiTaskCompanyScheduleInput", bodySchema: z.toJSONSchema(aiTaskCompanyScheduleInput),
   },
   "PATCH /ai-tasks/:id/archive": {
     source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"], bodyContract: "aiTaskArchiveInput",
