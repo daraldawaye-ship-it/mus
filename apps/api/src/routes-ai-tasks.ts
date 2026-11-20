@@ -120,27 +120,40 @@ async function readJournal(pool: Pool) {
   return result.rows;
 }
 
-function taskDTO(row: QueryResultRow, history: Run[]) {
+export function taskDTO(row: QueryResultRow, history: Run[]) {
   const lastRun = history.filter(run => run.finishedAt)
     .sort((a, b) => b.finishedAt!.localeCompare(a.finishedAt!))[0];
   const knownStarts = history.map(run => run.startedAt);
   const notes = [row.general_table_text7, row.general_table_text8, row.general_table_text9] as string[];
   const knownFinishes = [];
+  const noteStarts: string[] = [];
   for (const entry of runMetadata(notes)) {
     if (Number(entry.taskId) === row.task_id || entry.taskId === undefined) {
-      knownStarts.push(dateValue(entry.startedAt));
+      const startedAt = dateValue(entry.startedAt);
+      if (startedAt) noteStarts.push(startedAt);
       knownFinishes.push(dateValue(entry.endedAt ?? entry.finishedAt ?? entry.completedAt));
     }
   }
   for (const note of notes) {
     const timestamps = /(?:بدء فعلي|وقت البدء الفعلي|startedAt)\s*[:=]\s*(\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d))/gi;
-    for (const match of note.matchAll(timestamps)) knownStarts.push(dateValue(match[1]));
+    for (const match of note.matchAll(timestamps)) {
+      const startedAt = dateValue(match[1]);
+      if (startedAt) noteStarts.push(startedAt);
+    }
     const finishes = /(?:انتهاء هذه الجولة|وقت الانتهاء)\s*[:=]\s*(\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d))/gu;
     for (const match of note.matchAll(finishes)) knownFinishes.push(dateValue(match[1]));
   }
   const embeddedFinish = knownFinishes.filter((value): value is string => value !== null).sort().at(-1) ?? null;
   const embeddedIsNewer = embeddedFinish !== null && (!lastRun?.finishedAt || embeddedFinish > lastRun.finishedAt);
-  const lastStartedAt = knownStarts.filter((value): value is string => value !== null).sort().at(-1);
+  const lastStartedAt = [...knownStarts, ...noteStarts]
+    .filter((value): value is string => value !== null).sort().at(-1) ?? null;
+  const lastFinishedAt = embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null;
+  const latestRunInProgress = lastStartedAt !== null && (lastFinishedAt === null || lastStartedAt > lastFinishedAt);
+  const activeNote = latestRunInProgress
+    ? (noteStarts.includes(lastStartedAt) ? notes[2] :
+        history.find(run => run.startedAt === lastStartedAt && !run.finishedAt)?.detail) ?? ""
+    : "";
+  const activeResult = activeNote.startsWith("بدأت") ? activeNote : "بدأت الجولة" + (activeNote ? `: ${activeNote}` : "");
   const cadenceHours = row.cadence_hours as number | null;
   const archived = Boolean(row.archived_at) || row.general_table_category === archivedCategory;
   return {
@@ -154,8 +167,11 @@ function taskDTO(row: QueryResultRow, history: Run[]) {
     cadenceLabel: row.cadence_label as string | null,
     updatedAt: new Date(row.updated_at).toISOString(),
     archived,
-    lastFinishedAt: embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null,
-    lastResult: embeddedIsNewer ? notes[2] : lastRun?.detail || lastRun?.title || notes[2],
+    lastStartedAt,
+    lastFinishedAt,
+    latestRunInProgress,
+    lastResult: latestRunInProgress ? activeResult :
+      embeddedIsNewer ? notes[2] : lastRun?.detail || lastRun?.title || notes[2],
     resumeFrom: lastRun?.resumeFrom ?? null,
     nextEligibleAt: !archived && lastStartedAt && cadenceHours
       ? new Date(Date.parse(lastStartedAt) + cadenceHours * 3600000).toISOString() : null,

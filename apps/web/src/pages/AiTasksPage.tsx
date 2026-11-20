@@ -22,7 +22,9 @@ type Task = {
   cadenceHours: number | null;
   cadenceLabel: string | null;
   archived: boolean;
+  lastStartedAt: string | null;
   lastFinishedAt: string | null;
+  latestRunInProgress: boolean;
   lastResult: string;
   resumeFrom: string | null;
   nextEligibleAt: string | null;
@@ -46,7 +48,7 @@ export function AiTasksPage() {
   const [section, setSection] = useState("");
   const [company, setCompany] = useState("");
   const [search, setSearch] = useState("");
-  const [sorting, setSorting] = useState<SortingState>([{ id: "lastFinishedAt", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "lastRunTimestamp", desc: true }]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showNew, setShowNew] = useState(false);
@@ -83,7 +85,12 @@ export function AiTasksPage() {
     { id: "section", accessorFn: sectionLabel, header: "القسم" },
     { accessorKey: "description", header: "الشرح والآلية", cell: ({ row }) =>
       <Button type="button" onClick={() => setDetails(row.original)}>عرض</Button> },
-    { accessorKey: "lastFinishedAt", header: "آخر إنجاز", cell: ({ row }) => formatDate(row.original.lastFinishedAt) },
+    { id: "lastRunTimestamp", accessorFn: task => task.lastStartedAt ?? task.lastFinishedAt,
+      header: "آخر إنجاز", cell: ({ row }) => {
+        const task = row.original;
+        if (task.lastStartedAt) return <span title="وقت بدء آخر جولة">{formatDate(task.lastStartedAt)}</span>;
+        return task.lastFinishedAt ? <span title="لا يوجد وقت بدء محفوظ">انتهت {formatDate(task.lastFinishedAt)}</span> : "—";
+      } },
     { id: "cadenceHours", accessorFn: task => task.cadenceHours ?? task.cadenceLabel, header: "تُنجز كل", cell: ({ row }) => {
       const task = row.original;
       return <span title={task.nextEligibleAt ? `الاستحقاق التالي ${formatDate(task.nextEligibleAt)}` : undefined}>
@@ -150,10 +157,13 @@ export function AiTasksPage() {
     {historyTask && <Dialog open title={`سجل إنجاز · ${historyTask.title}`} onClose={() => setHistoryTask(null)}>
       {history.isPending && <Notice>جارٍ تحميل الجولات…</Notice>}
       {history.error && <Notice tone="error">{errorMessage(history.error)}</Notice>}
-      {history.data && !history.data.history.some(run => run.finishedAt === historyTask.lastFinishedAt) &&
+      {history.data && (historyTask.latestRunInProgress || !history.data.history.some(run =>
+        run.finishedAt !== null && run.finishedAt === historyTask.lastFinishedAt)) &&
         <p className="full-value">{historyTask.lastResult || "لا توجد جولات مرتبطة."}</p>}
-      {history.data?.history.map(run => <details key={run.id} open={run.finishedAt === historyTask.lastFinishedAt}>
-        <summary>#{run.id} · {run.title} · {formatDate(run.finishedAt ?? run.recordedAt)}</summary>
+      {history.data?.history.map(run => <details key={run.id} open={run.finishedAt !== null && run.finishedAt === historyTask.lastFinishedAt}>
+        <summary>#{run.id} · {run.title} · {run.finishedAt
+          ? `انتهت ${formatDate(run.finishedAt)}`
+          : `سُجّلت ${formatDate(run.recordedAt)}`}</summary>
         {run.startedAt && <p>بدأت {formatDate(run.startedAt)}</p>}
         <p className="full-value">{run.detail}</p>
         {run.resumeFrom && <p>الاستئناف من {run.resumeFrom}</p>}
