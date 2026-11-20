@@ -26,14 +26,29 @@ export const stagingImportSchema = z.object({
   idempotencyKey: z.string().uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
+const medaweeAgentUrl = z.string().trim().max(1200)
+  .regex(/^https:\/\/medawee\.com\/medicines\/entity\/agent\/[a-f0-9]{24}(?:\/[^\s/?#]+)?$/);
+const medaweeManufacturerName = z.string().trim().min(1).max(180);
 export const medaweeAgentBatchSchema = z.object({
   entries: z.array(z.object({
     agentName: z.string().trim().min(1).max(180),
-    manufacturerName: z.string().trim().min(1).max(180),
-    agentUrl: z.string().trim().max(1200)
-      .regex(/^https:\/\/medawee\.com\/medicines\/entity\/agent\/[a-f0-9]{24}(?:\/[^\s/?#]+)?$/),
+    manufacturerName: medaweeManufacturerName,
+    agentUrl: medaweeAgentUrl,
   }).strict()).min(1).max(30),
 }).strict();
+export const medaweeManufacturerVerificationSchema = z.object({
+  entries: z.array(z.object({
+    agentUrl: medaweeAgentUrl,
+    manufacturerName: medaweeManufacturerName,
+    expectedRevision: z.number().int().nonnegative().max(2147483646),
+    manufacturerVerified: z.boolean(),
+  }).strict()).min(1).max(50),
+}).strict();
+const medaweeAgentColumns = `agent_name AS "agentName",
+  manufacturer_name AS "manufacturerName", agent_url AS "agentUrl",
+  completion_status AS "completionStatus", revision,
+  manufacturer_verified AS "manufacturerVerified",
+  CASE WHEN manufacturer_verified THEN 'تم التأكد من الإضافة فقط' ELSE '' END AS "manufacturerVerificationLabel"`;
 const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
 const followupField = z.string().trim().min(1).max(80);
 const followupCardRef = z.object({
@@ -302,8 +317,7 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const page=parse(z.coerce.number().int().min(1).max(100000).default(1),req.query.page);
     const pageSize=parse(z.coerce.number().int().min(1).max(100).default(50),req.query.pageSize);
     const result=await pool.query(
-      `SELECT agent_name AS "agentName", manufacturer_name AS "manufacturerName",
-              agent_url AS "agentUrl", completion_status AS "completionStatus"
+      `SELECT ${medaweeAgentColumns}
          FROM medawee_agent_manufacturers_staging
         ORDER BY agent_url, manufacturer_name
         LIMIT $1 OFFSET $2`,
@@ -324,6 +338,33 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
       [JSON.stringify(entries)],
     );
     res.json({submitted:entries.length,inserted:result.rowCount,alreadyPresent:entries.length-(result.rowCount??0)});
+  }));
+
+  router.patch("/medicine-market/staging/medawee-agents", handler(async(req,res)=>{
+    await authorize(req);
+    const {entries}=parse(medaweeManufacturerVerificationSchema,req.body);
+    const keys=entries.map(e=>JSON.stringify([e.agentUrl,e.manufacturerName]));
+    if(new Set(keys).size!==keys.length)
+      throw new HttpError(400,"duplicate_entry","تكرر سجل واحد في طلب التعديل");
+    const sorted=entries.slice().sort((a,b)=>
+      a.agentUrl.localeCompare(b.agentUrl) || a.manufacturerName.localeCompare(b.manufacturerName));
+    const items=await transaction(pool,async db=>{
+      const updated=[];
+      for(const e of sorted){
+        const result=await db.query(
+          `UPDATE medawee_agent_manufacturers_staging
+              SET manufacturer_verified=$3, revision=revision+1
+            WHERE agent_url=$1 AND manufacturer_name=$2 AND revision=$4
+            RETURNING ${medaweeAgentColumns}`,
+          [e.agentUrl,e.manufacturerName,e.manufacturerVerified,e.expectedRevision],
+        );
+        if(!result.rows[0])
+          throw new HttpError(409,"conflict","السجل غير موجود أو تغيّر؛ أعد قراءته قبل التعديل");
+        updated.push(result.rows[0]);
+      }
+      return updated;
+    });
+    res.json({items,updated:items.length});
   }));
 
   router.post("/medicine-market/saba-2024/import",handler(async(req,res)=>{

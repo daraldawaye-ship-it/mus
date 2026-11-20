@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
-import { medaweeAgentBatchSchema } from "../routes-market-staging.ts";
+import { medaweeAgentBatchSchema, medaweeManufacturerVerificationSchema } from "../routes-market-staging.ts";
 import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-prices.ts";
 import { mcpBodySchemas as legalSchemas } from "../routes-legal-cases.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
@@ -66,6 +66,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "POST /medicine-market/staging/medawee-agents": {
     source:"routes-market-staging.ts",queryFields:[],
     bodyContract:"medaweeAgentBatchSchema",bodySchema:z.toJSONSchema(medaweeAgentBatchSchema),
+  },
+  "PATCH /medicine-market/staging/medawee-agents": {
+    source:"routes-market-staging.ts",queryFields:[],
+    bodyContract:"medaweeManufacturerVerificationSchema",bodySchema:z.toJSONSchema(medaweeManufacturerVerificationSchema),
   },
   [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
     bodyContract:"stagingPricesSchema",bodySchema:z.toJSONSchema(stagingPricesSchema)},
