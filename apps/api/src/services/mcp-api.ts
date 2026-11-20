@@ -14,7 +14,17 @@ import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
 import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput } from "../routes-ai-tasks.ts";
 
+import { inquiryTaskNameSchema } from "../routes-inquiries.ts";
+
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "PATCH /inquiries/:inquiryId/task-name": {
+    source: "routes-inquiries.ts", queryFields: [], pathParams: ["inquiryId"],
+    bodyContract: "inquiryTaskNameSchema", bodySchema: z.toJSONSchema(inquiryTaskNameSchema),
+  },
+  "PATCH /companies/:companyId/inquiries/:inquiryId/task-name": {
+    source: "routes-inquiries.ts", queryFields: [], pathParams: ["companyId", "inquiryId"],
+    bodyContract: "inquiryTaskNameSchema", bodySchema: z.toJSONSchema(inquiryTaskNameSchema),
+  },
   "GET /ai-tasks": { source: "routes-ai-tasks.ts", queryFields: [] },
   "GET /ai-tasks/:id/history": { source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"] },
   "POST /ai-tasks": {

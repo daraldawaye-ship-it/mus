@@ -235,6 +235,7 @@ export const auditActionLabels = {
   "notification.settings": "إعداد نوع تنبيه",
   "inquiry.create": "إنشاء استفسار أو طلب",
   "inquiry.answer": "تسجيل رد على استفسار",
+  "inquiry.taskName": "تعديل اسم مهمة الاستفسار",
   "inquiry.status": "متابعة حالة استفسار",
   "question.create": "إنشاء سؤال",
   "question.update": "تعديل سؤال",

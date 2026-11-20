@@ -26,6 +26,49 @@ const requestSchema = z.object({
   followUpAction:z.string().trim().max(4000).default(""),
   idempotencyKey:z.string().uuid(),
 }).strict();
+export const inquiryTaskNameSchema = z.object({
+  taskName:z.string().trim().min(1).max(200),
+  expectedUpdatedAt:z.string().datetime({offset:true}),
+}).strict();
+
+export async function linkedCompanyInquiryTaskName(
+  db:Pick<PoolClient,"query">, companyId:number|null, linkedTable:string|null, linkedRecordId:number|null,
+) {
+  if(companyId===null || linkedRecordId===null ||
+    (linkedTable!=="ai_tasks" && linkedTable!=="مهام الذكاء الاصطناعي"))return "";
+  const found=await db.query<{title:string}>(
+    `SELECT g.general_table_title AS title FROM ai_tasks t
+     JOIN general_table g ON g.general_table_id=t.task_id
+     WHERE t.task_id=$1 AND t.company_id=$2 AND t.section='الشركة'
+        AND t.private_title IS NULL AND t.private_description IS NULL AND t.archived_at IS NULL
+        AND g.general_table_table_name='مهام الذكاء الاصطناعي'
+        AND g.general_table_category<>'مهامك — مؤرشفة'`,
+    [linkedRecordId,companyId],
+  );
+  const title=found.rows[0]?.title.trim();
+  if(!title || title.length>200)missing("لا توجد مهمة شركة مطابقة يمكن إظهار اسمها");
+  return title;
+}
+
+export async function editInquiryTaskName(
+  db:PoolClient, user:ReturnType<typeof actor>, companyId:number|null, requestId:number,
+  row:QueryResultRow, input:z.infer<typeof inquiryTaskNameSchema>,
+) {
+  const updatedAt=new Date(row.updated_at).toISOString();
+  if(updatedAt!==new Date(input.expectedUpdatedAt).toISOString())
+    throw new HttpError(409,"inquiry_changed","تغير الاستفسار؛ أعد قراءته قبل تعديل اسم المهمة");
+  const before=row.task_name??"";
+  if(before===input.taskName)return {id:requestId,taskName:before,updatedAt};
+  const updated=await db.query<{updated_at:Date}>(
+    `UPDATE inquiry_requests
+     SET task_name=$1,updated_by=$2,
+         updated_at=GREATEST(clock_timestamp(),date_trunc('milliseconds',updated_at)+interval '1 millisecond')
+     WHERE id=$3 RETURNING updated_at`,
+    [input.taskName,user.id,requestId],
+  );
+  await audit(db,user,"inquiry.taskName","inquiry",requestId,{taskName:before},{taskName:input.taskName},companyId);
+  return {id:requestId,taskName:input.taskName,updatedAt:new Date(updated.rows[0].updated_at).toISOString()};
+}
 const answerSchema = z.object({
   answerValue:z.string().trim().max(2000).default(""),
   optionNumber:z.number().int().min(1).max(4).nullable().default(null),
@@ -188,11 +231,12 @@ export function inquiryRoutes(pool:Pool):Router {
         if(duplicate.rowCount)throw new HttpError(409,"duplicate_inquiry","يوجد استفسار مفتوح مطابق لهذا السجل");
       }
       // Backward-compatible attribution for the legacy invoice follow-up task.
-      // Other inquiries receive the explicit task name supplied by their creator.
+      // For a verified intra-company AI task link, use the task title if no name was given.
       const legacyTask402 = companyId===2 && input.linkedTable==="invoices" &&
         input.requestText.startsWith("متابعة فاتورة المبيعات رقم ") &&
         /(سرنج|سيرنج|إبرة|ابرة|IV Set|موصل|طقم تسريب|تسريب وريدي)/i.test(input.requestText);
-      const taskName=input.taskName || (legacyTask402 ? "متابعة ملحقات الامبولات والمحاليل" : "");
+      const taskName=input.taskName || (legacyTask402 ? "متابعة ملحقات الامبولات والمحاليل" :
+        await linkedCompanyInquiryTaskName(db,companyId,input.linkedTable,input.linkedRecordId));
       const inserted=await db.query(
         "INSERT INTO inquiry_requests(company_id,request_type,request_text,answer_type,answer_options,"+
         "response_mode,recipient_selection,priority,due_at,linked_table,linked_record_id,follow_up_action,created_by,idempotency_key,task_name) "+
@@ -204,7 +248,7 @@ export function inquiryRoutes(pool:Pool):Router {
       for(const target of assigned)
         await db.query("INSERT INTO inquiry_targets(inquiry_id,user_id) VALUES($1,$2)",[requestId,target]);
       await audit(db,user,"inquiry.create","inquiry",requestId,null,
-        {requestText:input.requestText,responseMode:input.responseMode,recipientCount:assigned.size},companyId);
+        {requestText:input.requestText,responseMode:input.responseMode,recipientCount:assigned.size,taskName},companyId);
       await syncUnansweredInquiryNotifications(db, companyId, [...assigned]);
       return {id:requestId,recipientCount:assigned.size,reused:false};
     });
@@ -271,6 +315,20 @@ export function inquiryRoutes(pool:Pool):Router {
       return {id:Number(inserted.rows[0].id),reused:false};
     });
     res.status(201).json(result);
+  }));
+  router.patch(roots.map(root=>root+"/:inquiryId/task-name"),handler(async(req,res)=>{
+    const input=parse(inquiryTaskNameSchema,req.body);
+    const requestId=id(req.params.inquiryId);
+    const result=await transaction(pool,async db=>{
+      const {user,companyId,manager,canSeeAll,page}=await scope(db,req,true);
+      managerOnly(manager && !user.suspended);
+      assertDirectoryAccess(page,"edit");
+      const old=await visibleRow(db,requestId,companyId,user.id,canSeeAll,true);
+      if(!user.owner && Number(old.created_by)!==user.id)
+        throw new HttpError(403,"forbidden","لا يمكنك تعديل اسم مهمة طلب أنشأه مستخدم آخر");
+      return editInquiryTaskName(db,user,companyId,requestId,old,input);
+    });
+    res.json(result);
   }));
   router.patch(roots.map(root=>root+"/:inquiryId/status"),handler(async(req,res)=>{
     const input=parse(statusSchema,req.body);

@@ -9650,6 +9650,11 @@
           "minLength": 1,
           "maxLength": 4000
         },
+        "taskName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "اسم المهمة. عند تركه فارغًا يُستمد من مهمة شركة مطابقة إذا رُبط الطلب بجدول مهام الذكاء الاصطناعي أو ai_tasks"
+        },
         "answerType": {
           "type": "string",
           "enum": [
@@ -9837,6 +9842,11 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4000
+        },
+        "taskName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "اسم المهمة. عند تركه فارغًا يُستمد من مهمة شركة مطابقة إذا رُبط الطلب بجدول مهام الذكاء الاصطناعي أو ai_tasks"
         },
         "answerType": {
           "type": "string",
