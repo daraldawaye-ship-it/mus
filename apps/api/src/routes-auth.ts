@@ -215,7 +215,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         if (input.phone !== before.phone)
           await assertPhoneAvailable(client, input.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5,phone_login_key=CASE WHEN phone<>$4 THEN $7 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$4 THEN NULL ELSE phone_verified_at END WHERE id=$6 RETURNING *",
+          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5,phone_login_key=CASE WHEN phone<>$4 THEN $7 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$4 THEN NULL ELSE phone_verified_at END,category=COALESCE($8,category) WHERE id=$6 RETURNING *",
           [
             input.name,
             input.displayName,
@@ -224,6 +224,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
             input.image,
             before.id,
             input.phone || null,
+            input.category ?? null,
           ],
         );
         const after = userDTO(updated.rows[0]);

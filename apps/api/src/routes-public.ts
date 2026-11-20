@@ -100,6 +100,7 @@ export function publicRoutes(pool: Pool): Router {
         email: "email",
         phone: "phone",
         kind: "kind",
+        category: "category",
         archived: "archived",
         suspended: "suspended",
         editor: "editor",
@@ -314,7 +315,7 @@ export function publicRoutes(pool: Pool): Router {
         if (afterValues.phone !== before.phone)
           await assertPhoneAvailable(client, afterValues.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END,image=$12 WHERE id=$10 RETURNING *",
+          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END,image=$12,category=$13 WHERE id=$10 RETURNING *",
           [
             afterValues.kind,
             afterValues.archived,
@@ -328,6 +329,7 @@ export function publicRoutes(pool: Pool): Router {
             targetId,
             afterValues.phone || null,
             afterValues.image,
+            afterValues.category,
           ],
         );
         const after = userDTO(updated.rows[0]);

@@ -19,6 +19,7 @@ import {
   type MarketPermissions,
   type MarketRelatedMedicinesPage,
 } from "../../../packages/contracts/src/medicine-market.ts";
+import { normalizeReferralCategory, userCategorySchema } from "../../../packages/contracts/src/user-category.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction, type Database } from "./db.ts";
@@ -512,16 +513,10 @@ async function applyField(
       [row.id, field.key, json(value)],
     );
 }
-const friendCategories = [
-  "مستخدم","دكتور جامعه","طبيب","طالب صيدليه","صيدلي",
-  "صيدلي موظف في صيدليه","مالك صيدليه","مندوب شركه","متحصل شركه",
-  "سوبر فايزر شركة","مالك شركة - وكيل","مالك محل جمله",
-  "موظف في محل جمله","موزع ادويه - شخصي","موظف في مستشفى","موظف في عيادة",
-] as const;
 const friendReferralSchema=z.object({
   phone:z.string().trim().regex(/^\+?[0-9]{6,20}$/,"أدخل رقم هاتف صالحًا بالأرقام، ويمكن أن يبدأ بعلامة +"),
   note:z.string().trim().max(1000).default(""),
-  category:z.enum(friendCategories),
+  category:z.string().transform(normalizeReferralCategory).pipe(userCategorySchema),
   cardId:z.number().int().positive().nullable(),
   idempotencyKey:z.string().uuid(),
 }).strict();
@@ -987,7 +982,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const count=await pool.query(
       `SELECT count(*)::int AS total FROM market_friend_referrals r ${condition}`,args,
     );
-    res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
+    res.json({items:rows.rows.map(row=>({...row,category:normalizeReferralCategory(row.category)})),total:count.rows[0].total,page,pageSize:limit});
   }));
   // Market audit stays with market data after isolation; never joins a company ledger.
   router.get(root + "/audit", handler(async (req, res) => {

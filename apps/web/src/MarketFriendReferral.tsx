@@ -1,14 +1,10 @@
 import { useRef, useState, type FormEvent } from "react";
+import { defaultUserCategory, type UserCategory } from "../../../packages/contracts/src/user-category";
+import { UserCategoryOptions } from "./UserCategoryOptions";
 import { ContactRound } from "lucide-react";
 import { api, useSession } from "./api";
 import { Button, Dialog, Notice } from "./ui";
 
-const categories = [
-  "مستخدم","دكتور جامعه","طبيب","طالب صيدليه","صيدلي",
-  "صيدلي موظف في صيدليه","مالك صيدليه","مندوب شركه","متحصل شركه",
-  "سوبر فايزر شركة","مالك شركة - وكيل","مالك محل جمله",
-  "موظف في محل جمله","موزع ادويه - شخصي","موظف في مستشفى","موظف في عيادة",
-] as const;
 type DeviceContact = { name?: string[]; tel?: string[] };
 type ContactsNavigator = Navigator & {
   contacts?: { select: (properties: Array<"name" | "tel">, options: {multiple:boolean}) => Promise<DeviceContact[]> };
@@ -26,7 +22,7 @@ export function MarketFriendReferral({cardId,open,onClose}:{
   const {user}=useSession();
   const [phone,setPhone]=useState("");
   const [note,setNote]=useState("");
-  const [category,setCategory]=useState<(typeof categories)[number]>("مستخدم");
+  const [category,setCategory]=useState<UserCategory>(defaultUserCategory);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [success,setSuccess]=useState("");
@@ -75,7 +71,7 @@ export function MarketFriendReferral({cardId,open,onClose}:{
         method:"POST",body:{...payload,idempotencyKey:key},
       });
       request.current=null;
-      setPhone("");setNote("");setCategory("مستخدم");
+      setPhone("");setNote("");setCategory(defaultUserCategory);
       setSuccess("تم الحفظ بنجاح");
     }catch(cause){setError(cause instanceof Error?cause.message:"تعذر حفظ البيانات");}
     finally{setBusy(false);}
@@ -103,7 +99,7 @@ export function MarketFriendReferral({cardId,open,onClose}:{
         </Button>
         <label className="field">الفئة
           <select value={category} onChange={e=>setCategory(e.target.value as typeof category)}
-            disabled={busy}>{categories.map(value=><option key={value} value={value}>{value}</option>)}</select>
+            disabled={busy}><UserCategoryOptions /></select>
         </label>
         <label className="field">بيان
           <textarea rows={2} maxLength={1000} value={note}

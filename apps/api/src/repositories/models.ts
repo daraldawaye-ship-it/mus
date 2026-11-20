@@ -5,6 +5,8 @@ import type {
   Employee,
   AuditEvent,
 } from "../../../../packages/contracts/src/index.ts";
+import { defaultUserCategory } from "../../../../packages/contracts/src/user-category.ts";
+
 type Row = QueryResultRow;
 const iso = (value: Date | string): string => new Date(value).toISOString();
 export function userDTO(row: Row): User {
@@ -16,6 +18,7 @@ export function userDTO(row: Row): User {
     phone: row.phone,
     image: row.image,
     kind: row.kind,
+    category: row.category ?? defaultUserCategory,
     owner: row.owner,
     archived: row.archived,
     suspended: row.suspended,

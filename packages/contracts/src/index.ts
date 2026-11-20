@@ -9,6 +9,8 @@ import { commerceCatalog } from "./commerce.ts";
 import { inventoryCatalog } from "./inventory.ts";
 export const MAX_ID = 2_147_483_647;
 
+import { userCategorySchema, type UserCategory } from "./user-category.ts";
+
 export const userKinds = ["admin", "supervisor", "member"] as const;
 export const employeeRoles = [
   "employee",
@@ -530,6 +532,7 @@ export interface User {
   phone: string;
   image: string;
   kind: UserKind;
+  category?: UserCategory;
   owner: boolean;
   archived: boolean;
   suspended: boolean;
@@ -637,7 +640,7 @@ export const passwordSchema = z
 const profileFields = z
   .object({ name, displayName: text(120), email: optionalEmail, phone, image })
   .strict();
-export const profileSchema = profileFields.transform((value) => ({
+export const profileSchema = profileFields.extend({ category: userCategorySchema.optional() }).transform((value) => ({
   ...value,
   displayName: value.displayName || value.name,
 }));
@@ -682,6 +685,7 @@ export const userPatchSchema = z
     email: optionalEmail.optional(),
     phone: phone.optional(),
     kind: z.enum(userKinds).optional(),
+    category: userCategorySchema.optional(),
     archived: z.boolean().optional(),
     suspended: z.boolean().optional(),
     editor: z.boolean().optional(),

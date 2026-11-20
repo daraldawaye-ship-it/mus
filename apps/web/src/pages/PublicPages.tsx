@@ -25,6 +25,8 @@ import {
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import { defaultUserCategory, type UserCategory } from "../../../../packages/contracts/src/user-category";
+import { UserCategoryOptions } from "../UserCategoryOptions";
 import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
 import { adenInvoiceToday } from "../invoice-save-date";
 import {
@@ -496,6 +498,7 @@ function profileOf(user: User): ProfileInput {
     email: user.email,
     phone: user.phone,
     image: user.image,
+    category: user.category ?? defaultUserCategory,
   };
 }
 
@@ -520,7 +523,7 @@ function ProfileForms({ user }: { user: User }) {
   } | null>(null);
   const passwordRevision = useRef(0);
 
-  function updateProfile(key: keyof ProfileInput, value: string) {
+  function updateProfile<K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) {
     revision.current += 1;
     setDraft((current) => ({ ...current, [key]: value }));
     setProfileNotice(null);
@@ -646,6 +649,10 @@ function ProfileForms({ user }: { user: User }) {
             onChange={(event) => updateProfile("phone", event.target.value)}
             maxLength={40}
           />
+          <Select label="التصنيف" name="category" value={draft.category}
+            onChange={(event) => updateProfile("category", event.target.value as UserCategory)}>
+            <UserCategoryOptions />
+          </Select>
           <ImageUpload purpose="avatar" preview={draft.image ? thumbnailUrl(draft.image) : null}
             disabled={saving} onUploaded={({fullUrl})=>updateProfile("image",fullUrl)}
             onClear={()=>updateProfile("image","")} />
@@ -815,7 +822,7 @@ function UserList() {
   } | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
   const [editTarget, setEditTarget] = useState<User | null>(null);
-  const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
+  const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];category: UserCategory;editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [editAvatar, setEditAvatar] = useState<string>();
@@ -954,7 +961,7 @@ function UserList() {
     if (target.owner) return;
     setEditTarget(target);
     setEditAvatar(undefined);
-    setEditDraft({name:target.name,displayName:target.displayName,email:target.email,phone:target.phone,kind:target.kind,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
+    setEditDraft({name:target.name,displayName:target.displayName,email:target.email,phone:target.phone,kind:target.kind,category:target.category ?? defaultUserCategory,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
     setEditError("");
   }
   async function saveEditor() {
@@ -1122,6 +1129,13 @@ function UserList() {
         header: "الهاتف",
         size: 150,
         cell: ({ row }) => valueCell("الهاتف", row.original.phone),
+      },
+      {
+        accessorKey: "category",
+        header: "التصنيف",
+        enableSorting: true,
+        size: 160,
+        cell: ({ row }) => row.original.category ?? defaultUserCategory,
       },
       {
         accessorKey: "kind",
@@ -1331,6 +1345,10 @@ function UserList() {
           <Field label="اسم الظهور" value={editDraft.displayName} maxLength={120} onChange={event=>setEditDraft({...editDraft,displayName:event.target.value})}/>
           <Field label="البريد الإلكتروني (اختياري)" type="email" dir="ltr" value={editDraft.email} maxLength={254} onChange={event=>setEditDraft({...editDraft,email:event.target.value})}/>
           <Field label="الهاتف" type="tel" dir="ltr" value={editDraft.phone} maxLength={40} onChange={event=>setEditDraft({...editDraft,phone:event.target.value})}/>
+          <Select label="التصنيف" value={editDraft.category}
+            onChange={event=>setEditDraft({...editDraft,category:event.target.value as UserCategory})}>
+            <UserCategoryOptions />
+          </Select>
           <Select label="نوع الحساب" value={editDraft.kind} onChange={event=>setEditDraft({...editDraft,kind:event.target.value as User["kind"]})}>
             {userKinds.map(kind=><option key={kind} value={kind}>{userKindLabels[kind]}</option>)}
           </Select>
