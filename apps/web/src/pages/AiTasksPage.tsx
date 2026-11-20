@@ -150,7 +150,8 @@ export function AiTasksPage() {
     {historyTask && <Dialog open title={`سجل إنجاز · ${historyTask.title}`} onClose={() => setHistoryTask(null)}>
       {history.isPending && <Notice>جارٍ تحميل الجولات…</Notice>}
       {history.error && <Notice tone="error">{errorMessage(history.error)}</Notice>}
-      {history.data?.history.length === 0 && <p className="full-value">{historyTask.lastResult || "لا توجد جولات مرتبطة."}</p>}
+      {history.data && !history.data.history.some(run => run.finishedAt === historyTask.lastFinishedAt) &&
+        <p className="full-value">{historyTask.lastResult || "لا توجد جولات مرتبطة."}</p>}
       {history.data?.history.map(run => <details key={run.id} open={run.finishedAt === historyTask.lastFinishedAt}>
         <summary>#{run.id} · {run.title} · {formatDate(run.finishedAt ?? run.recordedAt)}</summary>
         {run.startedAt && <p>بدأت {formatDate(run.startedAt)}</p>}

@@ -60,15 +60,28 @@ function runMetadata(texts: string[]) {
   return entries;
 }
 
-function auditRuns(rows: QueryResultRow[], taskIds: Set<number>) {
+function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
+  const taskIds = new Set(tasks.map(row => Number(row.task_id)));
+  const referenced = new Map<number, Set<number>>();
+  for (const task of tasks) {
+    const notes = [task.general_table_text7, task.general_table_text8, task.general_table_text9].join("\n");
+    for (const match of notes.matchAll(/(?:سجل\s+الإنجاز(?:\s+رقم)?|بسجل)\s*#?\s*(\d+)/gu)) {
+      const journalId = Number(match[1]);
+      const ids = referenced.get(journalId) ?? new Set<number>();
+      ids.add(Number(task.task_id));
+      referenced.set(journalId, ids);
+    }
+  }
   const byTask = new Map<number, Run[]>();
   for (const row of rows) {
     const metadata = runMetadata([row.general_table_text1, row.general_table_text2, row.general_table_text8, row.general_table_text9]);
     const title = String(row.general_table_title);
     const byTitle = title.match(/^(?:المهمة\s*#?\s*(\d+)|#?(\d+)\s*[|—–:-])/);
-    const entry = metadata.reverse().find(item => taskIds.has(Number(item.taskId)));
+    const entry = metadata.reverse().find(item => Number.isInteger(Number(item.taskId)) && Number(item.taskId) > 0);
     const taskId = Number(entry?.taskId ?? byTitle?.[1] ?? byTitle?.[2]);
-    if (!taskIds.has(taskId)) continue;
+    const linkedTasks = Number.isFinite(taskId)
+      ? (taskIds.has(taskId) ? [taskId] : [])
+      : referenced.get(Number(row.general_table_id)) ?? [];
     const recordedAt = new Date(row.created_at).toISOString();
     const startedAt = dateValue(entry?.startedAt);
     const terminal = !entry?.status || endStates.test(String(entry.status));
@@ -83,9 +96,11 @@ function auditRuns(rows: QueryResultRow[], taskIds: Set<number>) {
       finishedAt,
       resumeFrom: typeof entry?.resumeFrom === "string" ? entry.resumeFrom : null,
     };
-    const existing = byTask.get(taskId);
-    if (existing) existing.push(run);
-    else byTask.set(taskId, [run]);
+    for (const linkedTask of linkedTasks) {
+      const existing = byTask.get(linkedTask);
+      if (existing) existing.push(run);
+      else byTask.set(linkedTask, [run]);
+    }
   }
   return byTask;
 }
@@ -105,14 +120,21 @@ function taskDTO(row: QueryResultRow, history: Run[]) {
     .sort((a, b) => b.finishedAt!.localeCompare(a.finishedAt!))[0];
   const knownStarts = history.map(run => run.startedAt);
   const notes = [row.general_table_text7, row.general_table_text8, row.general_table_text9] as string[];
+  const knownFinishes = [];
   for (const entry of runMetadata(notes)) {
-    if (entry.taskId === row.task_id || entry.taskId === undefined)
+    if (Number(entry.taskId) === row.task_id || entry.taskId === undefined) {
       knownStarts.push(dateValue(entry.startedAt));
+      knownFinishes.push(dateValue(entry.endedAt ?? entry.finishedAt ?? entry.completedAt));
+    }
   }
   for (const note of notes) {
-    for (const match of note.matchAll(/(?:بدء فعلي|وقت البدء الفعلي|startedAt)\s*[:=]\s*(\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d))/gi))
-      knownStarts.push(dateValue(match[1]));
+    const timestamps = /(?:بدء فعلي|وقت البدء الفعلي|startedAt)\s*[:=]\s*(\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d))/gi;
+    for (const match of note.matchAll(timestamps)) knownStarts.push(dateValue(match[1]));
+    const finishes = /(?:انتهاء هذه الجولة|وقت الانتهاء)\s*[:=]\s*(\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d))/gu;
+    for (const match of note.matchAll(finishes)) knownFinishes.push(dateValue(match[1]));
   }
+  const embeddedFinish = knownFinishes.filter((value): value is string => value !== null).sort().at(-1) ?? null;
+  const embeddedIsNewer = embeddedFinish !== null && (!lastRun?.finishedAt || embeddedFinish > lastRun.finishedAt);
   const lastStartedAt = knownStarts.filter((value): value is string => value !== null).sort().at(-1);
   const cadenceHours = row.cadence_hours as number | null;
   const archived = Boolean(row.archived_at) || row.general_table_category === archivedCategory;
@@ -126,8 +148,8 @@ function taskDTO(row: QueryResultRow, history: Run[]) {
     cadenceHours,
     cadenceLabel: row.cadence_label as string | null,
     archived,
-    lastFinishedAt: lastRun?.finishedAt ?? null,
-    lastResult: lastRun?.detail || lastRun?.title || String(row.general_table_text9 || ""),
+    lastFinishedAt: embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null,
+    lastResult: embeddedIsNewer ? notes[2] : lastRun?.detail || lastRun?.title || notes[2],
     resumeFrom: lastRun?.resumeFrom ?? null,
     nextEligibleAt: !archived && lastStartedAt && cadenceHours
       ? new Date(Date.parse(lastStartedAt) + cadenceHours * 3600000).toISOString() : null,
@@ -148,7 +170,7 @@ export function aiTaskRoutes(pool: Pool) {
       pool.query<{ id: number; name: string }>("SELECT id,name FROM companies ORDER BY name,id"),
       readJournal(pool),
     ]);
-    const byTask = auditRuns(journal, new Set(tasks.rows.map(row => Number(row.task_id))));
+    const byTask = auditRuns(journal, tasks.rows);
     res.json({
       tasks: tasks.rows.map(row => taskDTO(row, byTask.get(Number(row.task_id)) ?? [])),
       companies: companies.rows,
@@ -159,7 +181,7 @@ export function aiTaskRoutes(pool: Pool) {
     const taskId = id(req.params.id);
     const task = await pool.query(taskQuery + " AND t.task_id=$2", [tasksTable, taskId]);
     if (!task.rowCount) missing();
-    const byTask = auditRuns(await readJournal(pool), new Set([taskId]));
+    const byTask = auditRuns(await readJournal(pool), task.rows);
     res.json({ history: byTask.get(taskId) ?? [] });
   }));
 
