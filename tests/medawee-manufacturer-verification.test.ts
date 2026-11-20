@@ -87,7 +87,7 @@ test("Medawee verification and current agent link are owner-only, atomic and rev
     const repeated = (await (await call("GET")).json()).items;
     assert.deepEqual(repeated.filter((row: { manufacturerName: string }) => row.manufacturerName === "Alpha")
       .map((row: { duplicateAgent: boolean; manufacturerVerificationLabel: string }) =>
-        [row.duplicateAgent, row.manufacturerVerificationLabel]), [[true, "وكيل مكرر"], [true, "وكيل مكرر"]]);
+        [row.duplicateAgent, row.manufacturerVerificationLabel]), [[true, "تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل"], [true, "وكيل مكرر"]]);
     assert.equal(repeated.find((row: { manufacturerName: string }) => row.manufacturerName === "Beta").duplicateAgent, false);
     assert.equal(repeated[0].manufacturerAgentLinked, true);
     await db.query("DELETE FROM medawee_agent_manufacturers_staging WHERE agent_url=$1", [anotherAgentUrl]);

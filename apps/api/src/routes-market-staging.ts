@@ -66,8 +66,8 @@ function selectMedaweeAgents(source: "medawee_agent_manufacturers_staging" | "up
     staging.linked_agent_card_id AS "linkedAgentCardId",
     link.confirmed AS "manufacturerAgentLinked",
     link.duplicate_agent AS "duplicateAgent",
-    CASE WHEN link.duplicate_agent THEN 'وكيل مكرر'
-         WHEN link.confirmed THEN 'تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل'
+    CASE WHEN link.confirmed THEN 'تم التأكد من الإضافة فقط _ تم ربط المصنع بالوكيل'
+         WHEN link.duplicate_agent THEN 'وكيل مكرر'
          WHEN staging.manufacturer_verified THEN 'تم التأكد من الإضافة فقط'
          ELSE '' END AS "manufacturerVerificationLabel"
     FROM ${source} AS staging
