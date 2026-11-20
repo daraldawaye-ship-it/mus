@@ -27,6 +27,7 @@ export const aiTaskCompanyScheduleInput = z.object({
   cadenceHours: z.number().int().min(1).max(8760),
   expectedUpdatedAt: z.string().datetime({ offset: true }),
 }).strict();
+export const aiTaskCadenceInput = aiTaskCompanyScheduleInput.pick({cadenceHours: true, expectedUpdatedAt: true});
 export const aiTaskArchiveInput = z.object({ archived: z.boolean() }).strict();
 const taskQuery = `SELECT t.*, g.*, c.name AS company_name
   FROM ai_tasks t JOIN general_table g ON g.general_table_id=t.task_id
@@ -274,6 +275,31 @@ export function aiTaskRoutes(pool: Pool) {
         updatedAt: new Date(changed.rows[0].updated_at).toISOString() };
     });
     res.json(settings);
+  }));
+
+  router.patch("/ai-tasks/:id/cadence", handler(async (req, res) => {
+    const taskId = id(req.params.id);
+    const {cadenceHours, expectedUpdatedAt} = parse(aiTaskCadenceInput, req.body);
+    const result = await transaction(pool, async db => {
+      const user = await currentActor(db, actor(req));
+      if (!user.owner || user.suspended) throw new HttpError(403, "owner_only", "للمالك فقط");
+      const row = (await db.query(taskQuery + " AND t.task_id=$2 FOR UPDATE OF g,t", [tasksTable, taskId])).rows[0];
+      if (!row || row.section === personalSection || row.private_title !== null || row.private_description !== null) missing();
+      if (row.archived_at || row.general_table_category === archivedCategory)
+        throw new HttpError(409, "ai_task_archived", "استعد المهمة المؤرشفة قبل تعديل جدولها");
+      const updatedAt = new Date(row.updated_at).toISOString();
+      if (updatedAt !== new Date(expectedUpdatedAt).toISOString())
+        throw new HttpError(409, "ai_task_changed", "تغير السجل؛ أعد قراءته قبل التعديل");
+      const settings = { id:taskId, section:row.section, companyId:row.company_id, cadenceHours };
+      if (row.cadence_hours === cadenceHours) return {...settings, updatedAt};
+      const changed = await db.query<{updated_at:Date}>(`UPDATE general_table
+        SET updated_at=GREATEST(clock_timestamp(),date_trunc('milliseconds',updated_at)+interval '1 millisecond')
+        WHERE general_table_id=$1 RETURNING updated_at`, [taskId]);
+      await db.query("UPDATE ai_tasks SET cadence_hours=$2 WHERE task_id=$1", [taskId, cadenceHours]);
+      await audit(db, user, "generalTable.update", "aiTask", taskId, {cadenceHours:row.cadence_hours}, {cadenceHours});
+      return {...settings, updatedAt:new Date(changed.rows[0].updated_at).toISOString()};
+    });
+    res.json(result);
   }));
 
   router.patch("/ai-tasks/:id/archive", handler(async (req, res) => {

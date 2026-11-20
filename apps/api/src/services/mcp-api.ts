@@ -12,7 +12,7 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import {ownerSqlMcpPreviewSchema,ownerSqlMcpExecuteSchema} from "./owner-sql-mcp.ts";
 import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
-import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput } from "../routes-ai-tasks.ts";
+import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput, aiTaskCadenceInput } from "../routes-ai-tasks.ts";
 
 import { inquiryTaskNameSchema, shortenCashboxQuestionSchema } from "../routes-inquiries.ts";
 
@@ -38,6 +38,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "PATCH /ai-tasks/:id/company-schedule": {
     source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"],
     bodyContract: "aiTaskCompanyScheduleInput", bodySchema: z.toJSONSchema(aiTaskCompanyScheduleInput),
+  },
+  "PATCH /ai-tasks/:id/cadence": {
+    source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"],
+    bodyContract: "aiTaskCadenceInput", bodySchema: z.toJSONSchema(aiTaskCadenceInput),
   },
   "PATCH /ai-tasks/:id/archive": {
     source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"], bodyContract: "aiTaskArchiveInput",
