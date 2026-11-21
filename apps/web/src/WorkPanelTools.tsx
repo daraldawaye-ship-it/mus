@@ -18,7 +18,7 @@ import { canEditInvoiceItemComposition } from "./invoice-item-composition-access
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { api, sessionRequiresLogin, useScopeGuard } from "./api";
 import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
-import { usePageDirectory } from "./page-directory";
+import { dockDataReads } from "./dock-container-access";
 import { errorMessage } from "./phase2";
 import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
@@ -52,18 +52,11 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const online = useSyncExternalStore(subscribeConnection, connectionSnapshot) === "online" &&
     !sessionRequiresLogin();
   const client = useQueryClient();
-  const directory = usePageDirectory(companyId ?? undefined);
-  const accountAccess=dockAccountAccess(context,pagesError?undefined:pageEntries);
-  const access = workPanelItemActionAccess(context, directory.data);
-  const canEditComposition=canEditInvoiceItemComposition(context,directory.data);
-  const canViewPurchases=!!context&&!directory.isError&&
-    ["company.stock-movements","company.purchases"].every(key=>directory.data?.some(entry=>
-      entry.key===key&&entry.enabled&&entry.actionAccess.view));
-  const canViewCard = !!context && (context.general || context.permissions.includes("items.view")) &&
-    ["company.items", "company.item-card"].every(key => {
-      const page=directory.data?.find(entry=>entry.key===key);
-      return !!page?.enabled && page.actionAccess.view;
-    });
+  const pages=pagesError?undefined:pageEntries;
+  const reads=dockDataReads(context,pages);
+  const accountAccess=dockAccountAccess(context,pages);
+  const access = workPanelItemActionAccess(user.owner?context:undefined,pages);
+  const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
 
   function refreshInventory(itemId: number) {
     for (const key of [
@@ -114,23 +107,23 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     <div className="work-panel-tools">
       {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
-          <EntityMenuSearch user={user} companyId={companyId} kind="item" floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
+          {reads.item ? <EntityMenuSearch user={user} companyId={companyId} kind="item" floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
-                  <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
+                  {user.owner && <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
                     itemId={selected?.id??0} allowCompositionEdit={canEditComposition}
                     openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
                     canPublicRequest={access["public-request"] && !requesting}
                     canEdit={access.edit} canAdjust={access.adjust}
                     canTransfer={access.transfer} canReport={access.report}
-                    onAction={action => { if (selected) openAction(action, selected); }} />
-                  {itemViews.map(view => {
+                    onAction={action => { if (selected) openAction(action, selected); }} />}
+                  {itemViews.filter(view=>reads[view.key]).map(view => {
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
-                        disabled={view.key==="card" ? (!selected||!canViewCard) : view.key==="purchases" ? (!selected||!canViewPurchases) : false}
+                        disabled={!selected}
                         className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
@@ -140,21 +133,20 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     );
                   })}
                 </div>
-                {!!companyId && itemViews.filter(view => views.includes(view.key) && (view.key!=="card" || (!!selected&&canViewCard)) &&
-                  (view.key!=="purchases" || (!!selected&&canViewPurchases))).map(view => (
+                {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && reads[view.key]).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
-                    {view.key==="card" ? selected && canViewCard && (
+                    {view.key==="card" ? selected && reads.card && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
                         canEdit={access.edit} online={online} />
                     ) : <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}
                       workPanelMovement={view.key === "movement" || view.key === "purchases"}
-                      purchaseOnly={view.key === "purchases"} />}
+                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={user.owner} />}
                   </div>
                 ))}
               </>
-            )} />
+            )} /> : <Notice>البحث عن الأصناف يحتاج صلاحية عرض الأصناف أو المخزون أو الفواتير.</Notice>}
         </div>
       </section>
       {notice && <Notice tone={notice.tone}>{notice.message} {notice.memoId && companyId &&
@@ -174,10 +166,10 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           }} />}
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
+        {reads.account ? <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
           <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}`}
             actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} />
-          : null} />
+          : null} /> : <Notice>البحث عن الحسابات غير متاح بصلاحياتك الحالية.</Notice>}
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
       {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} context={context} />}

@@ -68,10 +68,10 @@ import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { WorkPanelLayout } from "./WorkPanelLayout";
 import { WorkPanelTools } from "./WorkPanelTools";
-import { showWorkPanelPrivateNotes } from "./dock-private-notes-access";
+import { dockContainerRoles } from "./dock-container-access";
 import { DockTableContext } from "./DockTableContext";
 import { canSearchDockUsers } from "./dock-user-search";
-import { isVisibleNavigationPage,showWorkPanelAccountSearch,showWorkPanelPageSearch } from "./work-panel-search-access";
+import { isVisibleNavigationPage } from "./work-panel-search-access";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
@@ -1247,12 +1247,13 @@ function Workspace() {
       ? undefined
       : (lastCompany.data ?? undefined);
   const dockPageDirectory = usePageDirectory(navigationContext?.company.id);
-  const ownerDock=!!user?.owner && !employeePreview;
-  const accountDock=showWorkPanelAccountSearch(user,navigationContext,
-    dockPageDirectory.isError?undefined:dockPageDirectory.data,!!employeePreview);
-  const pageDock=showWorkPanelPageSearch(user,navigationContext,!!employeePreview);
-  const notesDock=inCompany && !visitorOnly && companyId === navigationContext?.company.id &&
-    showWorkPanelPrivateNotes(user,navigationContext,!!employeePreview);
+  const dockRoles=dockContainerRoles(user,navigationContext,
+    inCompany && companyId === navigationContext?.company.id,!!visitorOnly,!!employeePreview);
+  const ownerDock=dockRoles.owner;
+  const itemDock=dockRoles.item;
+  const accountDock=dockRoles.account;
+  const pageDock=dockRoles.page;
+  const notesDock=dockRoles.overview;
   const currentDockPageKey=/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname)
     ? "company.item-options-list" : pageKeyForLocation(location.pathname,location.search);
   const dockPages=dockPageDirectory.isError?undefined:dockPageDirectory.data;
@@ -1267,8 +1268,8 @@ function Workspace() {
     : dockCompanyId&&new RegExp(`^/companies/${dockCompanyId}/legacy-sales-import/?$`).test(location.pathname)
       ? "ترحيل مبيعات النظام السابق" : "";
   const dockUser=ownerDock && !!user && canSearchDockUsers(user,dockPages);
-  const workPanelEnabled=!!user && !visitorOnly && !employeePreview;
-  const hasWorkPanelTools=ownerDock || accountDock || pageDock || notesDock;
+  const workPanelEnabled=dockRoles.shell;
+  const hasWorkPanelTools=itemDock || accountDock || pageDock || notesDock;
 
   useCompanyIdleLogout(companyId, navigationContext?.employee?.id ?? null, inCompany && !!navigationContext);
   useEffect(() => {
@@ -1458,11 +1459,11 @@ function Workspace() {
           </header>
           <DockTableContext scopeKey={`${user?.id??"guest"}:${dockCompanyId??0}:${!!employeePreview}`}
             scope={{companyId:dockCompanyId,companyRoute:inCompany && companyId===dockCompanyId,
-              userRoute:currentDockPageKey==="public.users",item:ownerDock,account:accountDock,user:dockUser}}>
+              userRoute:currentDockPageKey==="public.users",item:itemDock,account:accountDock,user:dockUser}}>
           <WorkPanelLayout key={user?.id ?? "guest"} enabled={workPanelEnabled} userId={user?.id ?? null}
             renderTools={() => workPanelEnabled && user && (hasWorkPanelTools ? (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
-                user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock} showPrivateNotes={notesDock}
+                user={user} context={navigationContext} showItemTools={itemDock} showAccountSearch={accountDock} showPageSearch={pageDock} showPrivateNotes={notesDock}
                 pageEntries={dockPageDirectory.data} pagesLoading={dockPageDirectory.isPending}
                 pagesError={dockPageDirectory.isError} currentPageLabel={dockPageLabel}
                 currentPageRoute={location.pathname+location.search} />

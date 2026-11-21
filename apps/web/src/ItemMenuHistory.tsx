@@ -114,7 +114,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, allowMovementInvoiceDetails = true,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -127,6 +127,7 @@ export function ItemMenuHistory({
   hideHeading?: boolean;
   workPanelMovement?: boolean;
   purchaseOnly?: boolean;
+  allowMovementInvoiceDetails?: boolean;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
@@ -181,7 +182,7 @@ export function ItemMenuHistory({
     enabled: !!itemId && view === "movement" && !invalidMovementDates,
     staleTime: 10000,
   });
-  const invoiceMovementIds = workPanelMovement && view === "movement"
+  const invoiceMovementIds = allowMovementInvoiceDetails && workPanelMovement && view === "movement"
     ? (movements.data?.items ?? [])
       .filter(row => row.invoiceId && row.invoiceLineId &&
         ["purchase", "purchase_return", "sale", "sales_return"].includes(row.kind))
