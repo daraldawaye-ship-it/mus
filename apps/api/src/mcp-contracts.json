@@ -2982,6 +2982,21 @@
           "type": "string",
           "maxLength": 2000
         },
+        "classification": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "medical_supplies",
+                "health_supplies",
+                "medicine"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "active": {
           "default": true,
           "type": "boolean"
@@ -3034,6 +3049,21 @@
           "default": "",
           "type": "string",
           "maxLength": 2000
+        },
+        "classification": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "medical_supplies",
+                "health_supplies",
+                "medicine"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "active": {
           "default": true,

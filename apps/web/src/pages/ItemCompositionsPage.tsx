@@ -11,6 +11,9 @@ import {
   type Item,
   type ProductForm,
   compositionForms,
+  compositionClassifications,
+  compositionClassificationLabels,
+  type CompositionClassification,
 } from "../../../../packages/contracts/src/index";
 import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
@@ -354,6 +357,7 @@ function CompositionEditor({
     description:record?.description??"",
     saleNotes:record?.saleNotes??"",
     productForm:record?.productForm??"عام" as ProductForm,
+    classification:record?.classification??null,
     priceSplitThreshold:record?.priceSplitThreshold??null,
     originalItemId:record?.originalItemId??null,
     active:record?.active??true,
@@ -399,6 +403,7 @@ function CompositionEditor({
         arabicName:result.arabicName,englishName:result.englishName,
         description:result.description,saleNotes:result.saleNotes,
         productForm:result.productForm,active:result.active,
+        classification:result.classification??null,
         priceSplitThreshold:result.priceSplitThreshold,originalItemId:result.originalItemId,
         identicalAlternative:result.identicalAlternative,
         nonInterchangeable:result.nonInterchangeable,
@@ -449,6 +454,12 @@ function CompositionEditor({
         <Select label="شكل التركيب" value={form.productForm}
           disabled={disabled} onChange={e=>set("productForm",e.target.value as ProductForm)}>
           {compositionForms.map(value=><option key={value} value={value}>{value}</option>)}
+        </Select>
+        <Select label="التصنيف" value={form.classification??""} disabled={disabled}
+          onChange={e=>set("classification",e.target.value===""?null:e.target.value as CompositionClassification)}>
+          <option value="">بلا تصنيف</option>
+          {compositionClassifications.map(value=><option key={value} value={value}>
+            {compositionClassificationLabels[value]}</option>)}
         </Select>
         <Field label="الفارق بالسعر — سعر بيع الوحدة الأولى" type="number"
           min="0" step="0.000001" inputMode="decimal"

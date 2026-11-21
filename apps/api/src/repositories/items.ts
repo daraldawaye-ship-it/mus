@@ -34,6 +34,7 @@ export function itemCompositionDTO(row: QueryResultRow): ItemComposition {
     description: row.description,
     saleNotes: row.sale_notes,
     productForm: row.product_form,
+    classification: row.classification ?? null,
     priceSplitThreshold: row.price_split_threshold === null || row.price_split_threshold === undefined
       ? null : String(row.price_split_threshold),
     originalItemId: row.original_item_id ?? null,

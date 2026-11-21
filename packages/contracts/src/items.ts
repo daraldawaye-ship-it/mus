@@ -78,12 +78,21 @@ export const compositionFormSchema = z.enum(compositionForms as [ProductForm, ..
 // Composition is a reusable company-scoped item classification. Its
 // substitution flags are descriptive; they never auto-replace stock lines.
 const compositionName = z.string().trim().min(1, "الاسم مطلوب").max(240);
+export const compositionClassifications = ["medical_supplies","health_supplies","medicine"] as const;
+export type CompositionClassification = typeof compositionClassifications[number];
+export const compositionClassificationLabels: Record<CompositionClassification, string> = {
+  medical_supplies: "مستلزمات طبية",
+  health_supplies: "مستلزمات صحية",
+  medicine: "دواء",
+};
+
 const compositionFields = z.object({
   arabicName: compositionName,
   englishName: compositionName,
   description: z.string().trim().max(2000).default(""),
   saleNotes: z.string().trim().max(1000).default(""),
   productForm: compositionFormSchema.default("عام"),
+  classification: z.enum(compositionClassifications).nullable().optional(),
   // An unset threshold means a single group of all linked items.
   priceSplitThreshold: z.string().trim()
     .regex(/^\d{1,22}(?:\.\d{1,6})?$/, "أدخل سعرًا موجبًا أو صفرًا حتى 6 منازل عشرية")
@@ -131,6 +140,7 @@ export interface ItemComposition {
   description: string;
   saleNotes: string;
   productForm: ProductForm;
+  classification: CompositionClassification | null;
   priceSplitThreshold: string | null;
   originalItemId: number | null;
   active: boolean;
