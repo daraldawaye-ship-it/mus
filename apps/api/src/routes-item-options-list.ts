@@ -61,7 +61,7 @@ const querySchema = z.object({
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   // The former useReserve request parameter is ignored if supplied by old links.
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "compositionCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "marketOrder30Days", "marketOrderAfterPurchase30Days"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "compositionCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "marketOrder30Days", "marketOrderAfterPurchase30Days", "adjustmentQtySinceDisplay", "adjustmentValueSinceDisplay", "adjustmentQtySinceApproval", "adjustmentValueSinceApproval"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -174,6 +174,10 @@ async function filteredItems(
     month: "f.sale_times_month", saleQuantityMonth: "f.sale_quantity_month",
     marketOrder30Days: "f.market_order_days_30d",
     marketOrderAfterPurchase30Days: "f.market_order_days_after_purchase_30d",
+    adjustmentQtySinceDisplay: "f.adjustment_qty_since_display_unit1",
+    adjustmentValueSinceDisplay: "f.adjustment_value_since_display",
+    adjustmentQtySinceApproval: "f.adjustment_qty_since_approval_unit1",
+    adjustmentValueSinceApproval: "f.adjustment_value_since_approval",
     compositionSaleMonth: "f.composition_sale_unit1_month", compositionStock: "f.composition_available_unit1",
     compositionCoverage: "f.composition_coverage_days",
     purchasePrice: "f.purchase_price",
@@ -215,6 +219,15 @@ async function filteredItems(
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              COALESCE(stock.market_order_days_30d,0) AS market_order_days_30d,
              COALESCE(stock.market_order_days_after_purchase_30d,0) AS market_order_days_after_purchase_30d,
+             -- Cache signed physical-count quantities, not their currency values.
+             round(COALESCE(stock.adjustment_qty_since_display,0)
+               / greatest(i.factor2::numeric*i.factor3::numeric,1),4) AS adjustment_qty_since_display_unit1,
+             round(COALESCE(stock.adjustment_qty_since_display,0)
+               / greatest(i.factor2::numeric*i.factor3::numeric,1) * i.purchase_price,4) AS adjustment_value_since_display,
+             round(COALESCE(stock.adjustment_qty_since_approval,0)
+               / greatest(i.factor2::numeric*i.factor3::numeric,1),4) AS adjustment_qty_since_approval_unit1,
+             round(COALESCE(stock.adjustment_qty_since_approval,0)
+               / greatest(i.factor2::numeric*i.factor3::numeric,1) * i.purchase_price,4) AS adjustment_value_since_approval,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
              -- The cached monthly facts remain unchanged. Apply only a verified
              -- legacy unit correction to planning, then convert to first units.
@@ -424,6 +437,10 @@ async function filteredItems(
     saleTimesMonth: String(row.sale_times_month),
     marketOrder30Days: Number(row.market_order_days_30d),
     marketOrderAfterPurchase30Days: Number(row.market_order_days_after_purchase_30d),
+    adjustmentQtySinceDisplay: String(row.adjustment_qty_since_display_unit1),
+    adjustmentValueSinceDisplay: String(row.adjustment_value_since_display),
+    adjustmentQtySinceApproval: String(row.adjustment_qty_since_approval_unit1),
+    adjustmentValueSinceApproval: String(row.adjustment_value_since_approval),
     // Keep exact cached quantity but hide decimal zeros in the display.
     saleQuantityMonth: String(row.sale_quantity_month).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     saleTimesFourMonths: String(row.sale_times_four_months),
@@ -507,6 +524,10 @@ async function filteredItems(
       saleTimesMonth: row.saleTimesMonth, saleQuantityMonth: row.saleQuantityMonth,
       marketOrder30Days: row.marketOrder30Days,
       marketOrderAfterPurchase30Days: row.marketOrderAfterPurchase30Days,
+      adjustmentQtySinceDisplay: row.adjustmentQtySinceDisplay,
+      adjustmentValueSinceDisplay: row.adjustmentValueSinceDisplay,
+      adjustmentQtySinceApproval: row.adjustmentQtySinceApproval,
+      adjustmentValueSinceApproval: row.adjustmentValueSinceApproval,
       saleTimesFourMonths: row.saleTimesFourMonths, saleTimesYear: row.saleTimesYear,
       saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
