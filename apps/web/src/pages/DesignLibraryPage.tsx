@@ -84,6 +84,23 @@ function PressKeyOptions() {
     })}
   </div>;
 }
+function SlidingYesNoOptions() {
+  const sizes = [
+    { key: "sm", label: "صغير" },
+    { key: "md", label: "وسط" },
+    { key: "lg", label: "كبير" },
+  ] as const;
+  const [enabled, setEnabled] = useState({ sm: false, md: false, lg: false });
+  return <div className="design-inline design-slide-options" role="group" aria-label="تجربة مفاتيح نعم ولا">
+    {sizes.map(({ key, label }) => <button key={key} type="button" role="switch"
+      aria-label={`مفتاح نعم ولا، ${label}`} aria-checked={enabled[key]}
+      className={`design-slide-toggle design-slide-toggle-${key}`}
+      onClick={() => setEnabled(previous => ({ ...previous, [key]: !previous[key] }))}>
+      <span className="design-slide-status" aria-hidden="true">{enabled[key] ? "نعم" : "لا"}</span>
+      <span className="design-slide-thumb" aria-hidden="true" />
+    </button>)}
+  </div>;
+}
 function DemoFields() {
   const [choice, setChoice] = useState("الفعال");
   const [checked, setChecked] = useState(true);
@@ -105,6 +122,7 @@ function DemoFields() {
       <Sample code="ح-11" title="حقل تاريخ"><label className="design-field">اختر التاريخ<input type="date" defaultValue="2026-11-14"/></label></Sample>
       <Sample code="ح-12" title="اختيار ملف"><label className="design-field">إرفاق مستند<input type="file" aria-label="إرفاق مستند"/></label></Sample>
       <Sample code="ح-18" title="مفاتيح اختيار بارزة" note="اضغط أي مفتاح لتفعيله أو إطفائه. الأحجام الثلاثة للتجربة وتتبع لون المظهر."><PressKeyOptions /></Sample>
+      <Sample code="ح-19" title="مفتاح منزلق نعم / لا" note="ثلاثة أحجام تتبع ألوان المظهر. كل مفتاح مستقل للتجربة."><SlidingYesNoOptions /></Sample>
     </Group>
   </>;
 }
