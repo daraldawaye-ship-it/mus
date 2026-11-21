@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { GripHorizontal, GripVertical, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { mobileWorkPanelAvailableHeight,mobileWorkPanelMaxSize,watchMobileWorkPanelGeometry } from "./work-panel-viewport";
 import "./WorkPanelLayout.css";
 
 type StoredPanel = { desktop: number; mobile: number; open: boolean };
@@ -37,6 +38,7 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
   const [headerHeight, setHeaderHeight] = useState(44);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  const [mobileAvailableHeight,setMobileAvailableHeight] = useState<number|null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{
     pointerId: number;
@@ -69,6 +71,26 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   }, [enabled]);
 
   useEffect(() => {
+    if (!enabled || !mobile) return;
+    const layout=layoutRef.current;
+    if(!layout)return;
+    const viewport=window.visualViewport;
+    return watchMobileWorkPanelGeometry({
+      win:window,document,viewport,
+      measure:()=>{
+        const height=mobileWorkPanelAvailableHeight(layout.getBoundingClientRect().top,window.innerHeight,viewport);
+        // Pinch zoom is not a keyboard or a panel resize.
+        if(height!==null)setMobileAvailableHeight(previous=>previous===height?previous:height);
+      },
+      focusWithinDock:()=>{
+        const active=document.activeElement;
+        return !!active && layout.contains(active) && !!active.closest(".resizable-work-panel-frame") &&
+          active.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="range"]):not([type="file"]):not([readonly]), textarea:not([readonly]), [contenteditable="true"]');
+      },
+    });
+  }, [enabled,mobile,headerHeight]);
+
+  useEffect(() => {
     if (!enabled || userId == null) return;
     try { localStorage.setItem(STORAGE_PREFIX + userId, JSON.stringify(settings)); } catch { /* private mode */ }
   }, [enabled, settings, userId]);
@@ -77,7 +99,7 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
     || viewport.width - (viewport.width > 680 ? 64 : 0);
   const rail = mobile ? MOBILE_RAIL : DESKTOP_RAIL;
   const maxSize = Math.max(rail + 1, mobile
-    ? Math.min(Math.round(viewport.height * 0.8), viewport.height - headerHeight - 130)
+    ? mobileWorkPanelMaxSize(mobileAvailableHeight ?? Math.max(0,viewport.height-headerHeight),rail)
     : Math.min(660, contentWidth - 320));
   const sizeKey = mobile ? "mobile" : "desktop";
   const size = clamp(settings[sizeKey], rail + 1, maxSize);
@@ -140,6 +162,7 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const style = {
     "--work-panel-size": `${displayedSize}px`,
     "--work-panel-top": `${headerHeight}px`,
+    ...(mobile&&mobileAvailableHeight!==null ? {"--work-panel-visible-height":`${mobileAvailableHeight}px`} : {}),
   } as CSSProperties;
 
   return (

@@ -355,3 +355,11 @@
 .work-panel-compact-stepper > :focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: -2px; }
 .work-panel-compact-actions { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
 .work-panel-compact-actions .check-label { margin-inline-end: 2px; min-height: 24px; }
+
+/* Scope dynamic keyboard geometry to the mobile screen; print keeps its rules. */
+@media screen and (max-width: 680px) {
+  .resizable-work-panel-layout.is-enabled {
+    height: var(--work-panel-visible-height, calc(100dvh - var(--work-panel-top)));
+    max-height: var(--work-panel-visible-height, calc(100dvh - var(--work-panel-top)));
+  }
+}
