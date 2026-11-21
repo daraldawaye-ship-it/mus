@@ -108,21 +108,6 @@
 .work-panel-tools .user-menu-entity-choice span { white-space: normal; overflow-wrap: anywhere; }
 /* Same multi-select chip treatment as the design library's ح-17. */
 .work-panel-choice-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
-.work-panel-choice-chips button {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  padding: 5px 9px;
-  border: 1px solid var(--button-border, var(--border));
-  background: var(--button-surface, var(--surface));
-  color: var(--text);
-  border-radius: 18px;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.work-panel-choice-chips button.selected { border-color: var(--focus); background: var(--soft); color: var(--on-soft); font-weight: 700; }
-.work-panel-choice-chips button:focus-visible,
 .work-panel-container-grip:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .work-panel-item-report + .work-panel-item-report { border-top: 2px solid var(--border); padding-top: 5px; }
 .work-panel-tools .user-menu-item-history-heading { flex-wrap: wrap; gap: 4px; padding: 3px 0 5px; font-size: 11px; }

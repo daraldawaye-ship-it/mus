@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Check, GripHorizontal } from "lucide-react";
+import { GripHorizontal } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
+import "./pages/RaisedOptionKeys.css";
 
 type ItemView = "movement" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
@@ -75,11 +76,10 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
-                        className={enabled ? "selected" : ""}
+                        className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
                           : [...previous, view.key])}>
-                        {enabled && <Check size={12} aria-hidden="true" />}
                         {view.label}
                       </button>
                     );

@@ -1,0 +1,33 @@
+/* ح-18: مفاتيح اختيار مستوحاة من فكرة المفتاح الميكانيكي في Uiverse، دون نسخ الكود. */
+.design-press-key {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  min-width: 46px;
+  border: 1px solid var(--button-border, var(--border));
+  border-block-end-width: 2px;
+  border-radius: 6px;
+  padding: 0 11px;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--button-surface, var(--surface));
+  background-image: linear-gradient(180deg, #ffffff14, transparent 43%, #0000000e);
+  box-shadow: inset 0 1px 0 #ffffff3d, 0 2px 0 var(--button-border, var(--border)), 0 4px 6px var(--button-shadow, #0002);
+}
+.design-press-key-sm { min-height: 26px; padding-inline: 7px; font-size: 11px; }
+.design-press-key-md { min-height: var(--control-height, 34px); }
+.design-press-key-lg { min-height: 41px; padding-inline: 17px; font-size: 15px; }
+.design-press-key:hover { border-color: var(--focus); }
+.design-press-key:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.design-press-key[aria-pressed="true"] {
+  color: var(--on-soft);
+  background: var(--soft);
+  border-color: var(--focus);
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 5px var(--button-shadow, #0003), 0 0 7px color-mix(in srgb, var(--focus) 40%, transparent);
+}
+.design-press-key-mark { flex: none; visibility: hidden; }
+.design-press-key[aria-pressed="true"] .design-press-key-mark { visibility: visible; }
