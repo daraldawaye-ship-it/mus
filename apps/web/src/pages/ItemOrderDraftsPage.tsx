@@ -13,7 +13,8 @@ import { usePageDirectory } from "../page-directory";
 import { OrderPlanningFields } from "../OrderPlanningFields";
 import { AvailableAlternatives, PurchaseComparisonItemPanel } from "./OrderDraftExportsPage";
 import { createSectionedTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
-import { orderDraftPrintSections,type DraftPrintClassification,type DraftSectionRow } from "../order-draft-print-sections";
+import { draftClassificationFilters,filterDraftRowsByClassification,orderDraftPrintSections,
+  type DraftClassificationFilter,type DraftPrintClassification,type DraftSectionRow } from "../order-draft-print-sections";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
@@ -138,6 +139,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [draftFilter, setDraftFilter] = useState("all");
   const [status, setStatus] = useState("all");
   const [reviewFilter, setReviewFilter] = useState<"all" | "reviewed" | "unreviewed">("all");
+  const [classificationFilters,setClassificationFilters]=useState<Set<DraftClassificationFilter>>(
+    ()=>new Set(draftClassificationFilters.map(option=>option.value)));
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -226,7 +229,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const allPrintable = printableRows("all");
   const printQueryClient=useQueryClient();
   type PrintClassificationResult={items:{itemId:number;compositionClassification:DraftPrintClassification}[]};
-  const printBatches=(rows:readonly DraftPrintRow[])=>{
+  const printBatches=(rows:readonly {itemId:number}[])=>{
     const ids=[...new Set(rows.map(row=>row.itemId))].sort((a,b)=>a-b);
     return Array.from({length:Math.ceil(ids.length/300)},(_,index)=>ids.slice(index*300,(index+1)*300));
   };
@@ -355,7 +358,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   // Never treat an unloaded or failed metric as "غير مراجع".
   const reviewFilterReady = reviewFilter === "all" ||
     metricResults.every(result => result.isSuccess);
-  const filtered = useMemo(() => {
+  const filteredBeforeClassification = useMemo(() => {
     if (!reviewFilterReady) return [];
     const q = search.trim().toLocaleLowerCase();
     return rows.filter(row => (draftFilter === "all" || String(row.draftId) === draftFilter)
@@ -365,6 +368,29 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       && (reviewFilter === "all" || (metricsById.get(row.item.id)?.reviewed ===
         (reviewFilter === "reviewed"))));
   }, [rows, search, draftFilter, status, reviewFilter, reviewFilterReady, metricsById]);
+  const classificationNarrowed = classificationFilters.size > 0 &&
+    classificationFilters.size < draftClassificationFilters.length;
+  const activePrintIds = new Set(allPrintable.map(row=>row.itemId));
+  // The existing print cache covers active rows; query only additional relevant
+  // IDs (e.g. items that exist solely as deleted rows) using the same projection.
+  const extraClassificationBatches = classificationNarrowed ?
+    printBatches(filteredBeforeClassification.filter(row=>!activePrintIds.has(row.item.id))
+      .map(row=>({itemId:row.item.id}))) : [];
+  const extraClassificationQueries = useQueries({
+    queries:extraClassificationBatches.map(ids=>({...printClassificationOptions(ids),enabled:!!user})),
+  });
+  const classificationsForView = new Map(currentPrintClassifications);
+  for (const query of extraClassificationQueries) {
+    for (const row of query.data?.items ?? []) {
+      classificationsForView.set(row.itemId,row.compositionClassification);
+    }
+  }
+  const classifiedRows = filterDraftRowsByClassification(filteredBeforeClassification,row=>row.item.id,
+    classificationFilters,classificationsForView);
+  const classificationFilterReady = classifiedRows !== null;
+  const classificationFilterLoading = !classificationFilterReady &&
+    [...printClassQueries,...extraClassificationQueries].some(query=>query.isPending || query.isFetching);
+  const filtered = classifiedRows ?? [];
   const draftValuesInput = drafts.drafts.map(draft => ({
     id: draft.id,
     items: draft.items.filter(item => !item.deleted).map(item => ({
@@ -654,6 +680,23 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
             }}>{option.label}</Button>
         ))}
       </div>
+      <div className="item-order-drafts-classification-filter" role="group" aria-label="تصفية حسب التصنيف">
+        {draftClassificationFilters.map(option => <label key={option.value}>
+          <input type="checkbox" checked={classificationFilters.has(option.value)}
+            onChange={event => {
+              const checked=event.currentTarget.checked;
+              setClassificationFilters(previous=>{
+                const next=new Set(previous);
+                if(checked)next.add(option.value); else next.delete(option.value);
+                return next;
+              });
+              setSelectedIds(new Set());
+              setSidePanel(null);
+              resetPage();
+            }} />
+          {option.label}
+        </label>)}
+      </div>
       <div className="item-order-drafts-filters">
         <label>البحث عن صنف أو اسم خيارات
           <input type="search" value={search} onChange={event => {
@@ -760,6 +803,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           </div>
         </div>
       </div>}
+      {!classificationFilterReady && (classificationFilterLoading
+        ? <small className="muted" role="status">جارٍ تحميل تصنيفات الأصناف…</small>
+        : <Notice tone="error">تعذّر التحقق من تصنيف بعض الأصناف. لإظهار كل الأصناف، اختر جميع التصنيفات.</Notice>)}
       {metricsLoading && <small className="muted" role="status">جارٍ تحديث مؤشرات المبيعات والسعر والقيمة…</small>}
       {metricsError && <Notice tone="error">تعذر تحميل مؤشرات الأصناف: {errorMessage(metricsError)}</Notice>}
       {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
@@ -872,7 +918,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               </tr>}
             </Fragment>;
           })}
-          {reviewFilterReady && !filtered.length &&
+          {reviewFilterReady && classificationFilterReady && !filtered.length &&
             <tr><td colSpan={visibleColumns.length}>لا توجد أصناف مطابقة للخيارات الحالية.</td></tr>}
           </tbody>
         </table>
@@ -935,7 +981,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               </div>}
           </article>;
         })}
-        {reviewFilterReady && !filtered.length &&
+        {reviewFilterReady && classificationFilterReady && !filtered.length &&
           <p className="muted">لا توجد أصناف مطابقة للخيارات الحالية.</p>}
       </div>}
       {pages > 1 && <div className="form-actions item-order-drafts-pagination">

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { Database } from "../apps/api/src/db.ts";
 import { readDraftPrintClassifications } from "../apps/api/src/services/draft-print-classifications.ts";
-import { orderDraftPrintSections, type DraftPrintClassification } from "../apps/web/src/order-draft-print-sections.ts";
+import { draftClassificationFilters,filterDraftRowsByClassification,orderDraftPrintSections, type DraftPrintClassification } from "../apps/web/src/order-draft-print-sections.ts";
 import { balanceItemNamesColumns,createSectionedTwoColumnItemNamesPdf } from "../apps/web/src/item-names-pdf.ts";
 
 test("print groups medicine and verified blank first, then medical, combined, health with separators",()=>{
@@ -103,4 +103,19 @@ test("native print attaches the separator as a solid border and padded complete 
   assert.match(rule,/border-block-start: 1px solid #999/);
   assert.match(rule,/padding-block-start: calc\(1\.2mm \+ 1\.35em\)/);
   assert.doesNotMatch(rule,/margin-break|break-before/);
+});
+
+test("draft classification filter all/none bypass loading, narrows by verified combinations and preserves status/search input",()=>{
+  const relevant=[{id:1,deleted:false},{id:2,deleted:true},{id:3,deleted:false},{id:4,deleted:false}];
+  const id=(row:typeof relevant[number])=>row.id;
+  const verified=new Map<number,DraftPrintClassification>([[1,"medicine"],[2,null],[3,"medical_and_health_supplies"],[4,"health_supplies"],[5,"medical_supplies"]]);
+  assert.equal(filterDraftRowsByClassification(relevant,id,new Set(draftClassificationFilters.map(row=>row.value)),new Map()),relevant);
+  assert.deepEqual(filterDraftRowsByClassification(relevant,id,new Set(),new Map()),[]);
+  assert.deepEqual(filterDraftRowsByClassification(relevant,id,new Set(["unclassified","medical_and_health_supplies"]),verified),[relevant[1],relevant[2]]);
+  assert.deepEqual(filterDraftRowsByClassification(relevant.filter(row=>row.deleted),id,new Set(["unclassified"]),verified),[relevant[1]]);
+  assert.equal(filterDraftRowsByClassification([...relevant,{id:6,deleted:true}],id,new Set(["unclassified"]),verified),null);
+  assert.deepEqual(filterDraftRowsByClassification(relevant,id,new Set(["medical_supplies"]),verified),[]);
+  const many=Array.from({length:601},(_,index)=>({id:index+1,deleted:false}));
+  const allPages=new Map<number,DraftPrintClassification>(many.map(row=>[row.id,row.id===601?"medicine":"health_supplies"]));
+  assert.deepEqual(filterDraftRowsByClassification(many,id,new Set(["medicine"]),allPages)?.slice(0,300),[many[600]]);
 });
