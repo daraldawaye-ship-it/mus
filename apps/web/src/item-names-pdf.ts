@@ -17,7 +17,8 @@ const COLUMN_WIDTH = (PAGE_WIDTH - 2 * PAGE_MARGIN_X - COLUMN_GAP) / 2;
 const LINE_HEIGHT = 9 * 1.35; // print CSS font-size:9pt; line-height:1.35
 const ROW_PADDING = 1.2 * MM_TO_PT; // print CSS padding:1.2mm 0
 const ROW_BORDER = 0.5;
-const ORDER_DRAFT_SEPARATOR = 3 * MM_TO_PT;
+const ORDER_DRAFT_SEPARATOR_BORDER = 0.75; // 1 CSS px at print resolution
+const ORDER_DRAFT_SEPARATOR = LINE_HEIGHT + ORDER_DRAFT_SEPARATOR_BORDER;
 const PAGE_CONTENT_HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN_Y;
 
 type PdfPage = { jpeg: Uint8Array; width: number; height: number };
@@ -41,7 +42,7 @@ export function balanceItemNamesColumns(
     for (let col = 0; col < 2; col++) {
       let used = 0;
       while (end < heights.length) {
-        const height=heights[end] + (used>0 ? gaps[end]??0 : 0);
+        const height=heights[end] + (gaps[end] ?? 0);
         if (used>0 && used+height>capacity) break;
         used+=height;
         end++;
@@ -51,12 +52,12 @@ export function balanceItemNamesColumns(
     let split = end;
     if (end > start + 1) {
       const sum = heights.slice(start, end).reduce((a,b,index)=>
-        a+b+(index>0 ? gaps[start+index]??0 : 0),0);
+        a+b+(gaps[start + index] ?? 0),0);
       let first = 0;
       let best = Number.POSITIVE_INFINITY;
       for (let i = start + 1; i < end; i++) {
-        first += heights[i - 1] + (i>start+1 ? gaps[i-1]??0 : 0);
-        const second = sum - first - (gaps[i]??0);
+        first += heights[i - 1] + (gaps[i - 1] ?? 0);
+        const second = sum - first;
         if (first > capacity || second > capacity) continue;
         const score = Math.abs(first - second);
         if (score < best) {
@@ -68,7 +69,7 @@ export function balanceItemNamesColumns(
       if (split === end) {
         let used = 0;
         for (let i = start; i < end; i++) {
-          const height=heights[i] + (i>start ? gaps[i]??0 : 0);
+          const height=heights[i] + (gaps[i] ?? 0);
           if (used + height > capacity) { split = i; break; }
           used += height;
         }
@@ -218,9 +219,21 @@ export function createSectionedTwoColumnItemNamesPdf(sections:readonly (readonly
       : PAGE_MARGIN_X + COLUMN_WIDTH;
     const left = right - COLUMN_WIDTH;
     let y = PAGE_MARGIN_Y;
-    for (const [index,row] of rows.entries()) {
-      // No separator at the start of a physical page/column.
-      if(index>0)y+=row.gapBefore;
+    for (const row of rows) {
+      if (row.gapBefore > 0) {
+        // The line and full-height gap belong to the next row, including
+        // when that row is at the top of a column or continuation sheet.
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([]);
+        ctx.lineWidth = ORDER_DRAFT_SEPARATOR_BORDER;
+        ctx.strokeStyle = "#999";
+        ctx.moveTo(left, y + ORDER_DRAFT_SEPARATOR_BORDER / 2);
+        ctx.lineTo(right, y + ORDER_DRAFT_SEPARATOR_BORDER / 2);
+        ctx.stroke();
+        ctx.restore();
+        y += row.gapBefore;
+      }
       let textY = y + ROW_PADDING;
       if (quantityWidth > 0) {
         ctx.save();

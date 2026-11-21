@@ -7173,10 +7173,11 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .item-order-draft-print-section + .item-order-draft-print-section {
     break-before: page; page-break-before: always;
   }
-  /* A separator is whitespace attached to the first real row, not a row
-     of its own. Unforced page/column fragmentation discards its start margin. */
+  /* Keep the divider and a full line of space inside the first real row,
+     so neither is dropped at a column/page boundary or left orphaned. */
   .item-order-draft-print-section .item-order-draft-print-separator {
-    margin-block-start: 3mm; margin-break: discard;
+    border-block-start: 1px solid #999;
+    padding-block-start: calc(1.2mm + 1.35em);
   }
   .item-options-print-row .item-options-print-quantity {
     flex: 0 0 11mm; min-width: 11mm; max-width: 11mm;
