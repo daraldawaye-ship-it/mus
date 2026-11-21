@@ -41,7 +41,7 @@ test("print classification SQL does not read other tenants or require inventory 
     const route=await readFile(new URL("../apps/api/src/routes-item-options-list.ts",import.meta.url),"utf8");
     const snippet=route.split('router.post("/companies/:companyId/item-options-list/draft-print-classifications"')[1]?.split("  /**")[0];
     assert.ok(snippet);
-    assert.match(snippet,/checkPresetsAccess\(client,req,companyId\)/);
+    assert.match(snippet,/checkPresetsAccess\(client,req,companyId,false,false\)/);
     assert.doesNotMatch(snippet,/canReadItemCoverage|company\.sales|company\.stock/);
   }finally{await db.close();}
 });

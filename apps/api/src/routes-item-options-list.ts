@@ -568,9 +568,9 @@ export function itemOptionsListRoutes(pool: Pool): Router {
   // to a user's local storage or used as a substitute for item access rights.
   const checkPresetsAccess = async (
     client: PoolClient, req: Request, companyId: number,
-    edit = false,
+    edit = false, lockActor = true,
   ) => {
-    const user = await currentActor(client, actor(req));
+    const user = await currentActor(client, actor(req), lockActor);
     await companyAccess(client, user, companyId, "items.view");
     const entries = await directoryEntries(client, user, companyId);
     const listPage = entries.find(page => page.key === "company.item-options-list");
@@ -587,7 +587,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const {ids}=parse(draftPrintClassificationSchema,req.body);
     const items=await readItems(pool,req,async(client,companyId)=>{
       // Exact existing print/export access, not the stronger sales/inventory projection.
-      await checkPresetsAccess(client,req,companyId);
+      await checkPresetsAccess(client,req,companyId,false,false);
       return readDraftPrintClassifications(client,companyId,ids);
     });
     res.set("Cache-Control","private, no-store").json({items});
