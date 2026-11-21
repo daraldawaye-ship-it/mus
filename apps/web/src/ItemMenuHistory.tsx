@@ -1,10 +1,13 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
 import { signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
 import { api } from "./api";
+import { connectionSnapshot, subscribeConnection } from "./connection-mode";
+import { formatWholeMoney } from "./format-money";
+import ScrollableTableCell from "./ScrollableTableCell";
 
 type ItemMenuView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
 export type ItemMenuQuickAction = "adjustment" | "transfer" | "memo" | "memo-return";
@@ -35,8 +38,6 @@ type MovementInvoiceDetail = {
   partyName: string | null;
   unitPriceFirstUnit: string | null;
   invoiceNet: string | null;
-  invoiceDiscount: string | null;
-  currencyCode: string | null;
 };
 
 function WorkPanelMovementTable({ rows, invoiceDetails }: {
@@ -55,7 +56,6 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
           <th scope="col" className="invoice-item-options-number" title="سعر الوحدة الأولى للصنف">السعر</th>
           <th scope="col">التاريخ</th>
           <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم، لا صافي الصنف">الصافي</th>
-          <th scope="col" className="invoice-item-options-number" title="خصم الفاتورة كاملة، لا خصم الصنف">الخصم</th>
         </tr></thead>
         <tbody>{rows.map(row => {
           const quantity = signedStockMovementQuantity(row.quantitySmallest);
@@ -68,11 +68,12 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
           const money = (value: string | null | undefined, description: string) => (
             <td className="invoice-item-options-number"
               title={value != null ? `${description} ${value}` : description}>
-              <bdi>{value ?? "—"}</bdi>
+              <bdi>{formatWholeMoney(value)}</bdi>
             </td>
           );
-          const reference = row.invoiceId ? `فاتورة ${row.invoiceId}` :
-            row.operationId ? `عملية ${row.operationId}` : null;
+          const reference = !row.invoiceId && row.operationId ? `عملية ${row.operationId}` : null;
+          const details = [counterparty, row.createdByName, row.doctorName, row.notes]
+            .flatMap(value => value?.trim() ? [value.trim().replace(/\s+/g, " ")] : []);
           return (
             <Fragment key={row.id}>
               <tr>
@@ -81,16 +82,16 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
                 {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
                 <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
                 {money(invoice?.invoiceNet, "صافي الفاتورة:")}
-                {money(invoice?.invoiceDiscount, "خصم الفاتورة:")}
               </tr>
               <tr className="invoice-item-history-details-row">
-                <td colSpan={6}>
-                  <div className="invoice-item-history-details work-panel-movement-details">
-                    {(purchase || sale) && <span dir="auto" title={counterparty ?? undefined}>{counterparty || "—"}</span>}
-                    {row.createdByName && <span dir="auto" title="بواسطة">{row.createdByName}</span>}
-                    {row.doctorName && <span dir="auto" title="الطبيب أو الجهة">{row.doctorName}</span>}
-                    {reference && <span dir="auto">{reference}</span>}
-                  </div>
+                <td colSpan={5}>
+                  <ScrollableTableCell className="work-panel-movement-details">
+                    <span className="work-panel-movement-detail-line">
+                      {reference && <bdi>{reference}</bdi>}
+                      {details.map((value, index) => <bdi key={index} dir="auto">({value})</bdi>)}
+                      {!reference && details.length === 0 && "—"}
+                    </span>
+                  </ScrollableTableCell>
                 </td>
               </tr>
             </Fragment>
@@ -148,12 +149,15 @@ export function ItemMenuHistory({
     enabled: !!itemId && !!view && view !== "alternatives" && view !== "movement",
     staleTime: 10000,
   });
+  const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
+  const includeMovementNotes = workPanelMovement && connection === "online";
   const movements = useQuery<Page<StockMovement>>({
-    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page],
+    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page, includeMovementNotes],
     queryFn: ({signal})=>api<Page<StockMovement>>(
       `/companies/${companyId}/stock-movements?${new URLSearchParams({
         itemId: String(itemId), page: String(page), pageSize: "10",
         sort: "documentDate:desc,id:desc",
+        ...(includeMovementNotes ? { includeNotes: "1" } : {}),
       })}`, {signal}),
     enabled: !!itemId && view === "movement",
     staleTime: 10000,

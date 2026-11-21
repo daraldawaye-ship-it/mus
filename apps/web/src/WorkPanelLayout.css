@@ -128,8 +128,18 @@
   border-bottom: 2px solid var(--muted);
   border-bottom-color: color-mix(in srgb, var(--text) 45%, var(--border));
 }
-.work-panel-tools .work-panel-movement-details { flex-wrap: wrap; row-gap: 1px; }
-.work-panel-movement-details span { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.work-panel-movement-details {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.work-panel-movement-detail-line {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
 .work-panel-item-report + .work-panel-item-report { border-top: 2px solid var(--border); padding-top: 5px; }
 .work-panel-tools .user-menu-item-history-heading { flex-wrap: wrap; gap: 4px; padding: 3px 0 5px; font-size: 11px; }
 .work-panel-tools .user-menu-item-history-heading > span { flex-basis: 100%; }
