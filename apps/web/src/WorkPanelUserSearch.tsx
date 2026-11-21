@@ -4,21 +4,28 @@ import {Search} from "lucide-react";
 import type {PageEntry,User} from "../../../packages/contracts/src/index";
 import type {DockReference} from "./dock-table-references";
 import {api} from "./api";
-import {canSearchDockUsers,dockUserSearchNames,dockUserSearchPath} from "./dock-user-search";
+import {canSearchDockUsers,dockUserCollisionIds,dockUserSearchNames,dockUserSearchPath,type DockUserChoice} from "./dock-user-search";
 
 export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?:PageEntry[];dockSelection?:DockReference}) {
   const allowed=canSearchDockUsers(user,pages);
   const [input,setInput]=useState("");
+  const [selected,setSelected]=useState<(DockUserChoice & {showId:boolean})|null>(null);
   const [focused,setFocused]=useState(false);
   const [path,setPath]=useState<string|null>(null);
   const field=useRef<HTMLInputElement>(null);
   const resultsId=useId();
   useEffect(()=>{
+    if(!allowed){
+      setInput("");setSelected(null);setFocused(false);setPath(null);
+      return;
+    }
     if(!dockSelection)return;
     // Employee IDs are tenant-specific; displaying the supplied name does
     // not issue a global user lookup or translate its ID into a user ID.
-    setInput(dockSelection.name);setFocused(false);setPath(null);
-  },[dockSelection]);
+    setInput(dockSelection.name);
+    setSelected(dockSelection.kind==="user" ? {id:dockSelection.id,name:dockSelection.name,showId:false} : null);
+    setFocused(false);setPath(null);
+  },[allowed,dockSelection]);
   const current=dockUserSearchPath(input);
   useEffect(()=>{
     if(!allowed || !focused || !current){setPath(null);return;}
@@ -37,6 +44,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
     )).items),
   });
   if(!allowed)return null;
+  const collisionIds=dockUserCollisionIds(currentRequest ? result.data??[] : []);
   return <section className="work-panel-tool-card work-panel-user-container" aria-label="بحث عن مستخدم">
     <div className="user-menu-entity-section" onFocus={()=>setFocused(true)}
       onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(false);}}>
@@ -44,17 +52,21 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
         <Search size={15} aria-hidden="true" />
         <span className="user-menu-entity-field-label">بحث عن مستخدم</span>
         <input type="search" ref={field} value={input} maxLength={100} autoComplete="off"
-          aria-controls={visible?resultsId:undefined} onChange={event=>{setInput(event.currentTarget.value);setFocused(true);}}
+          aria-controls={visible?resultsId:undefined} onChange={event=>{setInput(event.currentTarget.value);setSelected(null);setFocused(true);}}
           onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setFocused(false);}}} />
       </label>
+      {selected?.showId && <small className="muted" role="status">المستخدم المحدد <bdi>#{selected.id}</bdi></small>}
       {visible&&<div id={resultsId}>
         {!currentRequest || result.isPending ? <small className="muted" role="status">جارٍ البحث…</small>
           : result.isError ? <small role="status">تعذّر البحث عن المستخدمين.</small>
           : result.data?.length ? <ul className="work-panel-page-results" aria-label="المستخدمون المطابقون">
-            {result.data.map(row=><li key={row.id}><button type="button" className="user-menu-entity-choice"
-              onClick={()=>{setInput(row.name);field.current?.focus();setFocused(false);}}>
-              <span>{row.name}</span>
-            </button></li>)}
+            {result.data.map(row=>{
+              const showId=collisionIds.has(row.id);
+              return <li key={row.id}><button type="button" className="user-menu-entity-choice"
+                onClick={()=>{setSelected({...row,showId});setInput(row.name);field.current?.focus();setFocused(false);}}>
+                <span>{row.name}</span>{" "}{showId && <small className="muted"><bdi>#{row.id}</bdi></small>}
+              </button></li>;
+            })}
           </ul> : <small className="muted" role="status">لا يوجد مستخدم مطابق.</small>}
       </div>}
     </div>

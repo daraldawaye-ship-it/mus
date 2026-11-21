@@ -25,7 +25,7 @@ import { Link } from "react-router-dom";
 import { HeaderActionsOverflow } from "./SalesHeaderActionsDropdown";
 import { formatMoney } from "./format-money";
 import {useDockTableUpdate} from "./DockTableContext";
-import {dockInteractiveSelector,type DockReferenceKind} from "./dock-table-references";
+import {dockInteractiveSelector,type DockReferenceSource} from "./dock-table-references";
 
 export function Button({
   variant = "primary",
@@ -326,7 +326,7 @@ interface TableProps<T> {
   onSelectionChange?: (ids: string[]) => void;
   /** Notify the caller of the actual record clicked, including row actions. */
   onRowInteract?: (row: T) => void;
-  dockRowEntity?: DockReferenceKind;
+  dockRowEntity?: DockReferenceSource;
   dockRowSource?: (row:T)=>unknown;
   getRowId?: (row: T) => string;
   ariaLabel?: string;

@@ -1609,6 +1609,7 @@ function AuditList() {
           selectionMode="single"
           getRowId={(row) => String(row.id)}
           ariaLabel="جدول السجل العام"
+          dockRowEntity="audit-actor"
         />
       </Card>
       <Dialog

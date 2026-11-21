@@ -1826,6 +1826,7 @@ export function CompanyAuditPage({ context }: { context: CompanyContext }) {
           loading={list.loading}
           getRowId={(row) => String(row.id)}
           ariaLabel="سجل تدقيق الشركة"
+          dockRowEntity="audit-actor"
         />
       </Card>
       {inspected && (

@@ -1,8 +1,10 @@
 export type DockReferenceKind = "item"|"account"|"employee"|"user";
+export type DockReferenceSource = DockReferenceKind | "audit-actor";
 export type DockReference = {kind:DockReferenceKind; id:number; name:string};
 export type DockReferenceScope = {
   companyId:number|null; companyRoute:boolean; userRoute:boolean;
   item:boolean; account:boolean; user:boolean;
+  auditRoute?:"company"|"public";
 };
 type Row = Record<string,unknown>;
 const reference=(kind:DockReferenceKind,id:unknown,name:unknown):DockReference|undefined=>{
@@ -12,9 +14,17 @@ const reference=(kind:DockReferenceKind,id:unknown,name:unknown):DockReference|u
 
 /** Named ID and matching label must both come from the same row; generic
  * primary IDs are only considered when the table explicitly names its entity. */
-export function dockReferences(row:unknown,scope:DockReferenceScope,ownKind?:DockReferenceKind) {
+export function dockReferences(row:unknown,scope:DockReferenceScope,ownKind?:DockReferenceSource) {
   if(!row||typeof row!=="object")return [];
   const data=row as Row;
+  if(ownKind==="audit-actor"){
+    const matchingAudit = scope.auditRoute==="company"
+      ? scope.companyRoute && !!scope.companyId && data.scope==="company" && data.companyId===scope.companyId
+      : scope.auditRoute==="public" && !scope.companyRoute && data.scope==="public" && data.companyId===null;
+    const actor=scope.user && matchingAudit && typeof data.actorName==="string" && data.actorName.trim()!=="النظام"
+      ? reference("user",data.actorId,data.actorName) : undefined;
+    return actor?[actor]:[];
+  }
   if(!scope.companyRoute||!scope.companyId||("companyId" in data && data.companyId!==scope.companyId)){
     const user=ownKind==="user" && scope.userRoute && scope.user ?
       reference("user",data.id,data.displayName??data.name):undefined;
