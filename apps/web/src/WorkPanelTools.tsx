@@ -3,7 +3,7 @@ import { GripHorizontal } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
-import "./pages/SlidingOptionKeys.css";
+import "./pages/RaisedOptionKeys.css";
 
 type ItemView = "movement" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
@@ -75,13 +75,12 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
                   {itemViews.map(view => {
                     const enabled = views.includes(view.key);
                     return (
-                      <button key={view.key} type="button" role="switch" aria-checked={enabled} aria-label={view.label}
-                        className="design-slide-toggle design-slide-toggle-sm"
+                      <button key={view.key} type="button" aria-pressed={enabled}
+                        className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
                           : [...previous, view.key])}>
-                        <span className="design-slide-status" aria-hidden="true">{view.label}</span>
-                        <span className="design-slide-thumb" aria-hidden="true" />
+                        {view.label}
                       </button>
                     );
                   })}
