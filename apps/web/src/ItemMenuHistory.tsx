@@ -133,6 +133,8 @@ export function ItemMenuHistory({
   const [selectedView, setView] = useState<ItemMenuView | null>(null);
   const view = fixedView ?? selectedView;
   const [page, setPage] = useState(1);
+  const [movementFrom, setMovementFrom] = useState("");
+  const [movementTo, setMovementTo] = useState("");
   useEffect(() => { setView(null); setPage(1); }, [resetKey]);
   useEffect(() => { setPage(1); }, [itemId, view]);
 
@@ -159,15 +161,20 @@ export function ItemMenuHistory({
   });
   const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
   const includeMovementNotes = workPanelMovement && connection === "online";
+  const movementDateFrom = workPanelMovement ? movementFrom : "";
+  const movementDateTo = workPanelMovement ? movementTo : "";
+  const invalidMovementDates = !!movementDateFrom && !!movementDateTo && movementDateFrom > movementDateTo;
   const movements = useQuery<Page<StockMovement>>({
-    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page, includeMovementNotes],
+    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page, includeMovementNotes, movementDateFrom, movementDateTo],
     queryFn: ({signal})=>api<Page<StockMovement>>(
       `/companies/${companyId}/stock-movements?${new URLSearchParams({
         itemId: String(itemId), page: String(page), pageSize: "10",
         sort: "documentDate:desc,id:desc",
         ...(includeMovementNotes ? { includeNotes: "1" } : {}),
+        ...(movementDateFrom ? { dateFrom: movementDateFrom } : {}),
+        ...(movementDateTo ? { dateTo: movementDateTo } : {}),
       })}`, {signal}),
-    enabled: !!itemId && view === "movement",
+    enabled: !!itemId && view === "movement" && !invalidMovementDates,
     staleTime: 10000,
   });
   const invoiceMovementIds = workPanelMovement && view === "movement"
@@ -266,7 +273,26 @@ export function ItemMenuHistory({
       )}
       {!itemId ? <p className="user-menu-entity-hint">اختر صنفًا من البحث أولًا.</p> : (
         <>
-          {waiting && <p className="user-menu-entity-hint">جارٍ تحميل الحركات…</p>}
+          {isMovement && workPanelMovement && (
+            <div className="work-panel-movement-date-filters" role="group" aria-label="فترة حركة الصنف">
+              <label>التاريخ من
+                <input type="date" value={movementFrom} onChange={event => {
+                  setMovementFrom(event.currentTarget.value);
+                  setPage(1);
+                }} />
+              </label>
+              <label>التاريخ إلى
+                <input type="date" value={movementTo} onChange={event => {
+                  setMovementTo(event.currentTarget.value);
+                  setPage(1);
+                }} />
+              </label>
+            </div>
+          )}
+          {isMovement && invalidMovementDates &&
+            <p className="user-menu-entity-hint" role="alert">التاريخ من يجب ألا يكون بعد التاريخ إلى.</p>}
+          {waiting && !(isMovement && invalidMovementDates) &&
+            <p className="user-menu-entity-hint">جارٍ تحميل الحركات…</p>}
           {failed && <p className="user-menu-entity-hint">تعذر تحميل البيانات؛ تحقق من صلاحيات عرض الفواتير أو المخزون أو الأصناف.</p>}
           {isAlternatives && peers && !peers.composition &&
             <p className="user-menu-entity-hint">لا يوجد تركيب مرتبط بهذا الصنف.</p>}

@@ -120,9 +120,32 @@
   overflow-wrap: anywhere;
 }
 .work-panel-tools .work-panel-movement-scroll {
-  /* Each movement includes an amount row and its details; fit about five. */
-  max-block-size: 318px;
+  /* Keep the viewport short so dates and paging stay in view. */
+  max-block-size: 240px;
   overflow: auto;
+}
+.work-panel-movement-date-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-block: 2px 5px;
+}
+.work-panel-movement-date-filters label {
+  min-inline-size: 0;
+  color: var(--muted);
+  font-size: 10px;
+  display: grid;
+  gap: 2px;
+}
+.work-panel-movement-date-filters input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 25px;
+  padding: 1px 3px;
+  font-size: 11px;
+}
+@media (max-width: 500px) {
+  .work-panel-movement-date-filters input { min-block-size: 30px; }
 }
 .work-panel-movement-table thead th {
   position: sticky;
