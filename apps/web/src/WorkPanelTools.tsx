@@ -3,7 +3,7 @@ import { GripHorizontal } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
-import "./pages/ConnectedOptionKeys.css";
+import "./pages/SlidingOptionKeys.css";
 
 type ItemView = "movement" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
@@ -71,15 +71,17 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
           <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف"
             renderSelection={selected => (
               <>
-                <div className="work-panel-item-options design-connected-options design-connected-options-row" role="group" aria-label="عرض بيانات الصنف">
+                <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
                   {itemViews.map(view => {
                     const enabled = views.includes(view.key);
                     return (
-                      <button key={view.key} type="button" aria-pressed={enabled}
+                      <button key={view.key} type="button" role="switch" aria-checked={enabled} aria-label={view.label}
+                        className="design-slide-toggle design-slide-toggle-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
                           : [...previous, view.key])}>
-                        {view.label}
+                        <span className="design-slide-status" aria-hidden="true">{view.label}</span>
+                        <span className="design-slide-thumb" aria-hidden="true" />
                       </button>
                     );
                   })}
