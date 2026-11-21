@@ -1,3 +1,4 @@
+import { WorkPanelUserSearch } from "./WorkPanelUserSearch";
 import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
 import type { PageEntry } from "../../../packages/contracts/src/index";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
@@ -162,6 +163,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
         <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" renderSelection={() => null} />
       </section>}
+      {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} />}
       {showPageSearch&&<WorkPanelPageSearch user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} />}
     </div>
   );

@@ -50,7 +50,7 @@ const sections = [
   { key: "navigation", label: "التنقل", icon: Compass },
   { key: "item", label: "صنف", icon: Package },
   { key: "financialAccount", label: "حساب", icon: WalletCards },
-  { key: "employee", label: "مستخدم", icon: UserRound },
+  { key: "employee", label: "موظف", icon: UserRound },
   { key: "tools", label: "أخرى", icon: Wrench },
   { key: "settings", label: "الإعدادات", icon: Settings },
 ] as const;
@@ -244,7 +244,7 @@ export function UserMenu({
                 user={user} companyId={companyId} employeeId={employeeId}
                 employeeName={employeeName}
                 kind={displayedTab === "item" ? "item" : displayedTab === "financialAccount" ? "account" : "employee"}
-                fieldLabel={displayedTab === "employee" ? "بحث عن مستخدم" : undefined}
+                fieldLabel={displayedTab === "employee" ? "بحث عن موظف" : undefined}
                 itemMenuReset={itemMenuReset}
                  onEditItem={itemId => {
                    if (!companyId) return;
