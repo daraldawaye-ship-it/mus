@@ -24,6 +24,8 @@ import { actionColumnsFirst } from "./table-column-order";
 import { Link } from "react-router-dom";
 import { HeaderActionsOverflow } from "./SalesHeaderActionsDropdown";
 import { formatMoney } from "./format-money";
+import {useDockTableUpdate} from "./DockTableContext";
+import {dockInteractiveSelector,type DockReferenceKind} from "./dock-table-references";
 
 export function Button({
   variant = "primary",
@@ -292,6 +294,7 @@ export function ValueCell({
     <>
       <button
         className="table-value"
+                          data-dock-plain-value
         type="button"
         title={full}
         aria-label={`عرض القيمة كاملة: ${full}`}
@@ -323,6 +326,8 @@ interface TableProps<T> {
   onSelectionChange?: (ids: string[]) => void;
   /** Notify the caller of the actual record clicked, including row actions. */
   onRowInteract?: (row: T) => void;
+  dockRowEntity?: DockReferenceKind;
+  dockRowSource?: (row:T)=>unknown;
   getRowId?: (row: T) => string;
   ariaLabel?: string;
 }
@@ -342,10 +347,13 @@ export function DataTable<T>({
   selectionMode = "multi",
   onSelectionChange,
   onRowInteract,
+  dockRowEntity,
+  dockRowSource,
   getRowId,
   ariaLabel = "جدول البيانات",
 }: TableProps<T>) {
   const selectable = selectionMode !== "none";
+  const updateDock=useDockTableUpdate();
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const anchor = useRef<string | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
@@ -529,6 +537,16 @@ export function DataTable<T>({
                 aria-selected={selectable ? !!selected[row.id] : undefined}
                 onClickCapture={() => onRowInteract?.(row.original)}
                 onClick={(event) => {
+                  const target=event.target as HTMLElement;
+                  const interactive=target.closest(dockInteractiveSelector);
+                  if(updateDock && !event.defaultPrevented && event.detail===1 &&
+                     !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey &&
+                     target.closest("td[data-cell-id]") && target.closest("tr")===event.currentTarget &&
+                     (!interactive || interactive.hasAttribute("data-dock-plain-value"))) {
+                    const selection=target.ownerDocument.getSelection();
+                    if(!selection || selection.isCollapsed || !selection.containsNode(event.currentTarget,true))
+                      updateDock(dockRowSource?dockRowSource(row.original):row.original,dockRowEntity);
+                  }
                   if (
                     selectable &&
                     !(event.target as HTMLElement).closest(

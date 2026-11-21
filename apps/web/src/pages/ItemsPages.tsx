@@ -460,6 +460,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
             if (item) rememberRecentEntity(user.id, companyId, "item",
               {id:item.id,name:item.name});
           }}
+          dockRowEntity="item"
           onRowInteract={(item: Item) => {
             if (user) rememberRecentEntity(user.id, companyId, "item",
               {id:item.id,name:item.name});

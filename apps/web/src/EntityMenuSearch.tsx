@@ -19,7 +19,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection,
 }: {
   user: User;
   companyId: number | null;
@@ -34,6 +34,7 @@ export function EntityMenuSearch({
   canViewItemCompositions?: boolean;
   renderSelection?: (selected: RecentEntity | null) => ReactNode;
   fieldLabel?: string;
+  dockSelection?: RecentEntity;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -76,6 +77,12 @@ export function EntityMenuSearch({
     const timer = window.setTimeout(() => { setSearch(entry.trim()); setPage(1); setActive(0); }, kind === "item" ? 110 : 230);
     return () => window.clearTimeout(timer);
   }, [entry]);
+
+  useEffect(()=>{
+    if(!dockSelection)return;
+    setRecent(dockSelection);setEntry(dockSelection.name);
+    setFocused(false);setSearch("");setPage(1);setActive(0);
+  },[dockSelection]);
 
   const canSearch = company > 0 && search.length > 0;
   const resource = kind === "item"

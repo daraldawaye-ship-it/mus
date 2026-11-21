@@ -613,6 +613,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           loading={list.loading || savingInline !== null}
           getRowId={(account) => String(account.id)}
           ariaLabel="دليل الحسابات"
+          dockRowEntity="account"
           onRowInteract={(account: Account) => {
             if (user) rememberRecentEntity(user.id, companyId, "account",
               {id:account.id,name:account.name});

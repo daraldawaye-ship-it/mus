@@ -2,16 +2,23 @@ import { useEffect,useId,useRef,useState } from "react";
 import {useQuery} from "@tanstack/react-query";
 import {Search} from "lucide-react";
 import type {PageEntry,User} from "../../../packages/contracts/src/index";
+import type {DockReference} from "./dock-table-references";
 import {api} from "./api";
 import {canSearchDockUsers,dockUserSearchNames,dockUserSearchPath} from "./dock-user-search";
 
-export function WorkPanelUserSearch({user,pages}:{user:User;pages?:PageEntry[]}) {
+export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?:PageEntry[];dockSelection?:DockReference}) {
   const allowed=canSearchDockUsers(user,pages);
   const [input,setInput]=useState("");
   const [focused,setFocused]=useState(false);
   const [path,setPath]=useState<string|null>(null);
   const field=useRef<HTMLInputElement>(null);
   const resultsId=useId();
+  useEffect(()=>{
+    if(!dockSelection)return;
+    // Employee IDs are tenant-specific; displaying the supplied name does
+    // not issue a global user lookup or translate its ID into a user ID.
+    setInput(dockSelection.name);setFocused(false);setPath(null);
+  },[dockSelection]);
   const current=dockUserSearchPath(input);
   useEffect(()=>{
     if(!allowed || !focused || !current){setPath(null);return;}

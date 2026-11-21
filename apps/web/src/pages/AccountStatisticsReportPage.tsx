@@ -395,7 +395,7 @@ export function AccountStatisticsReportPage({
           انقر الرأس للترتيب، ومع Shift حتى خمسة أعمدة. «غير متاح» تعني أن
           الصلاحية تحجب المؤشر.
         </p>
-        <DataTable<Row>
+        <DataTable<Row> dockRowEntity="account" dockRowSource={row=>row.account}
           columns={columns}
           data={result?.rows ?? []}
           total={result?.total ?? 0}

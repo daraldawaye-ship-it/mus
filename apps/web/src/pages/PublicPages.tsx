@@ -1245,6 +1245,7 @@ function UserList() {
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
         {list.error && <Notice tone="error">{messageOf(list.error)}</Notice>}
         <DataTable
+          dockRowEntity="user"
           columns={columns}
           data={list.data?.items ?? []}
           total={list.data?.total ?? 0}

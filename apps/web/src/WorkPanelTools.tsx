@@ -1,3 +1,4 @@
+import {useDockTableSelection} from "./DockTableContext";
 import { WorkPanelUserSearch } from "./WorkPanelUserSearch";
 import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
 import type { PageEntry } from "../../../packages/contracts/src/index";
@@ -31,11 +32,12 @@ const TransferItem = lazy(() => import("./InvoiceItemActionSheets").then(module 
 const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemReportSheet })));
 
 /** Company-scoped tools reuse the same recent selection and reports as the menu. */
-export function WorkPanelTools({user,context,showItemTools,showAccountSearch,showPageSearch,pageEntries,pagesLoading,pagesError}:{
+export function WorkPanelTools({user,context,showItemTools,showAccountSearch,showPageSearch,pageEntries,pagesLoading,pagesError,currentPageLabel,currentPageRoute}:{
   user:User; context?:CompanyContext; showItemTools:boolean; showAccountSearch:boolean; showPageSearch:boolean;
-  pageEntries?:PageEntry[]; pagesLoading:boolean; pagesError:boolean;
+  pageEntries?:PageEntry[]; pagesLoading:boolean; pagesError:boolean; currentPageLabel:string; currentPageRoute:string;
 }) {
   const companyId = context?.company.id ?? null;
+  const dockSelection=useDockTableSelection();
   const [views, setViews] = useState<ItemView[]>([]);
   const [editingComposition,setEditingComposition]=useState<number|null>(null);
   const [active, setActive] = useState<{ action: "adjust" | "transfer" | "report"; id: number; name: string } | null>(null);
@@ -104,7 +106,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     <div className="work-panel-tools">
       {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
-          <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف"
+          <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
@@ -161,10 +163,10 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           }} />}
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" renderSelection={() => null} />
+        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={() => null} />
       </section>}
-      {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} />}
-      {showPageSearch&&<WorkPanelPageSearch user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} />}
+      {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
+      {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} />}
     </div>
   );
 }

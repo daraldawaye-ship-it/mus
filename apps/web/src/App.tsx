@@ -68,6 +68,8 @@ import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { WorkPanelLayout } from "./WorkPanelLayout";
 import { WorkPanelTools } from "./WorkPanelTools";
+import { DockTableContext } from "./DockTableContext";
+import { canSearchDockUsers } from "./dock-user-search";
 import { isVisibleNavigationPage,showWorkPanelAccountSearch,showWorkPanelPageSearch } from "./work-panel-search-access";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
@@ -1245,6 +1247,21 @@ function Workspace() {
   const accountDock=showWorkPanelAccountSearch(user,navigationContext,
     dockPageDirectory.isError?undefined:dockPageDirectory.data,!!employeePreview);
   const pageDock=showWorkPanelPageSearch(user,navigationContext,!!employeePreview);
+  const currentDockPageKey=/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname)
+    ? "company.item-options-list" : pageKeyForLocation(location.pathname,location.search);
+  const dockPages=dockPageDirectory.isError?undefined:dockPageDirectory.data;
+  const currentDockPage=pageDock && dockPages?.find(entry=>entry.key===currentDockPageKey &&
+    entry.enabled && entry.actionAccess.view && (entry.scope!=="company" ||
+      (inCompany && companyId===navigationContext?.company.id)));
+  const dockCompanyId=navigationContext?.company.id??null;
+  const dockPageLabel=currentDockPage
+    ? (/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname) ? "متابعة مسودات الطلبيات" : currentDockPage.name)
+    : !ownerDock ? "" : /^\/design-library(?:\/[^/]+)?\/?$/.test(location.pathname) ? "مكتبة التصاميم"
+    : !visitorOnly && /^\/interest-statistics\/?$/.test(location.pathname) ? "إحصاءات اهتمامات الزوار"
+    : dockCompanyId&&new RegExp(`^/companies/${dockCompanyId}/legacy-sales-import/?$`).test(location.pathname)
+      ? "ترحيل مبيعات النظام السابق" : "";
+  const dockUser=ownerDock && !!user && canSearchDockUsers(user,dockPages);
+
   useCompanyIdleLogout(companyId, navigationContext?.employee?.id ?? null, inCompany && !!navigationContext);
   useEffect(() => {
     setDrawer(false);
@@ -1431,12 +1448,16 @@ function Workspace() {
               )}
             </div>
           </header>
+          <DockTableContext scopeKey={`${user?.id??"guest"}:${dockCompanyId??0}:${!!employeePreview}`}
+            scope={{companyId:dockCompanyId,companyRoute:inCompany && companyId===dockCompanyId,
+              userRoute:currentDockPageKey==="public.users",item:ownerDock,account:accountDock,user:dockUser}}>
           <WorkPanelLayout key={user?.id ?? "guest"} enabled={ownerDock || accountDock || pageDock} userId={user?.id ?? null}
             renderTools={() => user && (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
                 user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock}
                 pageEntries={dockPageDirectory.data} pagesLoading={dockPageDirectory.isPending}
-                pagesError={dockPageDirectory.isError} />
+                pagesError={dockPageDirectory.isError} currentPageLabel={dockPageLabel}
+                currentPageRoute={location.pathname+location.search} />
             )}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
@@ -1660,6 +1681,7 @@ function Workspace() {
             <span>الحسابات · الشركات · فريق العمل</span>
           </footer>
           </WorkPanelLayout>
+          </DockTableContext>
         </div>
       </div>
       <InterestTracker />
