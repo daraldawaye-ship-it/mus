@@ -1,22 +1,26 @@
-import { useEffect,useId,useRef,useState } from "react";
+import { lazy,Suspense,useEffect,useId,useRef,useState } from "react";
 import {useQuery} from "@tanstack/react-query";
 import {Search} from "lucide-react";
 import type {PageEntry,User} from "../../../packages/contracts/src/index";
 import type {DockReference} from "./dock-table-references";
 import {api} from "./api";
+import {isDockEntityId} from "./dock-card-access";
+import {Button,Dialog,Notice} from "./ui";
+const UserCard=lazy(()=>import("./DockUserCardBody").then(module=>({default:module.DockUserCardBody})));
 import {canSearchDockUsers,dockUserCollisionIds,dockUserSearchNames,dockUserSearchPath,type DockUserChoice} from "./dock-user-search";
 
 export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?:PageEntry[];dockSelection?:DockReference}) {
   const allowed=canSearchDockUsers(user,pages);
   const [input,setInput]=useState("");
   const [selected,setSelected]=useState<(DockUserChoice & {showId:boolean})|null>(null);
+  const [cardId,setCardId]=useState<number|null>(null);
   const [focused,setFocused]=useState(false);
   const [path,setPath]=useState<string|null>(null);
   const field=useRef<HTMLInputElement>(null);
   const resultsId=useId();
   useEffect(()=>{
     if(!allowed){
-      setInput("");setSelected(null);setFocused(false);setPath(null);
+      setInput("");setSelected(null);setFocused(false);setPath(null);setCardId(null);
       return;
     }
     if(!dockSelection)return;
@@ -24,7 +28,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
     // not issue a global user lookup or translate its ID into a user ID.
     setInput(dockSelection.name);
     setSelected(dockSelection.kind==="user" ? {id:dockSelection.id,name:dockSelection.name,showId:false} : null);
-    setFocused(false);setPath(null);
+    setFocused(false);setPath(null);setCardId(null);
   },[allowed,dockSelection]);
   const current=dockUserSearchPath(input);
   useEffect(()=>{
@@ -44,6 +48,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
     )).items),
   });
   if(!allowed)return null;
+  const verifiedSelection=isDockEntityId(selected?.id)?selected!.id:null;
   const collisionIds=dockUserCollisionIds(currentRequest ? result.data??[] : []);
   return <section className="work-panel-tool-card work-panel-user-container" aria-label="بحث عن مستخدم">
     <div className="user-menu-entity-section" onFocus={()=>setFocused(true)}
@@ -52,7 +57,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
         <Search size={15} aria-hidden="true" />
         <span className="user-menu-entity-field-label">بحث عن مستخدم</span>
         <input type="search" ref={field} value={input} maxLength={100} autoComplete="off"
-          aria-controls={visible?resultsId:undefined} onChange={event=>{setInput(event.currentTarget.value);setSelected(null);setFocused(true);}}
+          aria-controls={visible?resultsId:undefined} onChange={event=>{setInput(event.currentTarget.value);setSelected(null);setCardId(null);setFocused(true);}}
           onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setFocused(false);}}} />
       </label>
       {selected?.showId && <small className="muted" role="status">المستخدم المحدد <bdi>#{selected.id}</bdi></small>}
@@ -69,6 +74,15 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
             })}
           </ul> : <small className="muted" role="status">لا يوجد مستخدم مطابق.</small>}
       </div>}
+      <div className="work-panel-entity-actions">
+        <Button size="compact" variant="secondary" disabled={verifiedSelection===null}
+          onClick={()=>{setFocused(false);setCardId(verifiedSelection);}}>كرت المستخدم</Button>
+      </div>
     </div>
+    <Dialog open={verifiedSelection!==null&&cardId===verifiedSelection} title="كرت المستخدم" className="invoice-item-sheet" onClose={()=>setCardId(null)}>
+      {verifiedSelection!==null&&cardId===verifiedSelection&&<Suspense fallback={<Notice>جارٍ فتح كرت المستخدم…</Notice>}>
+        <UserCard userId={verifiedSelection} actorId={user.id} />
+      </Suspense>}
+    </Dialog>
   </section>;
 }

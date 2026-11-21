@@ -27,6 +27,7 @@ import { deny, missing, HttpError } from "./errors.ts";
 import { passwordHash, tokenHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
+import { readDockUserCard } from "./services/dock-user-card.ts";
 import { recordUserPresence } from "./services/user-presence.ts";
 import { recordDeviceActivity, recordReportedPushPermission, requestDevice } from "./services/user-device-activity.ts";
 
@@ -209,6 +210,20 @@ export function publicRoutes(pool: Pool): Router {
       });
     }),
   );
+  router.get("/users/:id/dock-card", handler(async (req, res) => {
+    const user = await transaction(pool, async (client) => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current = await currentActor(client, actor(req), false);
+      ownerOnly(current);
+      const entry = (await directoryEntries(client, current, null))
+        .find(page => page.key === "public.users");
+      if (!entry) deny("الصفحة غير مسجلة في دليل الصفحات");
+      assertDirectoryAccess(entry, "view");
+      return readDockUserCard(client, id(req.params.id));
+    });
+    if (!user) missing("المستخدم غير موجود");
+    res.json({ user });
+  }));
   // Owner-issued one-hour access links are bearer credentials, not account
   // passwords. Generate only on demand; store only SHA-256 and rotate any
   // older outstanding link for this same recipient.

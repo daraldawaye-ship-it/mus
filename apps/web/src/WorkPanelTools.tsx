@@ -1,3 +1,5 @@
+import {DockAccountTools} from "./DockAccountTools";
+import {dockAccountAccess} from "./dock-card-access";
 import {useDockTableSelection} from "./DockTableContext";
 import { WorkPanelUserSearch } from "./WorkPanelUserSearch";
 import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
@@ -49,6 +51,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     !sessionRequiresLogin();
   const client = useQueryClient();
   const directory = usePageDirectory(companyId ?? undefined);
+  const accountAccess=dockAccountAccess(context,pagesError?undefined:pageEntries);
   const access = workPanelItemActionAccess(context, directory.data);
   const canEditComposition=canEditInvoiceItemComposition(context,directory.data);
   const canViewCard = !!context && (context.general || context.permissions.includes("items.view")) &&
@@ -163,10 +166,13 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           }} />}
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={() => null} />
+        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
+          <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}`}
+            actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} />
+          : null} />
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
-      {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} />}
+      {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} context={context} />}
     </div>
   );
 }

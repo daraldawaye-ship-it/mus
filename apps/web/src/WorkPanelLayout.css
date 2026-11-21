@@ -368,3 +368,11 @@
 .work-panel-page-results li + li { border-top: 1px solid var(--border); }
 .work-panel-page-results a { display: block; padding: 5px 7px; font-size: 12px; }
 .work-panel-page-results a:focus-visible { outline-offset: -2px; }
+
+.work-panel-entity-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.work-panel-entity-actions .button { min-height:24px; height:auto; padding:2px 7px; font-size:11px; }
+.work-panel-account-ledger { min-width:0; overflow:hidden; }
+.work-panel-account-ledger .card { padding:5px; }
+.work-panel-account-ledger .accounts-ledger-dates { display:flex; flex-wrap:wrap; gap:5px; }
+.work-panel-account-ledger .accounts-ledger-dates > * { flex:1 1 100px; min-width:0; }
+.work-panel-account-ledger .accounts-ledger-scroll { max-height:180px; overflow:auto; }

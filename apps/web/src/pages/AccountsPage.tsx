@@ -750,12 +750,14 @@ function todayInAdenForAccountPreview() {
   return value("year") + "-" + value("month") + "-" + value("day");
 }
 
-function AccountLedgerPreview({
+export function AccountLedgerPreview({
   companyId,
   account,
+  hideFullLink=false,
 }: {
   companyId: number;
-  account: Account;
+  account: Pick<Account,"id"|"name">;
+  hideFullLink?:boolean;
 }) {
   const { user } = useSession();
   const [dateFrom, setDateFrom] = useState(todayInAdenForAccountPreview);
@@ -847,9 +849,9 @@ function AccountLedgerPreview({
             onClick={() => setPage((value) => value + 1)}>التالي</Button>
         </div>
       )}
-      <Link className="button button-secondary accounts-ledger-full" to={fullUrl}>
+      {!hideFullLink&&<Link className="button button-secondary accounts-ledger-full" to={fullUrl}>
         فتح كشف الحساب الكامل
-      </Link>
+      </Link>}
     </Card>
   );
 }
