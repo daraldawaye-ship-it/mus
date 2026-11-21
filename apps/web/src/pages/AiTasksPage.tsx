@@ -87,21 +87,11 @@ export function AiTasksPage() {
     { id: "section", accessorFn: sectionLabel, header: "القسم" },
     { accessorKey: "description", header: "الشرح والآلية", cell: ({ row }) =>
       <Button type="button" onClick={() => setDetails(row.original)}>عرض</Button> },
-    { id: "createdAt", accessorFn: task => task.createdAt ? Date.parse(task.createdAt) : null,
-      header: "تاريخ الإنشاء", cell: ({ row }) => formatDate(row.original.createdAt) },
     { id: "lastStartedAt", accessorFn: task => task.lastStartedAt ? Date.parse(task.lastStartedAt) : null,
       header: "آخر بدء", cell: ({ row }) => {
         const task = row.original;
         return <span title={task.latestRunInProgress ? "الجولة الأخيرة قيد التنفيذ" : "وقت بدء آخر جولة"}>
           {formatDate(task.lastStartedAt)}{task.latestRunInProgress && " · جارٍ"}
-        </span>;
-      } },
-    { id: "lastFinishedAt", accessorFn: task => task.lastFinishedAt ? Date.parse(task.lastFinishedAt) : null,
-      header: "آخر انتهاء", cell: ({ row }) => {
-        const task = row.original;
-        return <span title={task.latestRunInProgress
-          ? "وقت انتهاء آخر جولة مكتملة؛ الجولة الحالية لم تنتهِ بعد" : "وقت انتهاء آخر جولة مكتملة"}>
-          {formatDate(task.lastFinishedAt)}{task.latestRunInProgress && task.lastFinishedAt && " · سابقة"}
         </span>;
       } },
     { accessorKey: "lastRunDurationSeconds", header: "مدة الجولة", cell: ({ row }) => {
@@ -123,6 +113,16 @@ export function AiTasksPage() {
         title="فتح سجل الإنجاز">
         <span className="truncate">{row.original.lastResult || "فتح سجل الإنجاز"}</span>
       </button> },
+    { id: "createdAt", accessorFn: task => task.createdAt ? Date.parse(task.createdAt) : null,
+      header: "تاريخ الإنشاء", cell: ({ row }) => formatDate(row.original.createdAt) },
+    { id: "lastFinishedAt", accessorFn: task => task.lastFinishedAt ? Date.parse(task.lastFinishedAt) : null,
+      header: "آخر انتهاء", cell: ({ row }) => {
+        const task = row.original;
+        return <span title={task.latestRunInProgress
+          ? "وقت انتهاء آخر جولة مكتملة؛ الجولة الحالية لم تنتهِ بعد" : "وقت انتهاء آخر جولة مكتملة"}>
+          {formatDate(task.lastFinishedAt)}{task.latestRunInProgress && task.lastFinishedAt && " · سابقة"}
+        </span>;
+      } },
     { id: "archiveTask", header: "أرشفة المهمة", enableSorting: false, cell: ({ row }) =>
       <Button type="button" onClick={() => { archiveMutation.reset(); setArchiveTask(row.original); }}>
         {row.original.archived ? "استرجاع" : "أرشفة"}
