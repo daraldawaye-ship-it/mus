@@ -274,7 +274,7 @@ export async function directoryEntries(
               resolveGrant(definition.key, action) !== "deny") &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
-            (definition.key !== "public.ai-tasks" || user.owner) &&
+            (!["public.ai-tasks","public.page-visit-statistics"].includes(definition.key) || user.owner) &&
             (definition.key !== "public.explanations-reader" || explanationRead) &&
             (definition.key !== "public.explanations-editor" || explanationEdit) &&
             (user.owner ||

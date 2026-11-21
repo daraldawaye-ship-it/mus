@@ -1,3 +1,4 @@
+import {pageByKey,pageHref,pageKeyForLocation,pageRuleAllows,type User} from "../packages/contracts/src/index.ts";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {test} from "node:test";
@@ -60,4 +61,24 @@ test("both routes are owner-only private reads and frontend chooses exact id wit
  assert.match(web,/كل المستخدمين/);
  assert.match(app,/path="\/page-visit-statistics" element=\{<Protected>\{user\?\.owner && !visitorOnly && !employeePreview/);
  assert.doesNotMatch(web,/method:"POST"|localStorage|recordId/);
+});
+
+test("analytics has one owner-only canonical public catalogue entry and fills dock by route, without self tracking",async()=>{
+ const entry=pageByKey("public.page-visit-statistics");
+ assert.ok(entry);
+ assert.equal(entry.name,"إحصاءات زيارات الصفحات");
+ assert.equal(entry.scope,"public");
+ assert.equal(entry.type,"report");
+ assert.equal(pageHref(entry,2),"/page-visit-statistics");
+ assert.equal(pageKeyForLocation("/page-visit-statistics/","?unused=1"),entry.key);
+ const user=(owner:boolean)=>({owner,kind:"admin"} as User);
+ assert.equal(pageRuleAllows(entry.actions.view,user(true),null),true);
+ assert.equal(pageRuleAllows(entry.actions.view,user(false),null),false);
+ const file=(name:string)=>readFile(new URL("../apps/"+name,import.meta.url),"utf8");
+ const [source,pages,guard]=await Promise.all(["web/src/App.tsx","api/src/services/pages.ts","web/src/page-directory.tsx"].map(file));
+ assert.doesNotMatch(source,/<NavLink to="\/page-visit-statistics"/);
+ assert.match(source,/PageRouteGuard pageKey="public.page-visit-statistics" trackVisit=\{false\}/);
+ assert.match(source,/pageKeyForLocation\(location\.pathname,location\.search\)/);
+ assert.match(pages,/"public.ai-tasks","public.page-visit-statistics"\]\.includes\(definition\.key\) \|\| user\.owner/);
+ assert.match(guard,/if \(!trackVisit \|\| !user/);
 });

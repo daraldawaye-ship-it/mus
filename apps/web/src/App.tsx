@@ -485,6 +485,7 @@ function Navigation({
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
     "public.system-monitor": <LayoutDashboard size={17} />,
+    "public.page-visit-statistics": <TrendingUp size={17} />,
     "public.owner-sql-console": <TableProperties size={17} />,
     "public.last-present": <FileClock size={17} />,
     "public.ai-tasks": <TableProperties size={17} />,
@@ -577,6 +578,7 @@ function Navigation({
       .filter(
         (entry) =>
           entry.scope === scope &&
+          (entry.key !== "public.page-visit-statistics" || (!!user?.owner && !visitorOnly && !employeePreview)) &&
           isVisibleNavigationPage(entry,user),
       )
       .map((entry) => (
@@ -612,13 +614,6 @@ function Navigation({
         <NavLink to="/interest-statistics" onClick={close}
           className={({isActive})=>"nav-link"+(isActive?" active":"")}>
           <TrendingUp size={17}/><span className="nav-text">إحصاءات اهتمامات الزوار</span>
-          <ChevronLeft size={13} className="nav-chevron"/>
-        </NavLink>
-      )}
-      {user?.owner && !employeePreview && !visitorOnly && (
-        <NavLink to="/page-visit-statistics" onClick={close}
-          className={({isActive})=>"nav-link"+(isActive?" active":"")}>
-          <TrendingUp size={17}/><span className="nav-text">إحصاءات زيارات الصفحات</span>
           <ChevronLeft size={13} className="nav-chevron"/>
         </NavLink>
       )}
@@ -1501,7 +1496,9 @@ function Workspace() {
               <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/page-visit-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
-                <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><PageVisitStatisticsPage /></Suspense> :
+                <PageRouteGuard pageKey="public.page-visit-statistics" trackVisit={false}>
+                  <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><PageVisitStatisticsPage /></Suspense>
+                </PageRouteGuard> :
                 <Notice tone="error">إحصاءات زيارات الصفحات للمالك فقط.</Notice>}</Protected>} />
               <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
                 <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :

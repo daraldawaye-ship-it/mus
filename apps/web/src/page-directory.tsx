@@ -48,11 +48,13 @@ export function PageRouteGuard({
   pageKey,
   companyId,
   allowPledgeLedger = false,
+  trackVisit = true,
   children,
 }: {
   pageKey?: string;
   companyId?: number;
   allowPledgeLedger?: boolean;
+  trackVisit?: boolean;
   children: React.ReactNode;
 }) {
   const { user } = useSession();
@@ -75,7 +77,7 @@ export function PageRouteGuard({
     if (allowed) setAdmitted(true);
   }, [allowed]);
   useEffect(() => {
-    if (!user || !pageKey || !admitted || !allowed) return;
+    if (!trackVisit || !user || !pageKey || !admitted || !allowed) return;
     const visit = `${user.id}:${companyId ?? "public"}:${pageKey}:${route.pathname}`;
     if (visitedRoute.current === visit) return;
     visitedRoute.current = visit;
@@ -116,6 +118,7 @@ export function PageRouteGuard({
     entry?.record,
     admitted,
     allowed,
+    trackVisit,
     queryClient,
   ]);
   if (!user || !pageKey || admitted) return children;
