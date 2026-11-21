@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { ItemMenuHistory, type ItemMenuQuickAction } from "./ItemMenuHistory";
 import type { Page, User } from "../../../packages/contracts/src/index";
-import { api } from "./api";
+import { api, ApiFailure } from "./api";
 import {
   readRecentEntity, rememberRecentEntity, RECENT_ENTITY_EVENT,
   type RecentEntity, type RecentEntityKind,
@@ -20,7 +20,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection, floatingResults=false,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection, floatingResults=false,staffDockLookup,
 }: {
   user: User;
   companyId: number | null;
@@ -37,6 +37,7 @@ export function EntityMenuSearch({
   fieldLabel?: string;
   dockSelection?: RecentEntity;
   floatingResults?:boolean;
+  staffDockLookup?:"limited"|"fallback";
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -87,7 +88,10 @@ export function EntityMenuSearch({
     setFocused(false);setSearch("");setPage(1);setActive(0);
   },[dockSelection]);
 
-  const canSearch = company > 0 && search.length > 0;
+  const embeddedItem=kind==="item"?staffDockLookup:undefined;
+  const limitedItem=embeddedItem==="limited";
+  const minimumSearch=limitedItem?2:1;
+  const canSearch=company>0&&search.length>=minimumSearch;
   const resource = kind === "item"
     ? `/companies/${company}/commerce-options?type=items`
     : kind === "account"
@@ -96,15 +100,26 @@ export function EntityMenuSearch({
   const sort = kind === "item" ? "saleTimes:desc,code:asc"
     : kind === "account" ? "name:asc" : "name:asc";
   const result = useQuery({
-    queryKey: ["avatar-entity-search", user.id, company, kind, search, page],
-    queryFn: ({signal}) => api<Page<Choice> & {hasMore?:boolean}>(
-      `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort,...(kind === "item" ? {fast:"1"} : {})})}`,
-      {signal},
-    ),
+    queryKey: ["avatar-entity-search", user.id, company, kind, search, page, embeddedItem],
+    queryFn: async ({signal}) => {
+      const limited=()=>api<Page<Choice> & {hasMore?:boolean}>(
+        `/companies/${company}/work-panel-items?${new URLSearchParams({q:search,page:String(page)})}`,{signal});
+      if(limitedItem) return limited();
+      try {
+        return await api<Page<Choice> & {hasMore?:boolean}>(
+          `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort,...(kind === "item" ? {fast:"1"} : {})})}`,
+          {signal});
+      } catch (error) {
+        if(embeddedItem==="fallback"&&search.length>=2&&search.length<=120&&!signal.aborted&&
+          error instanceof ApiFailure&&error.status===403) return limited();
+        throw error;
+      }
+    },
     enabled: canSearch && focused,
     staleTime: kind === "item" ? 30_000 : 3000,
+    gcTime:embeddedItem?0:undefined,
   });
-  const choices = result.data?.items ?? [];
+  const choices = embeddedItem&&result.isError?[]:result.data?.items??[];
   const hasNext = kind === "item" ? !!result.data?.hasMore : page * 10 < (result.data?.total ?? 0);
   const showPages = kind === "item" ? page > 1 || hasNext : (result.data?.total ?? 0) > 10;
   const choose = (value: Choice) => {
@@ -114,7 +129,7 @@ export function EntityMenuSearch({
     setFocused(false);setSearch("");setPage(1);setActive(0);
     input.current?.blur();
   };
-  const suggestionsOpen=company>0&&focused&&!!entry.trim();
+  const suggestionsOpen=company>0&&focused&&entry.trim().length>=minimumSearch;
   const suggestions=suggestionsOpen ? (
         <div className="user-menu-entity-results"
           id={resultsId} role="listbox" aria-label={`نتائج ${label}`}>
@@ -162,7 +177,8 @@ export function EntityMenuSearch({
             aria-expanded={floatingResults?suggestionsOpen:canSearch&&focused}
             aria-controls={(floatingResults?suggestionsOpen:canSearch&&focused) ? resultsId : undefined}
             autoComplete="off"
-            placeholder={placeholder}
+            placeholder={limitedItem?"اسم الصنف أو رمزه":placeholder}
+            maxLength={limitedItem?120:undefined}
             value={entry}
             onFocus={event => { setFocused(true); event.currentTarget.select(); }}
             onChange={event => { setEntry(event.target.value); setFocused(true); setActive(0); }}

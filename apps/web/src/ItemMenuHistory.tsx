@@ -41,6 +41,36 @@ type MovementInvoiceDetail = {
   invoiceNet: string | null;
 };
 
+type StaffDockMovement={
+  id:number; kind:"sale"|"sales_return"|"purchase"|"purchase_return";
+  documentDate:string;quantitySmallest:string;postedUnitPrice:string|null;firstUnitMultiplier:string|null;
+};
+
+function StaffWorkPanelMovementTable({rows,footer,purchaseOnly}:{
+  rows:StaffDockMovement[];footer?:ReactNode;purchaseOnly:boolean;
+}){
+  return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
+    aria-label={purchaseOnly?"جدول مشتريات الصنف":"جدول حركات بيع وشراء الصنف"}>
+    {!!rows.length&&<table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
+      <thead><tr><th scope="col">النوع</th><th scope="col">الكمية</th><th scope="col">السعر</th><th scope="col">التاريخ</th></tr></thead>
+      <tbody>{rows.map(row=>{
+        const quantity=formatWorkPanelMovementQuantity(row.quantitySmallest,row.firstUnitMultiplier);
+        return <tr key={row.id}>
+          <td><span className="work-panel-movement-kind" data-movement-kind={row.kind}>
+            <span className="work-panel-movement-kind-dot" aria-hidden="true" />{workPanelMovementKindLabels[row.kind]}
+          </span></td>
+          <td className="invoice-item-options-number" title={quantity.exact??"لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
+            <bdi data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
+          </td>
+          <td className="invoice-item-options-number" title={row.postedUnitPrice??undefined}><bdi>{formatWholeMoney(row.postedUnitPrice)}</bdi></td>
+          <td dir="ltr">{row.documentDate}</td>
+        </tr>;
+      })}</tbody>
+    </table>}
+    {footer&&<div className="work-panel-movement-footer">{footer}</div>}
+  </div>;
+}
+
 function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
   rows: StockMovement[];
   invoiceDetails: MovementInvoiceDetail[];
@@ -114,7 +144,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, allowMovementInvoiceDetails = true,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, staffDockMovement=false, allowMovementInvoiceDetails = true,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -127,6 +157,7 @@ export function ItemMenuHistory({
   hideHeading?: boolean;
   workPanelMovement?: boolean;
   purchaseOnly?: boolean;
+  staffDockMovement?:boolean;
   allowMovementInvoiceDetails?: boolean;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
@@ -164,7 +195,7 @@ export function ItemMenuHistory({
     staleTime: 10000,
   });
   const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
-  const includeMovementNotes = workPanelMovement && connection === "online";
+  const includeMovementNotes = !staffDockMovement && workPanelMovement && connection === "online";
   const movementDateFrom = workPanelMovement ? movementFrom : "";
   const movementDateTo = workPanelMovement ? movementTo : "";
   const invalidMovementDates = !!movementDateFrom && !!movementDateTo && movementDateFrom > movementDateTo;
@@ -179,10 +210,20 @@ export function ItemMenuHistory({
         ...(movementDateFrom ? { dateFrom: movementDateFrom } : {}),
         ...(movementDateTo ? { dateTo: movementDateTo } : {}),
       })}`, {signal}),
-    enabled: !!itemId && view === "movement" && !invalidMovementDates,
+    enabled: !staffDockMovement && !!itemId && view === "movement" && !invalidMovementDates,
     staleTime: 10000,
   });
-  const invoiceMovementIds = allowMovementInvoiceDetails && workPanelMovement && view === "movement"
+  const staffMovement=useQuery<{items:StaffDockMovement[];hasMore:boolean}>({
+    queryKey:["staff-work-panel-movement",userId,companyId,itemId,page,purchaseOnly,movementDateFrom,movementDateTo],
+    queryFn:({signal})=>api(`/companies/${companyId}/work-panel-items/${itemId}/movements?${new URLSearchParams({
+      page:String(page),...(purchaseOnly?{purchaseOnly:"1"}:{}),
+      ...(movementDateFrom?{dateFrom:movementDateFrom}:{}),...(movementDateTo?{dateTo:movementDateTo}:{}),
+    })}`,{signal}),
+    enabled:staffDockMovement&&!!itemId&&view==="movement"&&!invalidMovementDates,
+    staleTime:10_000,gcTime:0,retry:false,
+  });
+  const movementState=staffDockMovement?staffMovement:movements;
+  const invoiceMovementIds = !staffDockMovement && allowMovementInvoiceDetails && workPanelMovement && view === "movement"
     ? (movements.data?.items ?? [])
       .filter(row => row.invoiceId && row.invoiceLineId &&
         ["purchase", "purchase_return", "sale", "sales_return"].includes(row.kind))
@@ -255,22 +296,22 @@ export function ItemMenuHistory({
   const isMovement = view === "movement";
   const isInvoice = view === "purchase" || view === "sale";
   const waiting = isAlternatives ? alternatives.isPending :
-    isMovement ? movements.isPending : history.isPending;
+    isMovement ? movementState.isPending : history.isPending;
   const failed = isAlternatives ? alternatives.isError :
-    isMovement ? movements.isError : history.isError;
+    isMovement ? movementState.isError : history.isError;
   const peers = alternatives.data?.peers;
   const rows = isAlternatives ? peers?.peers :
-    isMovement ? movements.data?.items : history.data?.items;
+    isMovement ? movementState.data?.items : history.data?.items;
   const hasMore = isAlternatives
     ? !!peers && page * peers.pageSize < peers.total
     : isMovement
-      ? !!movements.data && page * movements.data.pageSize < movements.data.total
+      ? staffDockMovement?!!staffMovement.data?.hasMore:!!movements.data && page * movements.data.pageSize < movements.data.total
       : !!history.data?.hasMore;
   const fetching = isAlternatives ? alternatives.isFetching :
-    isMovement ? movements.isFetching : history.isFetching;
+    isMovement ? movementState.isFetching : history.isFetching;
   const inlineMovement = isMovement && workPanelMovement;
   const controls = (<>
-    {isMovement && !purchaseOnly && itemId && !waiting && !failed && (
+    {isMovement && !staffDockMovement && !purchaseOnly && itemId && !waiting && !failed && (
       <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
         className="user-menu-item-history-more">عرض جميع حركات الصنف</Link>
     )}
@@ -320,7 +361,7 @@ export function ItemMenuHistory({
             <p className="user-menu-entity-hint" role="alert">بداية الفترة يجب ألا تكون بعد نهايتها.</p>}
           {waiting && !(isMovement && invalidMovementDates) &&
             <p className="user-menu-entity-hint">جارٍ تحميل الحركات…</p>}
-          {failed && <p className="user-menu-entity-hint">تعذر تحميل البيانات؛ تحقق من صلاحيات عرض الفواتير أو المخزون أو الأصناف.</p>}
+          {failed && <p className="user-menu-entity-hint">{staffDockMovement?"تعذّر تحميل حركة الصنف. أعد المحاولة.":"تعذر تحميل البيانات؛ تحقق من صلاحيات عرض الفواتير أو المخزون أو الأصناف."}</p>}
           {isAlternatives && peers && !peers.composition &&
             <p className="user-menu-entity-hint">لا يوجد تركيب مرتبط بهذا الصنف.</p>}
           {isAlternatives && peers?.composition && (
@@ -342,6 +383,8 @@ export function ItemMenuHistory({
               </div>
             </div>
           )) : isMovement && workPanelMovement ? (
+            staffDockMovement ? <StaffWorkPanelMovementTable rows={failed?[]:staffMovement.data?.items??[]} purchaseOnly={purchaseOnly}
+              footer={!waiting&&!failed?controls:undefined} /> :
             <WorkPanelMovementTable key={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`}
               rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []}
               footer={!waiting && !failed ? controls : undefined} />

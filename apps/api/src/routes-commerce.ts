@@ -8,6 +8,7 @@ import {
   invoiceQuickAccountSchema,
   invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
+import {mayReadStaffDockMovement,staffDockMovementSql,staffDockItemsSql} from "./services/staff-dock-movement.ts";
 import { currentPurchase } from "./services/current-purchase.ts";
 import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
 import { createInvoiceQuickAccount } from "./routes-accounts.ts";
@@ -278,6 +279,42 @@ export function commerceRoutes(pool: Pool): Router {
       return patchSalesQuantityCorrection(client,user,companyId,itemId,input);
     });
     res.set("Cache-Control","private, no-store").json({item});
+  }));
+  const staffDockPage=z.string().regex(/^[1-9]\d*$/).transform(Number)
+    .pipe(z.number().int().positive().max(10000)).default(1);
+  async function readStaffDock<T>(req:Request,action:(client:PoolClient,companyId:number)=>Promise<T>){
+    return transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      if(req.header("X-Alraesy-Employee-Preview"))throw new HttpError(403,"forbidden","حاوية الصنف غير متاحة في المعاينة.");
+      const companyId=id(req.params.companyId);
+      const user=await currentActor(client,actor(req),false);
+      const context=await companyAccess(client,user,companyId);
+      if(!mayReadStaffDockMovement(user,context.employee))
+        throw new HttpError(403,"forbidden","حاوية الصنف غير متاحة لهذا المستخدم.");
+      return action(client,companyId);
+    });
+  }
+  router.get(`${base}/work-panel-items`,handler(async(req,res)=>{
+    const result=await readStaffDock(req,async(client,companyId)=>{
+      const query=parse(z.object({q:z.string().trim().min(2).max(120).refine(q=>!q.includes("\u0000")),page:staffDockPage}).strict(),req.query);
+      const pattern="%"+query.q.replace(/[\\%_]/g,character=>"\\"+character)+"%";
+      const {rows}=await client.query(staffDockItemsSql,[companyId,pattern,(query.page-1)*10]);
+      return {items:rows.slice(0,10),hasMore:rows.length>10,page:query.page,pageSize:10};
+    });
+    res.set("Cache-Control","private, no-store").json(result);
+  }));
+  router.get(`${base}/work-panel-items/:itemId/movements`,handler(async(req,res)=>{
+    const result=await readStaffDock(req,async(client,companyId)=>{
+      const itemId=id(req.params.itemId);
+      const query=parse(z.object({page:staffDockPage,purchaseOnly:z.literal("1").optional(),
+        dateFrom:documentDateSchema.optional(),dateTo:documentDateSchema.optional()}).strict(),req.query);
+      if(query.dateFrom&&query.dateTo&&query.dateFrom>query.dateTo)
+        throw new HttpError(400,"invalid_query","بداية الفترة بعد نهايتها.");
+      const {rows}=await client.query(staffDockMovementSql,
+        [companyId,itemId,query.dateFrom??null,query.dateTo??null,query.purchaseOnly==="1",(query.page-1)*10]);
+      return {items:rows.slice(0,10),hasMore:rows.length>10,page:query.page,pageSize:10};
+    });
+    res.set("Cache-Control","private, no-store").json(result);
   }));
   router.get(
     `${base}/item-history/:itemId/movement-invoices`,

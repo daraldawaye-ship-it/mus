@@ -54,6 +54,9 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const client = useQueryClient();
   const pages=pagesError?undefined:pageEntries;
   const reads=dockDataReads(context,pages);
+  const staffItemDock=showItemTools&&!user.owner&&!!companyId;
+  const canUseItemView=(view:ItemView)=>reads[view]||
+    (staffItemDock&&(view==="movement"||view==="purchases"));
   const accountAccess=dockAccountAccess(context,pages);
   const access = workPanelItemActionAccess(context,pages);
   const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
@@ -62,6 +65,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     for (const key of [
       ["avatar-item-stock-movements", user.id, companyId, itemId],
       ["work-panel-movement-invoices", user.id, companyId, itemId],
+      ["staff-work-panel-movement",user.id,companyId,itemId],
       ["avatar-item-alternatives", user.id, companyId, itemId],
       ["inventory", user.id, companyId],
       ["sale-stock-preview", user.id, companyId],
@@ -107,7 +111,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     <div className="work-panel-tools">
       {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
-          {reads.item ? <EntityMenuSearch user={user} companyId={companyId} kind="item" floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
+          {reads.item||staffItemDock ? <EntityMenuSearch user={user} companyId={companyId} kind="item" staffDockLookup={staffItemDock?(reads.item?"fallback":"limited"):undefined} floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
@@ -119,7 +123,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     canEdit={access.edit} canAdjust={access.adjust}
                     canTransfer={access.transfer} canReport={access.report}
                     onAction={action => { if (selected) openAction(action, selected); }} />
-                  {itemViews.filter(view=>reads[view.key]).map(view => {
+                  {itemViews.filter(view=>canUseItemView(view.key)).map(view => {
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
@@ -133,7 +137,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     );
                   })}
                 </div>
-                {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && reads[view.key]).map(view => (
+                {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && canUseItemView(view.key)).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && reads.card && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
@@ -142,7 +146,8 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}
                       workPanelMovement={view.key === "movement" || view.key === "purchases"}
-                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={reads.movement} />}
+                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={reads.movement}
+                      staffDockMovement={staffItemDock&&((view.key==="movement"&&!reads.movement)||(view.key==="purchases"&&!reads.purchases))} />}
                   </div>
                 ))}
               </>
