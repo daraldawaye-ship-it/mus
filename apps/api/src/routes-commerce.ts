@@ -51,6 +51,8 @@ export const workPanelMovementInvoiceSql = `SELECT m.id AS "movementId", il.id A
                WHEN 1 THEN 1 WHEN 2 THEN il.factor2
                ELSE il.factor2::numeric * il.factor3 END,2)
              END::text AS "unitPriceFirstUnit",
+             CASE WHEN il.factor2 > 0 AND il.factor3 > 0
+               THEN (il.factor2::bigint * il.factor3::bigint)::text END AS "firstUnitMultiplier",
              i.total::text AS "invoiceNet", i.discount::text AS "invoiceDiscount",
              i.currency_code AS "currencyCode"
            FROM stock_movements m

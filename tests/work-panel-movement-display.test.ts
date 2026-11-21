@@ -27,14 +27,19 @@ test("work-board purchase shows only the direct posted invoice supplier", () => 
   assert.equal(workPanelPurchaseSupplier({...row, kind: "sale"}), null);
 });
 
-test("workboard shows one fractional digit without altering exact movement direction", () => {
-  for (const [raw, text, direction] of [
-    ["10", "+10", "positive"], ["-2", "−2", "negative"], ["1.000", "+1", "positive"],
-    ["1.26", "+1.3", "positive"], ["-1.25", "−1.3", "negative"],
-    ["0.049", "+0.0", "positive"], ["-0.049", "−0.0", "negative"],
-    ["-0.000", "0", undefined], ["0", "0", undefined],
-    ["9007199254740993.95", "+9007199254740994.0", "positive"],
+test("workboard converts signed movement quantity into first units using exact posting factors", () => {
+  for (const [raw, pack, text, direction] of [
+    ["5", "10", "+0.5", "positive"], ["-5", "10", "−0.5", "negative"],
+    ["10", "10", "+1", "positive"], ["-30", "10", "−3", "negative"],
+    ["12.5", "10", "+1.3", "positive"], ["-12.5", "10", "−1.3", "negative"],
+    ["1", "100", "+0.0", "positive"], ["-1", "100", "−0.0", "negative"],
+    ["0", "10", "0", undefined], ["90071992547409935", "10", "+9007199254740993.5", "positive"],
   ] as const) {
-    assert.deepEqual(formatWorkPanelMovementQuantity(raw), direction ? { text, direction } : { text });
+    assert.deepEqual(formatWorkPanelMovementQuantity(raw, pack), {
+      text, exact: `${raw} ÷ ${pack}`, ...(direction ? { direction } : {}),
+    });
   }
+  assert.deepEqual(formatWorkPanelMovementQuantity("1", "1"), { text: "+1", direction: "positive", exact: "1" });
+  assert.deepEqual(formatWorkPanelMovementQuantity("5"), { text: "—" });
+  assert.deepEqual(formatWorkPanelMovementQuantity("5", "0"), { text: "—" });
 });

@@ -30,11 +30,11 @@ test("workboard invoice lookup uses exact company, item and posted invoice lines
     const r = await db.query(workPanelMovementInvoiceSql, [1, 8, [21,22,23,24,25,26,27,28]]);
     assert.deepEqual(r.rows.sort((a, b) => Number(a.movementId)-Number(b.movementId)), [
       { movementId: 21, invoiceLineId: 11, invoiceId: 2, partyName: "صندوق البيع", unitPriceFirstUnit: "14.00",
-        invoiceNet: "700", invoiceDiscount: "15", currencyCode: "YER" },
+        firstUnitMultiplier: "10", invoiceNet: "700", invoiceDiscount: "15", currencyCode: "YER" },
       { movementId: 22, invoiceLineId: 12, invoiceId: 3, partyName: "المورد الفعلي", unitPriceFirstUnit: "87.5000",
-        invoiceNet: "300", invoiceDiscount: "7", currencyCode: "YER" },
+        firstUnitMultiplier: "10", invoiceNet: "300", invoiceDiscount: "7", currencyCode: "YER" },
       { movementId: 23, invoiceLineId: 13, invoiceId: 4, partyName: null, unitPriceFirstUnit: "10.0000",
-        invoiceNet: "200", invoiceDiscount: "3", currencyCode: "YER" },
+        firstUnitMultiplier: "1", invoiceNet: "200", invoiceDiscount: "3", currencyCode: "YER" },
     ]);
   } finally { await db.close(); }
 });

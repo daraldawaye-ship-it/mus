@@ -27,19 +27,21 @@ export function signedStockMovementQuantity(quantitySmallest: string): string {
   return "+" + quantitySmallest;
 }
 
-/** Workboard presentation only. Preserve the true direction even when it rounds to zero. */
-export function formatWorkPanelMovementQuantity(raw: string): {
-  text: string; direction?: "positive" | "negative";
+/** Convert the exact signed stock delta using the source invoice line's recorded pack size. */
+export function formatWorkPanelMovementQuantity(raw: string, firstUnitMultiplier?: string | null): {
+  text: string; direction?: "positive" | "negative"; exact?: string;
 } {
   const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(raw);
-  if (!match) return { text: raw };
+  if (!match || !firstUnitMultiplier || !/^\d+$/.test(firstUnitMultiplier)) return { text: "—" };
   const [, sign, whole = "0", fractional = ""] = match;
-  const hasFraction = /[1-9]/.test(fractional);
-  if (!hasFraction && !/[1-9]/.test(whole)) return { text: "0" };
+  const stockUnits = BigInt(whole + fractional);
+  const divisor = BigInt(firstUnitMultiplier) * 10n ** BigInt(fractional.length);
+  if (divisor === 0n) return { text: "—" };
+  const exact = BigInt(firstUnitMultiplier) === 1n ? raw : `${raw} ÷ ${firstUnitMultiplier}`;
+  if (stockUnits === 0n) return { text: "0", exact };
   const direction = sign === "-" ? "negative" : "positive";
   const prefix = direction === "negative" ? "−" : "+";
-  if (!hasFraction) return { text: prefix + whole, direction };
-  const tenths = BigInt(whole) * 10n + BigInt(fractional[0] ?? "0") +
-    ((fractional[1] ?? "0") >= "5" ? 1n : 0n);
-  return { text: `${prefix}${tenths / 10n}.${tenths % 10n}`, direction };
+  if (stockUnits % divisor === 0n) return { text: prefix + stockUnits / divisor, direction, exact };
+  const tenths = (stockUnits * 20n + divisor) / (divisor * 2n);
+  return { text: `${prefix}${tenths / 10n}.${tenths % 10n}`, direction, exact };
 }

@@ -37,6 +37,7 @@ type MovementInvoiceDetail = {
   invoiceId: number;
   partyName: string | null;
   unitPriceFirstUnit: string | null;
+  firstUnitMultiplier: string | null;
   invoiceNet: string | null;
 };
 
@@ -52,15 +53,15 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
       <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
         <thead><tr>
           <th scope="col">النوع</th>
-          <th scope="col" className="invoice-item-options-number" title="الكمية بأصغر وحدة">الكمية</th>
+          <th scope="col" className="invoice-item-options-number" title="الكمية بالوحدة الأولى">الكمية</th>
           <th scope="col" className="invoice-item-options-number" title="سعر الوحدة الأولى للصنف">السعر</th>
           <th scope="col">التاريخ</th>
           <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم، لا صافي الصنف">الصافي</th>
         </tr></thead>
         <tbody>{rows.map(row => {
-          const quantity = formatWorkPanelMovementQuantity(row.quantitySmallest);
           const detail = invoices.get(row.id);
           const invoice = detail?.invoiceLineId === row.invoiceLineId && detail?.invoiceId === row.invoiceId ? detail : undefined;
+          const quantity = formatWorkPanelMovementQuantity(row.quantitySmallest, invoice?.firstUnitMultiplier);
           const purchase = row.kind === "purchase" || row.kind === "purchase_return";
           const sale = row.kind === "sale" || row.kind === "sales_return";
           const counterparty = purchase ? (invoice?.partyName?.trim() || workPanelPurchaseSupplier(row)) :
@@ -83,7 +84,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
                     <span className="work-panel-movement-kind-label">{workPanelMovementKindLabels[row.kind]}</span>
                   </span>
                 </td>
-                <td className="invoice-item-options-number" title={row.quantitySmallest}>
+                <td className="invoice-item-options-number" title={quantity.exact ?? "لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
                   <bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
                 </td>
                 {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
