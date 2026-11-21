@@ -1,6 +1,6 @@
 import { createCipheriv, createECDH, createHash, createPrivateKey, hkdfSync, randomBytes, sign } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { inboxFilter } from "./notifications.ts";
+import { companyExternalDesktopActivityCode, inboxFilter } from "./notifications.ts";
 import { permissionRuleEffects } from "./permission-rules.ts";
 
 const publicKey=process.env.WEB_PUSH_PUBLIC_KEY??"";
@@ -119,6 +119,7 @@ async function deliver(client:PoolClient,origin:string):Promise<boolean>{
     " WHERE n.id=$5 AND n.read_at IS NULL AND n.completed_at IS NULL"+
     " AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp())"+
     " AND COALESCE(s.enabled,t.implemented)"+
+    " AND n.code<>'" + companyExternalDesktopActivityCode + "'"+
     " AND (n.company_id IS NULL OR $4::boolean OR $3::integer IS NOT NULL)"+
     " AND "+inboxFilter,
     [row.user_id,row.company_id,row.employee_id,row.general,row.current_id]);
@@ -170,6 +171,7 @@ async function scan(pool:Pool,origin:string):Promise<void>{
       " JOIN sessions ss ON ss.token_hash=p.session_hash AND ss.user_id=p.user_id"+
       " AND ss.expires_at>clock_timestamp()"+
       " WHERE origin.created_at>=p.created_at AND n.read_at IS NULL AND n.completed_at IS NULL"+
+      " AND n.code<>'" + companyExternalDesktopActivityCode + "'"+
       " AND NOT EXISTS(SELECT 1 FROM web_push_deliveries d WHERE d.notification_id=origin.id AND d.subscription_id=p.id)"+
       " ORDER BY n.created_at DESC LIMIT 300 ON CONFLICT DO NOTHING");
     for(let i=0;i<8;i++)if(!(await deliver(client,origin)))break;

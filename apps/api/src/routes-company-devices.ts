@@ -7,11 +7,13 @@ import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, companyAccess } from "./policies/access.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { requestDevice } from "./services/user-device-activity.ts";
+import { isCompanyActivityDesktop, notifyCompanyExternalDesktop } from "./services/company-device-alert.ts";
 import { audit } from "./services/audit.ts";
 import { HttpError, missing } from "./errors.ts";
 
 const discoverySchema = z.object({
   deviceId: z.string().uuid(),
+  activeInteraction: z.literal(true).optional(),
 }).strict();
 const editSchema = z.object({
   name: z.string().trim().max(80),
@@ -56,9 +58,10 @@ export function companyDeviceRoutes(pool: Pool): Router {
   router.post("/companies/:companyId/approved-devices/discover", handler(async (req, res) => {
     const companyId = id(req.params.companyId);
     const user = await currentActor(pool, actor(req));
-    const { deviceId } = parse(discoverySchema, req.body);
+    const { deviceId, activeInteraction } = parse(discoverySchema, req.body);
     const identityHash = createHash("sha256").update(deviceId).digest("hex");
-    const { browser, os } = summarizeDeviceAgent(req.get("user-agent") ?? "");
+    const userAgent = req.get("user-agent") ?? "";
+    const { browser, os } = summarizeDeviceAgent(userAgent);
     const kind = requestDevice(req);
     const recordId = await transaction(pool, async (client) => {
       await companyAccess(client, user, companyId);
@@ -80,6 +83,20 @@ export function companyDeviceRoutes(pool: Pool): Router {
         "ON CONFLICT(device_id,user_id) DO UPDATE SET last_seen_at=clock_timestamp()",
         [deviceRowId, user.id],
       );
+      if (activeInteraction && isCompanyActivityDesktop(userAgent, kind)) {
+        // Recognition is non-blocking even if the alert subsystem is unavailable.
+        // Savepoint rolls the claim and alert back together and does not bypass access.
+        await client.query("SAVEPOINT company_device_activity_alert");
+        try {
+          await notifyCompanyExternalDesktop(client, {
+            companyId, deviceId: deviceRowId, label: deviceName, browser, os,
+          });
+        } catch {
+          await client.query("ROLLBACK TO SAVEPOINT company_device_activity_alert");
+          console.warn("Company device activity alert was not recorded");
+        }
+        await client.query("RELEASE SAVEPOINT company_device_activity_alert");
+      }
       return { id: deviceRowId, name: deviceName };
     });
     res.json({ ok: true, id: recordId.id, name: recordId.name });

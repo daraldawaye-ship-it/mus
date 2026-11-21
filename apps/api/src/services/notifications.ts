@@ -9,6 +9,7 @@ import { memoFollowerSql } from "./memo-followers.ts";
 
 export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPROVAL", "MEMO_COMPLETED", "MEMO_FOLLOW", "MEMO_DUE"];
 
+export const companyExternalDesktopActivityCode = "COMPANY_EXTERNAL_DESKTOP_ACTIVITY";
 export const pendingCashboxCodes = ["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"];
 const cashboxCodesSql = "('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED')";
 const groupChatCodes = ["CHAT_GROUP_GLOBAL", "CHAT_GROUP_COMPANY"];
@@ -203,7 +204,7 @@ export const notificationDTO = (
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
-  canAssign: !r.completed_at && general && r.company_id !== null && !memoNotificationCodes.includes(r.code) && !pendingCashboxCodes.includes(r.code),
+  canAssign: r.code !== companyExternalDesktopActivityCode && !r.completed_at && general && r.company_id !== null && !memoNotificationCodes.includes(r.code) && !pendingCashboxCodes.includes(r.code),
   href: stoppedPurchaseHref(r) ?? salesReturnInvoiceHref(r) ?? expiryFollowUpHref(r) ?? orderLevelReportHref(r) ?? r.href ?? null,
 });
 export async function nextReminder(
@@ -274,7 +275,10 @@ export async function emitNotification(
   // controlled by stock_alert_group_scans, not by individual item incidents.
   const groupedSummary = ["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(input.code)
     && input.subjectKey === "aggregate:" + input.code;
-  const latestOnly = template.latestOnly || groupedSummary;
+  // The device producer has a durable per-device window and never recurs
+  // from notification settings or delivery polling.
+  const deviceActivity = input.code === companyExternalDesktopActivityCode;
+  const latestOnly = template.latestOnly || groupedSummary || deviceActivity;
   let recipients: number[] = [];
   if (input.companyId !== null) {
     if (
@@ -287,7 +291,12 @@ export async function emitNotification(
       ).rowCount
     )
       throw new Error("Invalid notification subject");
-    recipients = ["SALES_DOCTOR_REVIEW", "SALES_ARCHIVED_DOCTOR_USED", "ATTENDANCE_APPROVAL_REJECTED"].includes(input.code) && template.revision === null
+    recipients = deviceActivity
+      ? (await client.query(
+          "SELECT id FROM users WHERE id=$1 AND owner AND NOT archived AND NOT suspended",
+          [input.explicitSubjectOnly ? input.recipientUserId ?? null : null],
+        )).rows.map(r => r.id)
+      : ["SALES_DOCTOR_REVIEW", "SALES_ARCHIVED_DOCTOR_USED", "ATTENDANCE_APPROVAL_REJECTED"].includes(input.code) && template.revision === null
       ? (await client.query(
           `SELECT DISTINCT u.id FROM users u
              LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
@@ -340,7 +349,7 @@ export async function emitNotification(
     .now as Date;
   // Grouped stock monitors are re-issued by their own hourly scanner only.
   // They must never get a second repeat from notification reminder machinery.
-  const next = groupedSummary ? null : await nextReminder(
+  const next = groupedSummary || deviceActivity ? null : await nextReminder(
     client,
     template.allowRepeat ? template.repeatInterval : "none",
     now,
@@ -356,7 +365,7 @@ export async function emitNotification(
     // For grouped stock reports, one durable per-company scan lock already
     // enforces the card's hour interval. Avoid an additional delivery window
     // that could silently suppress the notification by milliseconds.
-    const blocked = !!input.refreshOnly || (!groupedSummary &&
+    const blocked = !!input.refreshOnly || (!groupedSummary && !deviceActivity &&
       await insideDeliveryWindow(client, input.companyId, input.code, userId, template.minIntervalHours));
     if (blocked && !latestOnly) continue;
     let readAt: Date | null = null, snoozedUntil: Date | null = null;
@@ -401,7 +410,7 @@ export async function emitNotification(
           input.message,
           template.importance,
           input.href ?? null,
-          groupedSummary ? "none" : template.allowRepeat ? template.repeatInterval : "none",
+          groupedSummary || deviceActivity ? "none" : template.allowRepeat ? template.repeatInterval : "none",
           next,
           input.explicitSubjectOnly ?? false,
           streamKey, blocked, readAt, snoozedUntil, deliveryId,
@@ -435,6 +444,7 @@ export async function refreshNotificationReminders(
     await client.query(
       notificationSelect +
         ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND n.completed_at IS NULL
+ AND n.code<>'${companyExternalDesktopActivityCode}'
  AND ${currentNotification} AND ((n.next_reminder_at<=clock_timestamp() AND COALESCE(s.allow_repeat,false) AND COALESCE(s.enabled,t.implemented)) OR n.snoozed_until<=clock_timestamp())
  AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp()) ORDER BY n.id FOR UPDATE OF n`,
       [companyId],
