@@ -63,6 +63,27 @@ function Swatch({ name, token, description }: { name: string; token: string; des
     <span><strong>{name}</strong><small>{description}</small></span>
   </div>;
 }
+function PressKeyOptions() {
+  const sizes = [
+    { key: "sm", label: "صغير" },
+    { key: "md", label: "وسط" },
+    { key: "lg", label: "كبير" },
+  ] as const;
+  type Size = (typeof sizes)[number]["key"];
+  const [pressed, setPressed] = useState<Size[]>([]);
+  return <div className="design-inline design-press-options" role="group" aria-label="تجربة مفاتيح الاختيار">
+    {sizes.map(({ key, label }) => {
+      const active = pressed.includes(key);
+      return <button key={key} type="button" className={`design-press-key design-press-key-${key}`}
+        aria-pressed={active}
+        onClick={() => setPressed(previous => previous.includes(key)
+          ? previous.filter(value => value !== key) : [...previous, key])}>
+        <Check size={13} className="design-press-key-mark" aria-hidden="true" />
+        {label}
+      </button>;
+    })}
+  </div>;
+}
 function DemoFields() {
   const [choice, setChoice] = useState("الفعال");
   const [checked, setChecked] = useState(true);
@@ -83,6 +104,7 @@ function DemoFields() {
       <Sample code="ح-10" title="مفتاح تشغيل وإيقاف"><label className="design-toggle"><input type="checkbox" defaultChecked/><span className="design-switch-track"/><span>تفعيل التنبيهات</span></label></Sample>
       <Sample code="ح-11" title="حقل تاريخ"><label className="design-field">اختر التاريخ<input type="date" defaultValue="2026-11-14"/></label></Sample>
       <Sample code="ح-12" title="اختيار ملف"><label className="design-field">إرفاق مستند<input type="file" aria-label="إرفاق مستند"/></label></Sample>
+      <Sample code="ح-18" title="مفاتيح اختيار بارزة" note="اضغط أي مفتاح لتفعيله أو إطفائه. الأحجام الثلاثة للتجربة وتتبع لون المظهر."><PressKeyOptions /></Sample>
     </Group>
   </>;
 }
