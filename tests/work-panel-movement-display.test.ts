@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stockMovementKinds } from "../packages/contracts/src/inventory.ts";
-import { signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "../apps/web/src/stock-movement-display.ts";
+import { formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "../apps/web/src/stock-movement-display.ts";
 
 test("work-board movement labels are compact without relabeling returns or reversals as sales", () => {
   assert.deepEqual(Object.keys(workPanelMovementKindLabels).sort(), [...stockMovementKinds].sort());
@@ -25,4 +25,16 @@ test("work-board purchase shows only the direct posted invoice supplier", () => 
   assert.equal(workPanelPurchaseSupplier({...row, invoiceId: null}), null);
   assert.equal(workPanelPurchaseSupplier({...row, originalMovementId: 27}), null);
   assert.equal(workPanelPurchaseSupplier({...row, kind: "sale"}), null);
+});
+
+test("workboard shows one fractional digit without altering exact movement direction", () => {
+  for (const [raw, text, direction] of [
+    ["10", "+10", "positive"], ["-2", "−2", "negative"], ["1.000", "+1", "positive"],
+    ["1.26", "+1.3", "positive"], ["-1.25", "−1.3", "negative"],
+    ["0.049", "+0.0", "positive"], ["-0.049", "−0.0", "negative"],
+    ["-0.000", "0", undefined], ["0", "0", undefined],
+    ["9007199254740993.95", "+9007199254740994.0", "positive"],
+  ] as const) {
+    assert.deepEqual(formatWorkPanelMovementQuantity(raw), direction ? { text, direction } : { text });
+  }
 });

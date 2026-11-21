@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
-import { signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
+import { formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
 import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
@@ -58,7 +58,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
           <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم، لا صافي الصنف">الصافي</th>
         </tr></thead>
         <tbody>{rows.map(row => {
-          const quantity = signedStockMovementQuantity(row.quantitySmallest);
+          const quantity = formatWorkPanelMovementQuantity(row.quantitySmallest);
           const detail = invoices.get(row.id);
           const invoice = detail?.invoiceLineId === row.invoiceLineId && detail?.invoiceId === row.invoiceId ? detail : undefined;
           const purchase = row.kind === "purchase" || row.kind === "purchase_return";
@@ -83,9 +83,8 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
                     <span className="work-panel-movement-kind-label">{workPanelMovementKindLabels[row.kind]}</span>
                   </span>
                 </td>
-                <td className="invoice-item-options-number" title={quantity}>
-                  <bdi data-work-panel-quantity={quantity.startsWith("+") ? "positive" :
-                    /^-[0-9]*[1-9][0-9]*$/.test(quantity) ? "negative" : undefined}>{quantity}</bdi>
+                <td className="invoice-item-options-number" title={row.quantitySmallest}>
+                  <bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
                 </td>
                 {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
                 <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
