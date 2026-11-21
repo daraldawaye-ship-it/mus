@@ -1,5 +1,5 @@
 import {DockSearchResults,focusFirstDockResult} from "./DockSearchResults";
-import { lazy,Suspense,useId,useRef,useState } from "react";
+import { lazy,Suspense,useEffect,useId,useRef,useState } from "react";
 import { Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { pageKeyForLocation,type CompanyContext,type PageEntry,type User } from "../../../packages/contracts/src/index";
@@ -16,13 +16,18 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
   const query=searching?edit.value:currentLabel;
   const resultsId=useId();
   const fieldAnchor=useRef<HTMLLabelElement>(null);
-  const [cardOpen,setCardOpen]=useState(false);
+  const [openCardKey,setOpenCardKey]=useState<string|null>(null);
   const [pathname,search]=currentRoute.split("?",2);
   const routeCompany=pathname?.match(/^\/companies\/([1-9]\d*)(?:\/|$)/)?.[1];
   const companyMatches=!!companyId && String(companyId)===routeCompany;
   const activeKey=companyMatches && pathname?.replace(/\/$/,"").endsWith("/item-order-drafts")
     ? "company.item-options-list" : pageKeyForLocation(pathname??"",search??"");
   const entry=!error&&!searching&&currentLabel ? dockPageCardEntry(pages,activeKey,companyMatches?companyId:undefined):undefined;
+  const cardKey=entry?JSON.stringify([user.id,companyMatches?companyId:null,entry.key,currentRoute]):null;
+  const cardOpen=!!cardKey&&cardKey===openCardKey;
+  useEffect(()=>{
+    if(openCardKey&&openCardKey!==cardKey)setOpenCardKey(null);
+  },[cardKey,openCardKey]);
   const results=findWorkPanelPages(error||!searching?undefined:pages,user,companyId,query);
   return <section className="work-panel-tool-card work-panel-page-container" aria-label="بحث عن صفحة">
     <div className="user-menu-entity-section">
@@ -45,12 +50,13 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
           loading ? "جارٍ التحقق من الصفحات المتاحة…" : "لا توجد صفحات مطابقة."}</small>}
       </div></DockSearchResults>}
       <div className="work-panel-entity-actions">
-        <Button size="compact" variant="secondary" disabled={!entry} onClick={()=>setCardOpen(true)}>كرت الصفحة</Button>
+        <Button size="compact" variant="secondary" disabled={!entry} onClick={()=>setOpenCardKey(cardKey)}>كرت الصفحة</Button>
       </div>
     </div>
-    <Dialog open={!!entry&&cardOpen} title="كرت الصفحة" className="invoice-item-sheet" onClose={()=>setCardOpen(false)}>
+    <Dialog open={!!entry&&cardOpen} title="كرت الصفحة" className="invoice-item-sheet" onClose={()=>setOpenCardKey(null)}>
       {entry&&cardOpen&&<Suspense fallback={<Notice>جارٍ فتح كرت الصفحة…</Notice>}>
-        <PageCard entry={entry} context={companyMatches?context:undefined} />
+        <PageCard key={cardKey} entry={entry} context={companyMatches?context:undefined}
+          centralPage={pages?.find(page=>page.key==="company.central-access")} />
       </Suspense>}
     </Dialog>
   </section>;

@@ -16,7 +16,7 @@ type Resource={key:string;name:string;section:string;kind:ResourceKind;
   description:string;integrated:boolean;policy:Policy|null};
 type PermissionEmployee={id:number;name:string;active:boolean;
  positions:EmployeePosition[];permissions:Permission[];isGeneralManager:boolean;isOwner:boolean};
-type Response={positions:Position[];resources:Resource[];permissionEmployees?:PermissionEmployee[]};
+export type CentralAccessResponse={positions:Position[];resources:Resource[];permissionEmployees?:PermissionEmployee[]};
 const kindLabels:Record<ResourceKind,string>={
  page:"صفحة",field:"حقل",button:"زر / عملية",permission:"صلاحية تشغيل",
  control:"خيار الكنترول",
@@ -166,9 +166,10 @@ function CentralPositionField({resource,companyId,dimension,onSaved}:{
  </div>;
 }
 
-function CentralResourceEditor({
+export function CentralResourceEditor({
  resource,companyId,onSaved,
 }:{resource:Resource;companyId:number;onSaved:()=>void}) {
+ const guard=useScopeGuard(`central-resource:${companyId}:${resource.key}`);
  const [view,setView]=useState<EmployeePosition[]>(resource.policy?.viewPositions??[]);
  const [edit,setEdit]=useState<EmployeePosition[]>(resource.policy?.editPositions??[]);
  const [busy,setBusy]=useState(false);
@@ -178,15 +179,16 @@ function CentralResourceEditor({
    setEdit(resource.policy?.editPositions??[]);};
  const base=`/companies/${companyId}/central-access/${encodeURIComponent(resource.key)}`;
  async function save() {
-   if(busy)return;
+   if(busy||!guard.isCurrent())return;
    setBusy(true);setError("");setSuccess("");
    try {
-     await api(base,{method:"PUT",body:{
+     await api(base,{method:"PUT",signal:guard.signal,body:{
        viewPositions:view,editPositions:edit,revision:resource.policy?.revision??null,
      }});
+     if(!guard.isCurrent())return;
      onSaved();setSuccess("تم حفظ صفات الاطلاع والتعديل لهذه الشركة.");
-   }catch(reason){setError(errorMessage(reason))}
-   finally{setBusy(false)}
+   }catch(reason){if(guard.isCurrent())setError(errorMessage(reason))}
+   finally{if(guard.isCurrent())setBusy(false)}
  }
  return <Card title={resource.name}>
    <div className="central-access-summary">
@@ -260,11 +262,11 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
  }
  const query=useQuery({
    queryKey:["central-access",user?.id,companyId],
-   queryFn:({signal})=>api<Response>(`/companies/${companyId}/central-access`,{signal}),
+   queryFn:({signal})=>api<CentralAccessResponse>(`/companies/${companyId}/central-access`,{signal}),
    staleTime:10000,
  });
  async function permissionSaved(employee?:PermissionEmployee) {
-   if(employee)client.setQueryData<Response>(["central-access",user?.id,companyId],previous=>
+   if(employee)client.setQueryData<CentralAccessResponse>(["central-access",user?.id,companyId],previous=>
      previous?{...previous,permissionEmployees:previous.permissionEmployees?.map(current=>
        current.id===employee.id?employee:current)}:previous);
    await Promise.all([

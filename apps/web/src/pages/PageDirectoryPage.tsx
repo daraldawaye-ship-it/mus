@@ -529,16 +529,18 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
   </section>;
 }
 
-function PageDetails({
+export function PageDetails({
   entry,
   companyId,
   canManagePermissions,
   onUpdated,
+  settingsOnly=false,
 }: {
   entry: PageEntry;
   companyId?: number;
   canManagePermissions: boolean;
   onUpdated: () => void;
+  settingsOnly?:boolean;
 }) {
   const { user } = useSession(),
     client = useQueryClient();
@@ -639,6 +641,75 @@ function PageDetails({
       if (guard.isCurrent()) setError(errorMessage(error));
     }
   }
+  const settingsAndStatus = <>
+      {entry.canConfigure ? (
+        <form
+          onSubmit={(event) => void save(event)}
+          className="page-directory-settings"
+        >
+          <strong>
+            <Settings2 size={15} /> إعدادات{" "}
+            {companyId ? "الشركة الحالية" : "الموقع كله"}
+          </strong>
+          {companyId && (!entry.globalVisible || !entry.globalEnabled) && (
+            <Notice tone="warning">
+              إعداد عام يخفي أو يعطل هذه الصفحة؛ إعداد الشركة لا يتجاوز الإعداد
+              العام.
+            </Notice>
+          )}
+          <fieldset disabled={saving} className="commerce-fieldset">
+            <div className="page-directory-settings-fields">
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={visible}
+                  onChange={(event) => setVisible(event.target.checked)}
+                />
+                إظهار في التنقل
+              </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(event) => setEnabled(event.target.checked)}
+                />
+                تفعيل الصفحة
+              </label>
+              <Field
+                label="ترتيب الظهور"
+                type="number"
+                min="0"
+                max="100000"
+                required
+                value={order}
+                onChange={(event) => setOrder(event.target.value)}
+              />
+            </div>
+            <Button type="submit">
+              {saving ? "جارٍ الحفظ…" : "حفظ إعدادات الصفحة"}
+            </Button>
+          </fieldset>
+          <small className="muted">
+            إخفاء الصفحة يزيل رابطها من التنقل. التعطيل يمنع فتح بياناتها وبدء
+            إجراءاتها. الصلاحيات لا تتغير بهذا الإعداد.
+          </small>
+        </form>
+      ) : entry.critical ? (
+        <Notice>
+          صفحة أساسية محمية للحفاظ على الدخول والتنقل وإدارة الدليل.
+        </Notice>
+      ) : null}
+      {error && (
+        <Notice tone="error">
+          {error}
+          <Button variant="ghost" onClick={() => void reloadSettings()}>
+            إعادة تحميل الإعدادات
+          </Button>
+        </Notice>
+      )}
+      {message && <Notice tone="success">{message}</Notice>}
+  </>;
+  if (settingsOnly) return settingsAndStatus;
   return (
     <div className="page-directory-details">
       <p>{entry.description}</p>
@@ -761,72 +832,7 @@ function PageDetails({
           نسخ رابط ثابت
         </Button>
       </div>
-      {entry.canConfigure ? (
-        <form
-          onSubmit={(event) => void save(event)}
-          className="page-directory-settings"
-        >
-          <strong>
-            <Settings2 size={15} /> إعدادات{" "}
-            {companyId ? "الشركة الحالية" : "الموقع كله"}
-          </strong>
-          {companyId && (!entry.globalVisible || !entry.globalEnabled) && (
-            <Notice tone="warning">
-              إعداد عام يخفي أو يعطل هذه الصفحة؛ إعداد الشركة لا يتجاوز الإعداد
-              العام.
-            </Notice>
-          )}
-          <fieldset disabled={saving} className="commerce-fieldset">
-            <div className="page-directory-settings-fields">
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={visible}
-                  onChange={(event) => setVisible(event.target.checked)}
-                />
-                إظهار في التنقل
-              </label>
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={(event) => setEnabled(event.target.checked)}
-                />
-                تفعيل الصفحة
-              </label>
-              <Field
-                label="ترتيب الظهور"
-                type="number"
-                min="0"
-                max="100000"
-                required
-                value={order}
-                onChange={(event) => setOrder(event.target.value)}
-              />
-            </div>
-            <Button type="submit">
-              {saving ? "جارٍ الحفظ…" : "حفظ إعدادات الصفحة"}
-            </Button>
-          </fieldset>
-          <small className="muted">
-            إخفاء الصفحة يزيل رابطها من التنقل. التعطيل يمنع فتح بياناتها وبدء
-            إجراءاتها. الصلاحيات لا تتغير بهذا الإعداد.
-          </small>
-        </form>
-      ) : entry.critical ? (
-        <Notice>
-          صفحة أساسية محمية للحفاظ على الدخول والتنقل وإدارة الدليل.
-        </Notice>
-      ) : null}
-      {error && (
-        <Notice tone="error">
-          {error}
-          <Button variant="ghost" onClick={() => void reloadSettings()}>
-            إعادة تحميل الإعدادات
-          </Button>
-        </Notice>
-      )}
-      {message && <Notice tone="success">{message}</Notice>}
+      {settingsAndStatus}
     </div>
   );
 }
