@@ -1,3 +1,4 @@
+import { readDraftPrintClassifications } from "./services/draft-print-classifications.ts";
 import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
@@ -577,6 +578,20 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     assertDirectoryAccess(listPage, edit && !user.owner ? "edit" : "view");
     return user;
   };
+
+  const draftPrintClassificationSchema=z.object({
+    ids:z.array(z.number().int().min(1).max(2147483647)).min(1).max(300)
+      .refine(ids=>new Set(ids).size===ids.length,"لا تكرر معرّف الصنف"),
+  }).strict();
+  router.post("/companies/:companyId/item-options-list/draft-print-classifications",handler(async(req,res)=>{
+    const {ids}=parse(draftPrintClassificationSchema,req.body);
+    const items=await readItems(pool,req,async(client,companyId)=>{
+      // Exact existing print/export access, not the stronger sales/inventory projection.
+      await checkPresetsAccess(client,req,companyId);
+      return readDraftPrintClassifications(client,companyId,ids);
+    });
+    res.set("Cache-Control","private, no-store").json({items});
+  }));
 
   /** Read-only snapshot for rows in device-local drafts. Quantities are provided
    * by the browser, but names, lot factors, sales and prices come from the

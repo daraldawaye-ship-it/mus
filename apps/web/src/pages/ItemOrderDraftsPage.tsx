@@ -2,7 +2,7 @@ import { formatNumber, formatStockSaleQuantity } from "../order-draft-quantities
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery,useQueryClient } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import type { ItemOptionsPresetGroup } from "../../../../packages/contracts/src/item-options-presets.ts";
 import { normalizeDigits } from "../../../../packages/contracts/src/masters.ts";
@@ -12,13 +12,14 @@ import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
 import { OrderPlanningFields } from "../OrderPlanningFields";
 import { AvailableAlternatives, PurchaseComparisonItemPanel } from "./OrderDraftExportsPage";
-import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
+import { createSectionedTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
+import { orderDraftPrintSections,type DraftPrintClassification,type DraftSectionRow } from "../order-draft-print-sections";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
 type DraftRow = { draftId: number; draftOptionName?: string; item: OrderDraftItem };
 type DraftPrintMode = "all" | number;
-type DraftPrintRow = { id: string; name: string; requiredQuantity?: string };
+type DraftPrintRow = { id: string; itemId:number; name: string; requiredQuantity?: string };
 type DraftMetrics = {
   itemId: number; revision: number; reserveQuantity: string;
   orderAlertQuantity: string | null; orderStoppedUntil: string | null;
@@ -194,7 +195,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   }, [sidePanel]);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
-  const [printMode, setPrintMode] = useState<DraftPrintMode>("all");
+  const [printSnapshot,setPrintSnapshot]=useState<DraftSectionRow<DraftPrintRow>[][]|null>(null);
+  useEffect(()=>{
+    const clear=()=>setPrintSnapshot(null);
+    window.addEventListener("afterprint",clear);
+    return ()=>window.removeEventListener("afterprint",clear);
+  },[]);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [draftActionNotice, setDraftActionNotice] = useState("");
   const [groupBusy, setGroupBusy] = useState(false);
@@ -207,17 +213,39 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   });
   const groups = groupsQuery.data?.items ?? [];
   const currentGroup = groups.find(group => String(group.id) === selectedGroupId);
-  // Export all active items in draft order, without printable draft/section headings.
+  // Export active items in stable draft order within each print group, without headings.
   // A deleted item stays in local storage but is omitted from print/PDF output.
   const printableRows = (mode: DraftPrintMode): DraftPrintRow[] =>
     drafts.drafts.filter(draft => mode === "all" || draft.id === mode)
       .flatMap(draft => draft.items.filter(item => !item.deleted).map(item => ({
         id: draft.id + ":" + item.id,
+        itemId: item.id,
         name: item.name,
         requiredQuantity: item.requiredQuantity ?? "—",
       })));
-  const printRows = printableRows(printMode);
   const allPrintable = printableRows("all");
+  const printQueryClient=useQueryClient();
+  type PrintClassificationResult={items:{itemId:number;compositionClassification:DraftPrintClassification}[]};
+  const printBatches=(rows:readonly DraftPrintRow[])=>{
+    const ids=[...new Set(rows.map(row=>row.itemId))].sort((a,b)=>a-b);
+    return Array.from({length:Math.ceil(ids.length/300)},(_,index)=>ids.slice(index*300,(index+1)*300));
+  };
+  const printClassificationOptions=(ids:number[])=>({
+    queryKey:["order-draft-print-classifications",user?.id,companyId,ids.join(",")],
+    queryFn:({signal}:{signal:AbortSignal})=>api<PrintClassificationResult>(
+      `/companies/${companyId}/item-options-list/draft-print-classifications`,
+      {method:"POST",body:{ids},signal}),
+    staleTime:30000,
+    retry:false,
+  });
+  const printClassQueries=useQueries({
+    queries:printBatches(allPrintable).map(ids=>({...printClassificationOptions(ids),enabled:!!user})),
+  });
+  const toClassifications=(items:PrintClassificationResult["items"])=>
+    new Map(items.map(item=>[item.itemId,item.compositionClassification] as const));
+  const currentPrintClassifications=toClassifications(printClassQueries.flatMap(result=>result.data?.items??[]));
+  const printSections = printSnapshot ?? orderDraftPrintSections(allPrintable,currentPrintClassifications) ?? [];
+
   const [savingExport, setSavingExport] = useState(false);
   const saveFullDraftExport = async () => {
     // Record ALL active items from ALL drafts, regardless of the print/PDF subset.
@@ -230,13 +258,24 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       "/companies/" + companyId + "/order-draft-exports",
       { method: "POST", body: { items: uniqueItems } });
   };
+  const sectionsFor=async(mode:DraftPrintMode)=>{
+    const rows=printableRows(mode);
+    const prefetchFresh=printClassQueries.every(q=>q.isSuccess&&Date.now()-q.dataUpdatedAt<30000);
+    const prefetched=prefetchFresh?orderDraftPrintSections(rows,currentPrintClassifications):null;
+    if(prefetched)return prefetched;
+    const responses=await Promise.all(printBatches(rows).map(ids=>printQueryClient.fetchQuery(printClassificationOptions(ids))));
+    const sections=orderDraftPrintSections(rows,toClassifications(responses.flatMap(data=>data.items)));
+    if(sections===null)throw new Error("تعذّر التحقق من تصنيف بعض الأصناف. حدّث بيانات المسودة ثم حاول مجددًا.");
+    return sections;
+  };
   const printDraft = async (mode: DraftPrintMode) => {
     if (savingExport || !printableRows(mode).length) return;
     setSavingExport(true);
     setDraftActionNotice("");
     try {
+      const sections=await sectionsFor(mode);
       const saved = await saveFullDraftExport();
-      flushSync(() => setPrintMode(mode));
+      flushSync(() => setPrintSnapshot(sections));
       window.print();
       setDraftActionNotice("تم حفظ جميع أصناف المسودة في سجل الشركة: " + saved.added +
         " جديد، و" + saved.skipped + " سبق ترحيله اليوم.");
@@ -251,10 +290,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     setExportingPdf(true);
     setDraftActionNotice("");
     try {
-      const pdf = createTwoColumnItemNamesPdf(items.map(item => ({
-        name: item.name,
-        requiredQuantity: item.requiredQuantity,
-      })));
+      const pdf = createSectionedTwoColumnItemNamesPdf(await sectionsFor(mode));
       const filename = "item-order-" + (mode === "all" ? "all" : "draft-" + mode) +
         "-" + new Date().toLocaleDateString("en-CA") + ".pdf";
       // Save the central snapshot before creating the exported device file.
@@ -944,14 +980,16 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     </div>
     <section className="item-options-print-sheet" dir="rtl"
       aria-label="طباعة أصناف مسودات الطلبيات مع الكميات المطلوبة">
-      <div className="item-options-print-columns">
-        {printRows.map(item => <div className="item-options-print-row" key={item.id}>
-          <bdi className="item-options-print-quantity">
-            {item.requiredQuantity ?? "—"}
-          </bdi>
-          <span className="item-options-print-name">{item.name}</span>
-        </div>)}
-      </div>
+      {printSections.map((rows,index)=><div key={index} className="item-order-draft-print-section">
+        <div className="item-options-print-columns">
+          {rows.map(item => <div className={`item-options-print-row${item.separatorBefore?" item-order-draft-print-separator":""}`} key={item.id}>
+            <bdi className="item-options-print-quantity">
+              {item.requiredQuantity ?? "—"}
+            </bdi>
+            <span className="item-options-print-name">{item.name}</span>
+          </div>)}
+        </div>
+      </div>)}
     </section>
   </div>;
 }

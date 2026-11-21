@@ -17,13 +17,14 @@ const COLUMN_WIDTH = (PAGE_WIDTH - 2 * PAGE_MARGIN_X - COLUMN_GAP) / 2;
 const LINE_HEIGHT = 9 * 1.35; // print CSS font-size:9pt; line-height:1.35
 const ROW_PADDING = 1.2 * MM_TO_PT; // print CSS padding:1.2mm 0
 const ROW_BORDER = 0.5;
+const ORDER_DRAFT_SEPARATOR = 3 * MM_TO_PT;
 const PAGE_CONTENT_HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN_Y;
 
 type PdfPage = { jpeg: Uint8Array; width: number; height: number };
-type PreparedRow = { lines: string[]; height: number; quantity?: string };
+type PreparedRow = { lines: string[]; height: number; quantity?: string; gapBefore:number };
 /** Names-only printing stays supported; numbered order drafts include a
  * first-unit "الكمية المطلوبة" snapshot, NOT available stock or sold quantity. */
-export type PdfItemNameRow = string | { name: string; requiredQuantity?: string };
+export type PdfItemNameRow = string | { name: string; requiredQuantity?: string; separatorBefore?:boolean };
 
 /**
  * First fill up to two page-height columns, then balance that page by row
@@ -31,7 +32,7 @@ export type PdfItemNameRow = string | { name: string; requiredQuantity?: string 
  * should begin in BOTH columns, not occupy only one tall column.
  */
 export function balanceItemNamesColumns(
-  heights: readonly number[], capacity: number,
+  heights: readonly number[], capacity: number, gaps:readonly number[] = [],
 ): Array<{ start: number; split: number; end: number }> {
   const pages: Array<{ start: number; split: number; end: number }> = [];
   let start = 0;
@@ -39,21 +40,23 @@ export function balanceItemNamesColumns(
     let end = start;
     for (let col = 0; col < 2; col++) {
       let used = 0;
-      while (end < heights.length &&
-        (used + heights[end] <= capacity || used === 0 && heights[end] > capacity)) {
-        used += heights[end];
+      while (end < heights.length) {
+        const height=heights[end] + (used>0 ? gaps[end]??0 : 0);
+        if (used>0 && used+height>capacity) break;
+        used+=height;
         end++;
       }
     }
     if (end === start) end++;
     let split = end;
     if (end > start + 1) {
-      const sum = heights.slice(start, end).reduce((a, b) => a + b, 0);
+      const sum = heights.slice(start, end).reduce((a,b,index)=>
+        a+b+(index>0 ? gaps[start+index]??0 : 0),0);
       let first = 0;
       let best = Number.POSITIVE_INFINITY;
       for (let i = start + 1; i < end; i++) {
-        first += heights[i - 1];
-        const second = sum - first;
+        first += heights[i - 1] + (i>start+1 ? gaps[i-1]??0 : 0);
+        const second = sum - first - (gaps[i]??0);
         if (first > capacity || second > capacity) continue;
         const score = Math.abs(first - second);
         if (score < best) {
@@ -65,8 +68,9 @@ export function balanceItemNamesColumns(
       if (split === end) {
         let used = 0;
         for (let i = start; i < end; i++) {
-          if (used + heights[i] > capacity) { split = i; break; }
-          used += heights[i];
+          const height=heights[i] + (i>start ? gaps[i]??0 : 0);
+          if (used + height > capacity) { split = i; break; }
+          used += height;
         }
       }
     }
@@ -179,11 +183,17 @@ function canvasJpeg(canvas: HTMLCanvasElement): Uint8Array {
 }
 
 export function createTwoColumnItemNamesPdf(names: PdfItemNameRow[]): Blob {
-  const list = names.map(entry => typeof entry === "string"
-    ? { name: entry.trim(), requiredQuantity: undefined as string | undefined }
-    : { name: entry.name.trim(), requiredQuantity: entry.requiredQuantity })
-    .filter(item => item.name.length > 0);
-  if (!list.length) throw new Error("لم يتم اختيار أي صنف.");
+  return createSectionedTwoColumnItemNamesPdf([names]);
+}
+
+/** Every nonempty section begins on a new physical sheet; these are A4
+ * sections, not extra header/title records. */
+export function createSectionedTwoColumnItemNamesPdf(sections:readonly (readonly PdfItemNameRow[])[]):Blob {
+  const lists=sections.map(names=>names.map(entry=>typeof entry==="string"
+    ? {name:entry.trim(),requiredQuantity:undefined,separatorBefore:false}
+    : {name:entry.name.trim(),requiredQuantity:entry.requiredQuantity,separatorBefore:!!entry.separatorBefore})
+    .filter(item=>item.name.length>0)).filter(list=>list.length>0);
+  if (!lists.length) throw new Error("لم يتم اختيار أي صنف.");
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(PAGE_WIDTH * SCALE);
   canvas.height = Math.round(PAGE_HEIGHT * SCALE);
@@ -208,7 +218,9 @@ export function createTwoColumnItemNamesPdf(names: PdfItemNameRow[]): Blob {
       : PAGE_MARGIN_X + COLUMN_WIDTH;
     const left = right - COLUMN_WIDTH;
     let y = PAGE_MARGIN_Y;
-    for (const row of rows) {
+    for (const [index,row] of rows.entries()) {
+      // No separator at the start of a physical page/column.
+      if(index>0)y+=row.gapBefore;
       let textY = y + ROW_PADDING;
       if (quantityWidth > 0) {
         ctx.save();
@@ -246,35 +258,38 @@ export function createTwoColumnItemNamesPdf(names: PdfItemNameRow[]): Blob {
     drawBlank();
     // Keep the same two A4 columns. Reserve an aligned subcolumn for the
     // required quantity only when exporting an order draft.
-    if (list.some(row => row.requiredQuantity !== undefined)) {
-      const widest = Math.max(...list.map(row =>
+    const allRows=lists.flat();
+    if (allRows.some(row => row.requiredQuantity !== undefined)) {
+      const widest = Math.max(...allRows.map(row =>
         ctx.measureText(row.requiredQuantity ?? "—").width));
       quantityWidth = Math.max(30, Math.min(65, widest + 10));
     }
-    const prepared: PreparedRow[] = list.map(row => {
-      const lines = wrapName(ctx, row.name, COLUMN_WIDTH - quantityWidth);
-      return { lines, quantity: row.requiredQuantity,
-        height: lines.length * LINE_HEIGHT + 2 * ROW_PADDING + ROW_BORDER };
-    });
-    const pageGroups = balanceItemNamesColumns(
-      prepared.map(row => row.height), PAGE_CONTENT_HEIGHT,
-    );
-    for (const [index, group] of pageGroups.entries()) {
-      if (index) drawBlank();
-      // Right-to-left reading order, identical to dir=rtl in the print sheet.
-      const rightBottom = drawColumn(prepared.slice(group.start, group.split), true);
-      const leftBottom = drawColumn(prepared.slice(group.split, group.end), false);
-      if (group.split < group.end) {
-        ctx.save();
-        ctx.strokeStyle = "#ddd";
-        ctx.lineWidth = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(PAGE_WIDTH / 2, PAGE_MARGIN_Y);
-        ctx.lineTo(PAGE_WIDTH / 2, Math.max(rightBottom, leftBottom));
-        ctx.stroke();
-        ctx.restore();
+    for (const list of lists) {
+      const prepared: PreparedRow[] = list.map(row => {
+        const lines = wrapName(ctx, row.name, COLUMN_WIDTH - quantityWidth);
+        return { lines, quantity: row.requiredQuantity,
+          height: lines.length * LINE_HEIGHT + 2 * ROW_PADDING + ROW_BORDER,
+          gapBefore:row.separatorBefore?ORDER_DRAFT_SEPARATOR:0 };
+      });
+      const pageGroups = balanceItemNamesColumns(prepared.map(row=>row.height),
+        PAGE_CONTENT_HEIGHT,prepared.map(row=>row.gapBefore));
+      for (const group of pageGroups) {
+        if(pages.length)drawBlank();
+        // Right-to-left reading order, identical to dir=rtl in the print sheet.
+        const rightBottom = drawColumn(prepared.slice(group.start, group.split), true);
+        const leftBottom = drawColumn(prepared.slice(group.split, group.end), false);
+        if (group.split < group.end) {
+          ctx.save();
+          ctx.strokeStyle = "#ddd";
+          ctx.lineWidth = 0.6;
+          ctx.beginPath();
+          ctx.moveTo(PAGE_WIDTH / 2, PAGE_MARGIN_Y);
+          ctx.lineTo(PAGE_WIDTH / 2, Math.max(rightBottom, leftBottom));
+          ctx.stroke();
+          ctx.restore();
+        }
+        flushPage();
       }
-      flushPage();
     }
     return makePdf(pages);
   } finally {
