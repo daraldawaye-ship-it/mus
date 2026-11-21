@@ -1,0 +1,44 @@
+/* ح-20 وح-21: مجموعتان متلاصقتان بنطاق المكتبة وألوان المظهر. */
+.design-connected-options {
+  display: inline-grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  border: 1px solid var(--button-border, var(--border));
+  border-radius: 5px;
+  overflow: hidden;
+}
+.design-connected-options-stack { grid-template-columns: minmax(0, 1fr); }
+.design-connected-options-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.design-connected-options > button {
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 7px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  background: var(--button-surface, var(--surface));
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  box-shadow: inset 0 1px 1px var(--button-shadow, #0003);
+}
+.design-connected-options-stack > button + button {
+  border-block-start: 1px solid var(--button-border, var(--border));
+}
+.design-connected-options-row > button + button {
+  border-inline-start: 1px solid var(--button-border, var(--border));
+}
+.design-connected-options > button:hover { background: var(--button-surface-hover, var(--hover)); }
+.design-connected-options > button[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+  box-shadow: inset 0 -2px 3px var(--button-shadow, #0003);
+}
+.design-connected-options > button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
+}

@@ -107,7 +107,16 @@
 .work-panel-tools .user-menu-entity-choice { gap: 5px; padding: 6px; }
 .work-panel-tools .user-menu-entity-choice span { white-space: normal; overflow-wrap: anywhere; }
 /* Same multi-select chip treatment as the design library's ح-17. */
-.work-panel-choice-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.work-panel-tools .work-panel-item-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-self: flex-start;
+  width: fit-content;
+}
+.work-panel-tools .work-panel-item-options > button {
+  min-height: 26px;
+  padding-inline: 8px;
+  font-size: 11px;
+}
 .work-panel-container-grip:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .work-panel-item-report + .work-panel-item-report { border-top: 2px solid var(--border); padding-top: 5px; }
 .work-panel-tools .user-menu-item-history-heading { flex-wrap: wrap; gap: 4px; padding: 3px 0 5px; font-size: 11px; }

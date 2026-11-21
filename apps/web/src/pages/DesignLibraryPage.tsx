@@ -9,6 +9,7 @@ import DesignLibraryScrollableCell from "./DesignLibraryScrollableCell";
 import "./DesignLibraryPage.css";
 import "./GlossyButtons.css";
 import "./RaisedOptionKeys.css";
+import "./ConnectedOptionKeys.css";
 const DesignLibraryExtras = lazy(() => import("./DesignLibraryExtras"));
 const DesignLibraryWorkspaces = lazy(() => import("./DesignLibraryWorkspaces"));
 const DesignLibrarySearch = lazy(() => import("./DesignLibrarySearch"));

@@ -3,12 +3,12 @@ import { GripHorizontal } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
-import "./pages/RaisedOptionKeys.css";
+import "./pages/ConnectedOptionKeys.css";
 
 type ItemView = "movement" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
-  { key: "movement", label: "حركة الصنف" },
-  { key: "alternatives", label: "بدائل الصنف" },
+  { key: "movement", label: "الحركة" },
+  { key: "alternatives", label: "البدائل" },
 ];
 const DEFAULT_HEIGHT = 380;
 const MIN_HEIGHT = 136;
@@ -71,12 +71,11 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
           <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف"
             renderSelection={selected => (
               <>
-                <div className="work-panel-choice-chips" role="group" aria-label="عرض بيانات الصنف">
+                <div className="work-panel-item-options design-connected-options design-connected-options-row" role="group" aria-label="عرض بيانات الصنف">
                   {itemViews.map(view => {
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
-                        className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
                           : [...previous, view.key])}>
