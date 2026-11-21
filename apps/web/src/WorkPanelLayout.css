@@ -299,3 +299,19 @@
   .resizable-work-panel-page { display: contents !important; }
   .resizable-work-panel-frame { display: none !important; }
 }
+
+.work-panel-tools .work-panel-movement-footer {
+  position: sticky;
+  inset-inline-start: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 3px;
+  padding: 4px;
+}
+.work-panel-tools .work-panel-movement-footer .user-menu-item-history-more { margin: 0; }
+.work-panel-tools .work-panel-movement-footer .user-menu-item-history-pager {
+  flex: 1 1 auto;
+  padding: 0;
+}

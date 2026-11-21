@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
@@ -41,16 +41,17 @@ type MovementInvoiceDetail = {
   invoiceNet: string | null;
 };
 
-function WorkPanelMovementTable({ rows, invoiceDetails }: {
+function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
   rows: StockMovement[];
   invoiceDetails: MovementInvoiceDetail[];
+  footer?: ReactNode;
 }) {
-  if (!rows.length) return null;
+  if (!rows.length && !footer) return null;
   const invoices = new Map(invoiceDetails.map(detail => [detail.movementId, detail]));
   return (
     <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
       aria-label="جدول حركات الصنف">
-      <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
+      {rows.length > 0 && <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
         <thead><tr>
           <th scope="col">النوع</th>
           <th scope="col" className="invoice-item-options-number" title="الكمية بالوحدة الأولى">الكمية</th>
@@ -105,7 +106,8 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
             </Fragment>
           );
         })}</tbody>
-      </table>
+      </table>}
+      {footer && <div className="work-panel-movement-footer">{footer}</div>}
     </div>
   );
 }
@@ -263,6 +265,28 @@ export function ItemMenuHistory({
       : !!history.data?.hasMore;
   const fetching = isAlternatives ? alternatives.isFetching :
     isMovement ? movements.isFetching : history.isFetching;
+  const inlineMovement = isMovement && workPanelMovement;
+  const controls = (<>
+    {isMovement && itemId && !waiting && !failed && (
+      <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
+        className="user-menu-item-history-more">عرض جميع حركات الصنف</Link>
+    )}
+    {(page > 1 || hasMore) && !waiting && !failed && (
+      <div className="user-menu-item-history-pager">
+        {fixedView && page > 1 && (
+          <button type="button" data-operator-action="entity.open" data-operator-detail="menu.previous" disabled={fetching} onClick={() => setPage(p => p - 1)}>
+            السابق
+          </button>
+        )}
+        <span>الصفحة {page}</span>
+        {hasMore && (
+          <button type="button" data-operator-action="entity.open" data-operator-detail="menu.next" disabled={fetching} onClick={() => setPage(p => p + 1)}>
+            المزيد
+          </button>
+        )}
+      </div>
+    )}
+  </>);
   return (
     <div className="user-menu-item-history" aria-live="polite">
       {!hideHeading && (
@@ -315,7 +339,9 @@ export function ItemMenuHistory({
               </div>
             </div>
           )) : isMovement && workPanelMovement ? (
-            <WorkPanelMovementTable rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []} />
+            <WorkPanelMovementTable key={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`}
+              rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []}
+              footer={!waiting && !failed ? controls : undefined} />
           ) : isMovement ? movements.data?.items.map(row => (
             <div key={row.id} className="user-menu-item-history-row">
               <div className="user-menu-item-history-meta">
@@ -343,25 +369,7 @@ export function ItemMenuHistory({
               </div>
             </div>
           ))}
-          {isMovement && itemId && !waiting && !failed && (
-            <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
-              className="user-menu-item-history-more">عرض جميع حركات الصنف</Link>
-          )}
-          {(page > 1 || hasMore) && !waiting && !failed && (
-            <div className="user-menu-item-history-pager">
-              {fixedView && page > 1 && (
-                <button type="button" data-operator-action="entity.open" data-operator-detail="menu.previous" disabled={fetching} onClick={() => setPage(p => p - 1)}>
-                  السابق
-                </button>
-              )}
-              <span>الصفحة {page}</span>
-              {hasMore && (
-                <button type="button" data-operator-action="entity.open" data-operator-detail="menu.next" disabled={fetching} onClick={() => setPage(p => p + 1)}>
-                  المزيد
-                </button>
-              )}
-            </div>
-          )}
+          {!inlineMovement && controls}
         </>
       )}
     </div>
