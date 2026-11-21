@@ -41,7 +41,7 @@ export function WorkPanelTools({ user, companyId }: {
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key}
-                      hideHeading={view.key === "movement"} />
+                      hideHeading={view.key === "movement"} workPanelMovement={view.key === "movement"} />
                   </div>
                 ))}
               </>

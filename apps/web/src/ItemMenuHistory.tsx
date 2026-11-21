@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
-import { signedStockMovementQuantity } from "./stock-movement-display";
+import { signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
 import { api } from "./api";
 
 type ItemMenuView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
@@ -28,9 +28,84 @@ const actions: { key: ItemMenuView; label: string }[] = [
   { key: "alternatives", label: "البدائل" },
 ];
 
+type MovementInvoiceDetail = {
+  movementId: number;
+  invoiceLineId: number;
+  invoiceId: number;
+  partyName: string | null;
+  unitPriceFirstUnit: string | null;
+  invoiceNet: string | null;
+  invoiceDiscount: string | null;
+  currencyCode: string | null;
+};
+
+function WorkPanelMovementTable({ rows, invoiceDetails }: {
+  rows: StockMovement[];
+  invoiceDetails: MovementInvoiceDetail[];
+}) {
+  if (!rows.length) return null;
+  const invoices = new Map(invoiceDetails.map(detail => [detail.movementId, detail]));
+  return (
+    <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
+      aria-label="جدول حركات الصنف">
+      <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
+        <thead><tr>
+          <th scope="col">النوع</th>
+          <th scope="col" className="invoice-item-options-number" title="الكمية بأصغر وحدة">الكمية</th>
+          <th scope="col" className="invoice-item-options-number" title="سعر الوحدة الأولى للصنف">السعر</th>
+          <th scope="col">التاريخ</th>
+          <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة، لا صافي الصنف">الصافي</th>
+          <th scope="col" className="invoice-item-options-number" title="خصم الفاتورة كاملة، لا خصم الصنف">الخصم</th>
+        </tr></thead>
+        <tbody>{rows.map(row => {
+          const quantity = signedStockMovementQuantity(row.quantitySmallest);
+          const detail = invoices.get(row.id);
+          const invoice = detail?.invoiceLineId === row.invoiceLineId && detail?.invoiceId === row.invoiceId ? detail : undefined;
+          const purchase = row.kind === "purchase" || row.kind === "purchase_return";
+          const sale = row.kind === "sale" || row.kind === "sales_return";
+          const supplier = purchase ? (invoice?.partyName?.trim() || workPanelPurchaseSupplier(row)) : null;
+          const money = (value: string | null | undefined, description: string) => (
+            <td className="invoice-item-options-number"
+              title={value != null ? [description, value, invoice?.currencyCode].filter(Boolean).join(" ") : description}>
+              <bdi>{value ?? "—"}</bdi>
+            </td>
+          );
+          const reference = row.invoiceId ? `فاتورة ${row.invoiceId}` :
+            row.operationId ? `عملية ${row.operationId}` : null;
+          return (
+            <Fragment key={row.id}>
+              <tr>
+                <td title={stockMovementKindLabels[row.kind]}>{workPanelMovementKindLabels[row.kind]}</td>
+                <td className="invoice-item-options-number" title={quantity}><bdi>{quantity}</bdi></td>
+                {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
+                <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
+                {money(invoice?.invoiceNet, "صافي الفاتورة:")}
+                {money(invoice?.invoiceDiscount, "خصم الفاتورة:")}
+              </tr>
+              <tr className="invoice-item-history-details-row">
+                <td colSpan={6}>
+                  <div className="invoice-item-history-details work-panel-movement-details">
+                    {purchase && <span dir="auto" title={supplier ?? undefined}>المورد: {supplier ?? "—"}</span>}
+                    {sale && <span dir="auto" title={invoice?.partyName ?? undefined}>الحساب: {invoice?.partyName?.trim() || "—"}</span>}
+                    {invoice?.currencyCode && <span dir="auto" title="عملة الفاتورة">{invoice.currencyCode}</span>}
+                    {row.locationName && <span dir="auto" title="الموقع">{row.locationName}</span>}
+                    {row.createdByName && <span dir="auto" title="بواسطة">{row.createdByName}</span>}
+                    {row.doctorName && <span dir="auto" title="الطبيب أو الجهة">{row.doctorName}</span>}
+                    {reference && <span dir="auto">{reference}</span>}
+                  </div>
+                </td>
+              </tr>
+            </Fragment>
+          );
+        })}</tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -41,6 +116,7 @@ export function ItemMenuHistory({
   resetKey?: number;
   fixedView?: "movement" | "alternatives";
   hideHeading?: boolean;
+  workPanelMovement?: boolean;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
@@ -83,6 +159,20 @@ export function ItemMenuHistory({
       })}`, {signal}),
     enabled: !!itemId && view === "movement",
     staleTime: 10000,
+  });
+  const invoiceMovementIds = workPanelMovement && view === "movement"
+    ? (movements.data?.items ?? [])
+      .filter(row => row.invoiceId && row.invoiceLineId &&
+        ["purchase", "purchase_return", "sale", "sales_return"].includes(row.kind))
+      .map(row => row.id).join(",")
+    : "";
+  const movementInvoices = useQuery<{ items: MovementInvoiceDetail[] }>({
+    queryKey: ["work-panel-movement-invoices", userId, companyId, itemId, invoiceMovementIds],
+    queryFn: ({signal}) => api<{items: MovementInvoiceDetail[]}>(
+      `/companies/${companyId}/item-history/${itemId}/movement-invoices?movementIds=${invoiceMovementIds}`, {signal}),
+    enabled: !!itemId && !!invoiceMovementIds,
+    staleTime: 10000,
+    retry: false,
   });
   const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
     queryKey: ["avatar-item-alternatives", userId, companyId, itemId, page],
@@ -188,7 +278,9 @@ export function ItemMenuHistory({
                   <span>الرصيد: <bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}</span>}
               </div>
             </div>
-          )) : isMovement ? movements.data?.items.map(row => (
+          )) : isMovement && workPanelMovement ? (
+            <WorkPanelMovementTable rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []} />
+          ) : isMovement ? movements.data?.items.map(row => (
             <div key={row.id} className="user-menu-item-history-row">
               <div className="user-menu-item-history-meta">
                 <span dir="ltr">{row.documentDate}</span>

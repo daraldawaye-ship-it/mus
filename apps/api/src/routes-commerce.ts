@@ -40,10 +40,31 @@ import { electronicReceiptSchema, receiveElectronicMovement, listElectronicRecei
 import { adenToday, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
 import { resolveInvoicePostingDate } from "./services/invoice-posting-date.ts";
 
+/** Workboard-only posted data for the exact stock movement/invoice-line relation. */
+export const workPanelMovementInvoiceSql = `SELECT m.id AS "movementId", il.id AS "invoiceLineId", i.id AS "invoiceId",
+             CASE WHEN i.kind='purchase' THEN NULLIF(i.supplier_account_name,'')
+                  ELSE NULLIF(i.counterparty_account_name,'') END AS "partyName",
+             CASE WHEN i.kind='purchase' THEN
+               round(il.total::numeric / NULLIF(il.smallest_quantity,0) *
+                 (il.factor2::numeric * il.factor3::numeric),4)
+             ELSE round(il.unit_price::numeric * CASE il.unit
+               WHEN 1 THEN 1 WHEN 2 THEN il.factor2
+               ELSE il.factor2::numeric * il.factor3 END,2)
+             END::text AS "unitPriceFirstUnit",
+             i.total::text AS "invoiceNet", i.discount::text AS "invoiceDiscount",
+             i.currency_code AS "currencyCode"
+           FROM stock_movements m
+           JOIN invoices i ON i.company_id=m.company_id AND i.id=m.invoice_id AND i.posted
+           JOIN invoice_lines il ON il.company_id=m.company_id AND il.invoice_id=i.id
+             AND il.id=m.invoice_line_id AND il.item_id=m.item_id
+           WHERE m.company_id=$1 AND m.item_id=$2 AND m.id=ANY($3::int[])
+             AND ((i.kind='purchase' AND m.kind IN ('purchase','purchase_return')) OR
+                  (i.kind='sale' AND m.kind IN ('sale','sales_return')))`;
+
 async function readCommerce<T>(
   pool: Pool,
   req: Request,
-  action: (client: PoolClient, companyId: number) => Promise<T>,
+  action: (client: PoolClient, companyId: number, user: Awaited<ReturnType<typeof currentActor>>) => Promise<T>,
 ): Promise<T> {
   return transaction(pool, async (client) => {
     await client.query(
@@ -52,7 +73,7 @@ async function readCommerce<T>(
     const companyId = id(req.params.companyId),
       user = await currentActor(client, actor(req), false);
     await companyAccess(client, user, companyId, "commerce.view");
-    return action(client, companyId);
+    return action(client, companyId, user);
   });
 }
 export function commerceRoutes(pool: Pool): Router {
@@ -241,6 +262,31 @@ export function commerceRoutes(pool: Pool): Router {
         return result.rows;
       });
       res.json({ items: items.slice(0, pageSize), hasMore: items.length > pageSize });
+    }),
+  );
+  router.get(
+    `${base}/item-history/:itemId/movement-invoices`,
+    handler(async (req, res) => {
+      if (!actor(req).owner) throw new HttpError(403, "forbidden", "هذا العرض متاح لمالك الموقع فقط");
+      const itemId = id(req.params.itemId);
+      const selected = req.query.movementIds;
+      if (typeof selected !== "string" || !selected || selected.length > 110)
+        throw new HttpError(400, "invalid_query", "حدد حتى 10 حركات مخزون");
+      const tokens = selected.split(",");
+      if (tokens.length > 10)
+        throw new HttpError(400, "invalid_query", "حدد حتى 10 حركات مخزون");
+      const movementIds = [...new Set(tokens.map(value => id(value)))];
+      const items = await readCommerce(pool, req, async (client, companyId, user) => {
+        if (!user.owner) throw new HttpError(403, "forbidden", "هذا العرض متاح لمالك الموقع فقط");
+        await companyAccess(client, user, companyId, "inventory.view");
+        const { rows } = await client.query(
+          workPanelMovementInvoiceSql,
+          [companyId, itemId, movementIds],
+        );
+        return rows;
+      });
+      res.set("Cache-Control", "private, no-store");
+      res.json({ items });
     }),
   );
   router.get(
