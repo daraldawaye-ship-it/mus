@@ -1248,7 +1248,8 @@ function Workspace() {
   const accountDock=showWorkPanelAccountSearch(user,navigationContext,
     dockPageDirectory.isError?undefined:dockPageDirectory.data,!!employeePreview);
   const pageDock=showWorkPanelPageSearch(user,navigationContext,!!employeePreview);
-  const notesDock=showWorkPanelPrivateNotes(user,navigationContext,!!employeePreview);
+  const notesDock=inCompany && !visitorOnly && companyId === navigationContext?.company.id &&
+    showWorkPanelPrivateNotes(user,navigationContext,!!employeePreview);
   const currentDockPageKey=/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname)
     ? "company.item-options-list" : pageKeyForLocation(location.pathname,location.search);
   const dockPages=dockPageDirectory.isError?undefined:dockPageDirectory.data;

@@ -1,3 +1,4 @@
+import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -9,7 +10,7 @@ import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
 import { InvoiceSideItemMovements } from "./InvoiceSideItemMovements";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
+type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
 type PledgeActivity = {items:{kind:"add"|"pay"|"receive";customerName:string;details:string;amount:string|null;createdAt:string;accountId:number;documentId:number|null}[];hasMore:boolean};
 type Transfer = { id: number; kind: "pouch" | "electronic" | "custodyFunding" | "custodyTransfer"; amount: string; notes: string; createdAt: string };
 type Transfers = {
@@ -32,6 +33,7 @@ type PresentEmployee = {
   lastCheckedInAt: string | null;
 };
 const views: { value: View; label: string }[] = [
+  { value: "privateNotes", label: "ملاحظاتي الخاصة" },
   { value: "pouch", label: "ترحيلاتي إلى الحافظة" },
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
   { value: "pledges", label: "حركات الرهونات — إضافة وقبض وصرف" },
@@ -47,14 +49,14 @@ function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
   </span>;
 }
 
-/** The second (previously empty) invoice-side panel. Only the selected view
+/** The former lower invoice panel, now in the work panel. Only the selected view
  * fetches, so item lookup and invoice entry do not wait for these reports.
  * Both queries retain the website's existing authentication and permissions.
  */
 export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
-  const [view, setView] = useState<View>("pouch");
+  const [view, setView] = useState<View>("privateNotes");
   const [clockNow, setClockNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = window.setInterval(() => setClockNow(Date.now()), 60_000);
@@ -78,7 +80,7 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
     staleTime:5000,refetchInterval:30_000,refetchOnWindowFocus:true,
   });
   const presence = useQuery<{ items: PresentEmployee[] }>({
-    queryKey: ["attendance", companyId, "currently-present"],
+    queryKey: ["attendance", companyId, "currently-present", user?.id],
     queryFn: ({ signal }) => api<{ items: PresentEmployee[] }>(
       `/companies/${companyId}/attendance/currently-present`, { signal }),
     enabled: !!user && view === "present" && !offline,
@@ -99,9 +101,9 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
     (transfers.data?.custodyTransfer?.count ?? 0);
   const presentRows = (presence.data?.items ?? []).filter(row => row.isPresent);
   return (
-    <section className="invoice-empty-panel invoice-side-overview" aria-label="خيارات الصندوق والحضور">
+    <section className="work-panel-tool-card work-panel-invoice-overview invoice-side-overview" aria-label="خيارات الصندوق والحضور">
       <details className="invoice-side-overview-menu" ref={menu}>
-        <summary aria-label="قائمة خيارات المساحة الجانبية">
+        <summary aria-label="خيارات الصندوق والحضور والملاحظات">
           <span>{selected.label}</span><span aria-hidden="true">▾</span>
         </summary>
         <div className="invoice-side-overview-choices">
@@ -116,8 +118,9 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
         </div>
       </details>
       <div className="invoice-side-overview-content">
-        {offline && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
-        {(view === "pouch" || view === "electronic") ? (
+        {offline && view !== "privateNotes" && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
+        {view === "privateNotes" ? <InvoiceSidePrivateNotes />
+          : (view === "pouch" || view === "electronic") ? (
           <>
             {!offline && transfers.isLoading && <small>جارٍ تحميل ترحيلاتك…</small>}
             {transfers.isError && !offline && <small role="alert">تعذر قراءة ترحيلات الصندوق. راجع صلاحيات حسابك أو الاتصال.</small>}

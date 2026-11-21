@@ -397,22 +397,24 @@
 .dock-search-results-layer .user-menu-entity-choice { gap: 5px; padding: 6px; }
 .dock-search-results-layer .user-menu-entity-choice span { white-space: normal; overflow-wrap: anywhere; }
 
-.work-panel-private-notes-container {
-  min-width: 0;
+.work-panel-tool-card.work-panel-invoice-overview {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0;
 }
-.work-panel-private-notes-container summary {
-  cursor: pointer;
-  font-weight: 700;
-  font-size: .85rem;
-  line-height: 1.3;
+.work-panel-invoice-overview > .invoice-side-overview-menu[open] {
+  flex: 0 0 auto;
+  max-height: min(45dvh, 19rem);
 }
-.work-panel-private-notes-container details[open] > summary {
-  margin-bottom: 5px;
+.work-panel-invoice-overview > .invoice-side-overview-content {
+  flex: 0 1 auto;
+  max-height: min(42dvh, 20rem);
+  padding: 6px;
 }
-.work-panel-private-notes-container .invoice-side-private-notes {
+.work-panel-invoice-overview .invoice-side-private-notes {
   gap: 5px;
 }
-.work-panel-private-notes-container .invoice-side-private-list {
-  max-height: min(24vh, 14rem);
+.work-panel-invoice-overview .invoice-side-private-list {
+  max-height: min(24dvh, 14rem);
   gap: 4px;
 }

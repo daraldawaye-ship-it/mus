@@ -3,7 +3,7 @@ import {dockAccountAccess} from "./dock-card-access";
 import {useDockTableSelection} from "./DockTableContext";
 import { WorkPanelUserSearch } from "./WorkPanelUserSearch";
 import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
-import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
+import { InvoiceSideOverview } from "./InvoiceSideOverview";
 import type { PageEntry } from "../../../packages/contracts/src/index";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -181,13 +181,8 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
       {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} context={context} />}
-      {showPrivateNotes && <section className="work-panel-tool-card work-panel-private-notes-container"
-        aria-labelledby="work-panel-private-notes-title">
-        <details open>
-          <summary id="work-panel-private-notes-title">ملاحظاتي الخاصة</summary>
-          <InvoiceSidePrivateNotes key={user.id} />
-        </details>
-      </section>}
+      {showPrivateNotes && context &&
+        <InvoiceSideOverview key={`${user.id}:${context.company.id}`} context={context} />}
     </div>
   );
 }

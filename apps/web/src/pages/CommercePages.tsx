@@ -29,7 +29,6 @@ import { CompanyPrintHeader, useCompanyLetterhead, usePreparedCompanyLetterhead 
 import { StagedInvoicesPanel } from "../StagedInvoiceViews";
 import { InvoicePrintSheet, type PrintableInvoice } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
-import { InvoiceSideOverview } from "../InvoiceSideOverview";
 import type { InvoiceItemAction } from "../InvoiceItemActionsDropdown";
 import { InvoiceItemCompositionActions,InvoiceItemCompositionEditor } from "../InvoiceItemCompositionActions";
 import { canEditInvoiceItemComposition } from "../invoice-item-composition-access";
@@ -1565,8 +1564,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
           context={context} kind={kind} selectedItemId={selectedItemId}
           selectedItemName={selectedItemName} selectedItemIsReturn={selectedItemIsReturn}
           userId={user?.id} />
-        {kind === "sale" ? <InvoiceSideOverview context={context} /> :
-          <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
+        {kind !== "sale" && <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
       </aside>}
     </div>
   );
