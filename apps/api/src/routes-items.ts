@@ -9,6 +9,7 @@ import {
   itemAgentPatchSchema,
   itemCompositionSchema,
   itemCompositionPatchSchema,
+  compositionClassifications,
   compositionAssignmentSchema,
   itemSchema,
   itemPatchSchema,
@@ -202,6 +203,7 @@ export function itemRoutes(pool: Pool): Router {
     arabicName: "f.arabic_name",
     englishName: "f.english_name",
     productForm: "f.product_form",
+    classification: "f.classification",
     active: "f.active",
     identicalAlternative: "f.identical_alternative",
     nonInterchangeable: "f.non_interchangeable",
@@ -390,7 +392,10 @@ export function itemRoutes(pool: Pool): Router {
         masterPage(client, req, companyId, itemCompositionSelect,
           "FROM item_compositions f", "f", compositionColumns,
           ["f.arabic_name", "f.english_name", "f.description"],
-          itemCompositionDTO, { active: "boolean" }, "arabicName:asc"),
+          itemCompositionDTO, {
+            active: "boolean",
+            classification: {values: compositionClassifications,nullValue:"unclassified",noneValue:"none"},
+          }, "arabicName:asc"),
       ));
     }),
   );

@@ -54,6 +54,10 @@ export async function masterRow(
   if (!result.rows[0]) missing();
   return result.rows[0];
 }
+type MasterListMultiFilter = { values:readonly string[]; nullValue:string; noneValue:string };
+type MasterFilter = "boolean" | "id" | "exclude-id" | readonly string[] | MasterListMultiFilter;
+const isMasterListMultiFilter=(filter:MasterFilter): filter is MasterListMultiFilter=>
+  typeof filter==="object" && !Array.isArray(filter);
 export async function masterPage<T>(
   pool: Database,
   req: Request,
@@ -64,7 +68,7 @@ export async function masterPage<T>(
   columns: Record<string, string>,
   searchColumns: string[],
   dto: (row: QueryResultRow) => T,
-  filters: Record<string, "boolean" | "id" | "exclude-id" | readonly string[]>,
+  filters: Record<string, MasterFilter>,
   fallback = "id:asc",
   optionKind?: "item" | "account",
   exactMatchColumns: string[] = [],
@@ -92,6 +96,25 @@ export async function masterPage<T>(
     if (value === undefined) continue;
     if (typeof value !== "string")
       throw new HttpError(400, "invalid_query", "الفلتر غير صالح");
+    if (isMasterListMultiFilter(allowed)) {
+      if (value === allowed.noneValue) { filter += " AND FALSE"; continue; }
+      const chosen = value.split(",");
+      const permitted = [...allowed.values,allowed.nullValue];
+      if (!chosen.length || new Set(chosen).size !== chosen.length ||
+          chosen.some(choice=>!permitted.includes(choice)))
+        throw new HttpError(400,"invalid_query","قيم الفلتر غير صالحة");
+      if (chosen.length === permitted.length) continue;
+      const column=columns[field];
+      if (!column) throw new Error("Missing filter column");
+      const membership=chosen.filter(choice=>choice!==allowed.nullValue), clauses:string[]=[];
+      if (membership.length) {
+        parameters.push(membership);
+        clauses.push(`${column}=ANY($${parameters.length}::text[])`);
+      }
+      if (chosen.includes(allowed.nullValue)) clauses.push(`${column} IS NULL`);
+      filter += ` AND (${clauses.join(" OR ")})`;
+      continue;
+    }
     let normalized: string | boolean | number;
     if (allowed === "boolean") {
       if (!["true", "false"].includes(value))

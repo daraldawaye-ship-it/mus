@@ -19,6 +19,7 @@ import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../ap
 import { errorMessage, ServerLookup } from "../phase2";
 import { itemsAccess } from "./ItemsPages";
 import { CompositionImportDialog } from "../CompositionImportDialog";
+import "./ItemCompositionClassificationFilter.css";
 import {
   Button, Card, DataTable, Dialog, Field, Notice,
   PageHeader, Select, ValueCell,
@@ -26,13 +27,35 @@ import {
 
 const LinkedItemEditor=lazy(()=>import("./ItemsPages").then(m=>({default:m.InvoiceItemEditor})));
 
+const classificationFilterChoices = [
+  ...compositionClassifications.map(value=>({value,label:compositionClassificationLabels[value]})),
+  {value:"unclassified",label:"بلا تصنيف"},
+] as const;
+
 export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const companyId=context.company.id;
   const canView=itemsAccess(context), canManage=itemsAccess(context,true);
   const guard=useScopeGuard(`company:${companyId}:compositions`);
   const [params,setParams]=useSearchParams();
   const active=params.get("active");
-  const resource=`/companies/${companyId}/item-compositions${active ? `?active=${active}`: ""}`;
+  const classification=params.get("classification");
+  const chosen=new Set(classification===null
+    ? classificationFilterChoices.map(choice=>choice.value)
+    : classification==="none" ? [] : classification.split(","));
+  const allChosen=classificationFilterChoices.every(choice=>chosen.has(choice.value));
+  const filters=new URLSearchParams();
+  if(active)filters.set("active",active);
+  if(classification!==null)filters.set("classification",classification);
+  const resource=`/companies/${companyId}/item-compositions${filters.size?`?${filters}`:""}`;
+  function selectClassifications(values:Set<string>) {
+    const selected=classificationFilterChoices.filter(choice=>values.has(choice.value)).map(choice=>choice.value);
+    setParams(previous=>{
+      const next=new URLSearchParams(previous);
+      if(selected.length===classificationFilterChoices.length)next.delete("classification");
+      else next.set("classification",selected.length?selected.join(","):"none");
+      next.delete("page");return next;
+    });
+  }
   const list=usePagedQuery<ItemComposition>(resource,`company:${companyId}:item-compositions`);
   const [editing,setEditing]=useState<ItemComposition|null|undefined>(undefined);
   const [importing,setImporting]=useState(false);
@@ -63,6 +86,8 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
     {accessorKey:"arabicName",header:"اسم التركيب",size:260,
       cell:({row})=><ValueCell>{row.original.arabicName}</ValueCell>},
     {accessorKey:"productForm",header:"الشكل",size:100},
+    {accessorKey:"classification",header:"التصنيف",size:140,
+      cell:({row})=><ValueCell>{row.original.classification?compositionClassificationLabels[row.original.classification]:"بلا تصنيف"}</ValueCell>},
     {accessorKey:"description",header:"الشرح",size:260,
       cell:({row})=><ValueCell>{row.original.description||"—"}</ValueCell>},
     {accessorKey:"identicalAlternative",header:"البديل مطابق",size:120,
@@ -109,6 +134,24 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
           <option value="true">فعال</option>
           <option value="false">مؤرشف</option>
         </Select>
+        <details className="composition-classification-filter">
+          <summary>التصنيف: {allChosen?"الكل":chosen.size>0?`${chosen.size} محدد`:"لا شيء"}</summary>
+          <fieldset aria-label="تصفية التراكيب حسب التصنيف">
+            <div className="composition-classification-filter-actions">
+              <button type="button" className="button button-secondary button-compact" disabled={allChosen}
+                onClick={()=>selectClassifications(new Set(classificationFilterChoices.map(x=>x.value)))}>تحديد الكل</button>
+              <button type="button" className="button button-secondary button-compact" disabled={!chosen.size}
+                onClick={()=>selectClassifications(new Set())}>إلغاء الكل</button>
+            </div>
+            {classificationFilterChoices.map(choice=><label key={choice.value} className="check-label">
+              <input type="checkbox" checked={chosen.has(choice.value)} onChange={e=>{
+                const next=new Set(chosen);
+                if(e.currentTarget.checked)next.add(choice.value);else next.delete(choice.value);
+                selectClassifications(next);
+              }}/>{choice.label}
+            </label>)}
+          </fieldset>
+        </details>
       </div>
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
       <DataTable columns={columns} data={list.data?.items??[]}

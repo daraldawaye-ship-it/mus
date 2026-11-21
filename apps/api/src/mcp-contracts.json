@@ -2912,7 +2912,7 @@
     "source": "routes-items.ts"
   },
   "GET /companies/:companyId/item-compositions": {
-    "queryFields": [],
+    "queryFields": ["classification"],
     "source": "routes-items.ts"
   },
   "POST /companies/:companyId/item-compositions/import-batch": {
