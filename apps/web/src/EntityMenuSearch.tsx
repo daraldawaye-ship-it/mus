@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { ItemMenuHistory, type ItemMenuQuickAction } from "./ItemMenuHistory";
@@ -17,20 +17,22 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 };
 
 export function EntityMenuSearch({
-  user, companyId, employeeId, employeeName, kind, itemMenuReset = 0, onEditItem,
-  onOpenComposition, onItemQuickAction, canCreateMemo, canViewItemCompositions,
+  user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
+  onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection,
 }: {
   user: User;
   companyId: number | null;
-  employeeId: number | null;
+  employeeId?: number | null;
   employeeName?: string | null;
   kind: RecentEntityKind;
   itemMenuReset?: number;
-  onEditItem: (itemId: number) => void;
-  onOpenComposition: (compositionId: number) => void;
-  onItemQuickAction: (action: ItemMenuQuickAction,itemId: number,itemName: string) => void;
-  canCreateMemo: boolean;
-  canViewItemCompositions: boolean;
+  onEditItem?: (itemId: number) => void;
+  onOpenComposition?: (compositionId: number) => void;
+  onItemQuickAction?: (action: ItemMenuQuickAction,itemId: number,itemName: string) => void;
+  canCreateMemo?: boolean;
+  canViewItemCompositions?: boolean;
+  renderSelection?: (selected: RecentEntity | null) => ReactNode;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -45,6 +47,7 @@ export function EntityMenuSearch({
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const resultsId = useId();
   const {label, placeholder} = config[kind];
   const company = companyId ?? 0;
 
@@ -113,7 +116,7 @@ export function EntityMenuSearch({
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={canSearch && focused}
-            aria-controls={canSearch ? `avatar-${kind}-results` : undefined}
+            aria-controls={canSearch && focused ? resultsId : undefined}
             autoComplete="off"
             placeholder={placeholder}
             value={entry}
@@ -146,7 +149,7 @@ export function EntityMenuSearch({
       )}
       {company > 0 && focused && !!entry.trim() && (
         <div className="user-menu-entity-results"
-          id={`avatar-${kind}-results`} role="listbox" aria-label={`نتائج ${label}`}>
+          id={resultsId} role="listbox" aria-label={`نتائج ${label}`}>
           {result.isFetching && <p className="user-menu-entity-hint">جارٍ البحث…</p>}
           {result.isError && <p className="user-menu-entity-hint">تعذر البحث أو ليست لديك صلاحية عرض هذه البيانات.</p>}
           {!result.isFetching && !result.isError && !choices.length &&
@@ -175,7 +178,8 @@ export function EntityMenuSearch({
           )}
         </div>
       )}
-      {kind === "item" && company > 0 && (
+      {renderSelection?.(selected)}
+      {!renderSelection && kind === "item" && company > 0 && (
         <ItemMenuHistory userId={user.id} companyId={company}
           itemId={selected?.id ?? null} itemName={selected?.name ?? null}
           resetKey={itemMenuReset} onEditItem={onEditItem}
@@ -183,7 +187,7 @@ export function EntityMenuSearch({
           onQuickAction={onItemQuickAction} canCreateMemo={canCreateMemo}
           canViewItemCompositions={canViewItemCompositions} />
       )}
-      {!focused && selected && kind !== "item" && (
+      {!renderSelection && !focused && selected && kind !== "item" && (
         <p className="user-menu-entity-hint">
           {recent ? "آخر " + label + " تم التعامل معه: " : "المستخدم الافتراضي: "}
           <strong>{selected.name}</strong>

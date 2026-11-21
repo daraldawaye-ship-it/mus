@@ -67,6 +67,7 @@ import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { WorkPanelLayout } from "./WorkPanelLayout";
+import { WorkPanelTools } from "./WorkPanelTools";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
@@ -1398,6 +1399,7 @@ function Workspace() {
               {user ? (
                 <UserMenu
                   user={user}
+                  entityToolsInWorkPanel={!!user.owner && !employeePreview}
                   // The last visited, still-accessible company is already resolved
                   // for public routes. Use it for personal shortcuts too.
                   companyId={navigationContext?.company.id ?? null}
@@ -1429,7 +1431,11 @@ function Workspace() {
               )}
             </div>
           </header>
-          <WorkPanelLayout enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}>
+          <WorkPanelLayout key={user?.id ?? "guest"} enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}
+            renderTools={availableHeight => user && (
+              <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
+                user={user} companyId={navigationContext?.company.id ?? null} availableHeight={availableHeight} />
+            )}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
               <strong>تصفح بصلاحيات: {employeePreview.employeeName}</strong>

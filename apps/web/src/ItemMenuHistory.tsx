@@ -28,24 +28,26 @@ const actions: { key: ItemMenuView; label: string }[] = [
   { key: "alternatives", label: "البدائل" },
 ];
 
-/** The search stays in place. The five scalable navigation-style tiles are
- * replaced by a page of ten real records; tapping the top Item tab resets them. */
+/** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey, onEditItem, onOpenComposition,
-  onQuickAction, canCreateMemo, canViewItemCompositions,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView,
+  onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
+  canCreateMemo = false, canViewItemCompositions = false,
 }: {
   userId: number;
   companyId: number;
   itemId: number | null;
   itemName: string | null;
-  resetKey: number;
-  onEditItem: (itemId: number) => void;
-  onOpenComposition: (compositionId: number) => void;
-  onQuickAction: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
-  canCreateMemo: boolean;
-  canViewItemCompositions: boolean;
+  resetKey?: number;
+  fixedView?: "movement" | "alternatives";
+  onEditItem?: (itemId: number) => void;
+  onOpenComposition?: (compositionId: number) => void;
+  onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
+  canCreateMemo?: boolean;
+  canViewItemCompositions?: boolean;
 }) {
-  const [view, setView] = useState<ItemMenuView | null>(null);
+  const [selectedView, setView] = useState<ItemMenuView | null>(null);
+  const view = fixedView ?? selectedView;
   const [page, setPage] = useState(1);
   useEffect(() => { setView(null); setPage(1); }, [resetKey]);
   useEffect(() => { setPage(1); }, [itemId, view]);
@@ -56,7 +58,7 @@ export function ItemMenuHistory({
     queryKey: ["avatar-item-composition-link", userId, companyId, itemId],
     queryFn: ({signal}) => api<{item: {id: number; compositionId: number | null}}>(
       `/companies/${companyId}/items/${itemId}`, {signal}),
-    enabled: !!itemId && canViewItemCompositions,
+    enabled: !!itemId && canViewItemCompositions && !fixedView,
     staleTime: 30_000,
   });
   const compositionId = itemCard.data?.item.id === itemId
@@ -134,7 +136,8 @@ export function ItemMenuHistory({
     );
   }
 
-  const selectedLabel = actions.find(action => action.key === view)?.label;
+  const selectedLabel = fixedView === "alternatives"
+    ? "بدائل الصنف" : actions.find(action => action.key === view)?.label;
   const isAlternatives = view === "alternatives";
   const isMovement = view === "movement";
   const isInvoice = view === "purchase" || view === "sale";
@@ -215,6 +218,11 @@ export function ItemMenuHistory({
           )}
           {(page > 1 || hasMore) && !waiting && !failed && (
             <div className="user-menu-item-history-pager">
+              {fixedView && page > 1 && (
+                <button type="button" data-operator-action="entity.open" data-operator-detail="menu.previous" disabled={fetching} onClick={() => setPage(p => p - 1)}>
+                  السابق
+                </button>
+              )}
               <span>الصفحة {page}</span>
               {hasMore && (
                 <button type="button" data-operator-action="entity.open" data-operator-detail="menu.next" disabled={fetching} onClick={() => setPage(p => p + 1)}>

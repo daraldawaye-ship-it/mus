@@ -62,12 +62,14 @@ export function UserMenu({
   companyId = null,
   employeeId = null,
   employeeName = null,
+  entityToolsInWorkPanel = false,
 }: {
   user: User;
   onLogout: () => void;
   companyId?: number | null;
   employeeId?: number | null;
   employeeName?: string | null;
+  entityToolsInWorkPanel?: boolean;
 }) {
   const appearance = useAppearance();
   const location = useLocation();
@@ -91,7 +93,8 @@ export function UserMenu({
   const permittedTabs = directory.data
     ? allowedAvatarTabs(user.owner, companyId, directory.data)
     : cachedMenu?.tabs ?? allowedAvatarTabs(user.owner, companyId, undefined);
-  const visibleSections = sections.filter(section => permittedTabs.includes(section.key));
+  const visibleSections = sections.filter(section => permittedTabs.includes(section.key)
+    && !(entityToolsInWorkPanel && (section.key === "item" || section.key === "financialAccount")));
   // Follow current server page permissions; do not hardcode a user's role.
   const canCreateMemo = directory.data?.some(entry =>
     entry.key === "company.memos" && entry.enabled && entry.actionAccess.create,
@@ -114,9 +117,9 @@ export function UserMenu({
 
   useEffect(() => { setOpen(false); setQuickOptionsOpen(false); }, [location.pathname, user.id]);
   useEffect(() => {
-    if (!permittedTabs.includes(activeTab)) setActiveTab("navigation");
-  }, [activeTab, permittedTabs.join("|")]);
-  const displayedTab = permittedTabs.includes(activeTab) ? activeTab : "navigation";
+    if (!visibleSections.some(section => section.key === activeTab)) setActiveTab("navigation");
+  }, [activeTab, permittedTabs.join("|"), entityToolsInWorkPanel]);
+  const displayedTab = visibleSections.some(section => section.key === activeTab) ? activeTab : "navigation";
   useEffect(() => {
     if (!open) return;
     menu.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();

@@ -4,7 +4,8 @@ import { GripHorizontal, GripVertical, PanelLeftClose, PanelLeftOpen } from "luc
 import "./WorkPanelLayout.css";
 
 type StoredPanel = { desktop: number; mobile: number; open: boolean };
-const DEFAULT: StoredPanel = { desktop: 94, mobile: 128, open: true };
+const DEFAULT: StoredPanel = { desktop: 320, mobile: 320, open: true };
+const MIN_DESKTOP = 220;
 const STORAGE_PREFIX = "alraesy:work-panel:v1:";
 const MOBILE_QUERY = "(max-width: 680px)";
 
@@ -25,9 +26,10 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), Math.max(min, max));
 }
 
-export function WorkPanelLayout({ enabled, userId, children }: {
+export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   enabled: boolean;
   userId: number | null;
+  renderTools?: (availableHeight: number) => ReactNode;
   children: ReactNode;
 }) {
   const [settings, setSettings] = useState<StoredPanel>(() => loadPanel(userId));
@@ -64,16 +66,16 @@ export function WorkPanelLayout({ enabled, userId, children }: {
 
   const contentWidth = layoutRef.current?.getBoundingClientRect().width
     || viewport.width - (viewport.width > 680 ? 64 : 0);
-  const maxDesktop = Math.max(48, Math.min(660, contentWidth - 320));
+  const maxDesktop = Math.max(MIN_DESKTOP, Math.min(660, contentWidth - 320));
   const maxMobile = Math.max(64, Math.min(Math.round(viewport.height * 0.8), viewport.height - headerHeight - 130));
   const size = mobile
     ? clamp(settings.mobile, 64, maxMobile)
-    : clamp(settings.desktop, 48, maxDesktop);
+    : clamp(settings.desktop, MIN_DESKTOP, maxDesktop);
   const displayedSize = settings.open ? size : mobile ? 30 : 24;
 
   function setSize(value: number) {
     if (mobile) setSettings(s => ({ ...s, mobile: clamp(value, 64, maxMobile), open: true }));
-    else setSettings(s => ({ ...s, desktop: clamp(value, 48, maxDesktop), open: true }));
+    else setSettings(s => ({ ...s, desktop: clamp(value, MIN_DESKTOP, maxDesktop), open: true }));
   }
   function startDrag(event: PointerEvent<HTMLButtonElement>) {
     if (!settings.open) {
@@ -139,7 +141,7 @@ export function WorkPanelLayout({ enabled, userId, children }: {
                   <PanelLeftClose size={16} />
                 </button>
               </div>
-              <p className="resizable-work-panel-note">مساحة تجريبية لإضافة أدوات اللوح وتطويرها</p>
+              {renderTools?.(mobile ? size : viewport.height - headerHeight)}
             </div>
           )}
           {!settings.open && (
@@ -158,7 +160,7 @@ export function WorkPanelLayout({ enabled, userId, children }: {
             className="resizable-work-panel-grip"
             aria-label={mobile ? "سحب خطاف اللوح لتغيير ارتفاعه" : "سحب خطاف اللوح لتغيير عرضه"}
             aria-orientation={mobile ? "horizontal" : "vertical"}
-            aria-valuemin={mobile ? 64 : 48}
+            aria-valuemin={mobile ? 64 : MIN_DESKTOP}
             aria-valuemax={mobile ? maxMobile : maxDesktop}
             aria-valuenow={size}
             role="separator"
