@@ -16,6 +16,7 @@ import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { setCompanyOverviewPageVisibility } from "./services/company-overview-page-visibility.ts";
 import { audit } from "./services/audit.ts";
+import {readPageVisitStatistics,searchPageVisitUsers} from "./services/page-visit-statistics.ts";
 import { listQuery } from "./services/lists.ts";
 import {
   assertRequestPagesEnabled,
@@ -34,6 +35,37 @@ const searchText = (value: string) =>
     .toLocaleLowerCase("ar");
 export function pageRoutes(pool: Pool): Router {
   const router = Router();
+  const rankingQuerySchema=z.object({
+    userId:z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(z.number().int().positive().max(2_147_483_647)).optional(),
+    period:z.enum(["all","30","90"]).default("all"),
+    page:z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(z.number().int().positive().max(5000)).default(1),
+  }).strict();
+  const lookupQuerySchema=z.object({
+    q:z.string().trim().min(2).max(100).refine(q=>!q.includes("\u0000")),
+  }).strict();
+  const assertVisitStatsOwner=async(client:import("pg").PoolClient,req:import("express").Request)=>{
+    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    if(req.header("X-Alraesy-Employee-Preview"))throw new HttpError(403,"forbidden","إحصاءات زيارات الصفحات للمالك فقط.");
+    ownerOnly(await currentActor(client,actor(req),false));
+  };
+  router.get("/page-visit-statistics",handler(async(req,res)=>{
+    const result=await transaction(pool,async client=>{
+      await assertVisitStatsOwner(client,req);
+      const query=parse(rankingQuerySchema,req.query);
+      return readPageVisitStatistics(client,query.userId,query.period,query.page,25);
+    });
+    res.setHeader("Cache-Control","private, no-store");
+    res.json(result);
+  }));
+  router.get("/page-visit-statistics/users",handler(async(req,res)=>{
+    const result=await transaction(pool,async client=>{
+      await assertVisitStatsOwner(client,req);
+      const query=parse(lookupQuerySchema,req.query);
+      return searchPageVisitUsers(client,query.q);
+    });
+    res.setHeader("Cache-Control","private, no-store");
+    res.json(result);
+  }));
   router.post(
     "/page-catalog/visit",
     handler(async (req, res) => {

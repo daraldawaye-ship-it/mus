@@ -112,6 +112,7 @@ const CentralAccessPage = lazy(() =>
 const OwnerPhonePreviewPage = lazy(() => import("./pages/OwnerPhonePreviewPage"));
 const DesignLibraryPage = lazy(() => import("./pages/DesignLibraryPage"));
 const MarketCoveragePage = lazy(() => import("./pages/MarketCoveragePage"));
+const PageVisitStatisticsPage = lazy(()=>import("./pages/PageVisitStatisticsPage").then(module=>({default:module.PageVisitStatisticsPage})));
 const InterestStatisticsPage = lazy(() => import("./pages/InterestStatisticsPage").then(m=>({default:m.InterestStatisticsPage})));
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
 const MarketFriendReferralsPage = lazy(() => import("./pages/MarketFriendReferralsPage").then(m=>({default:m.MarketFriendReferralsPage})));
@@ -611,6 +612,13 @@ function Navigation({
         <NavLink to="/interest-statistics" onClick={close}
           className={({isActive})=>"nav-link"+(isActive?" active":"")}>
           <TrendingUp size={17}/><span className="nav-text">إحصاءات اهتمامات الزوار</span>
+          <ChevronLeft size={13} className="nav-chevron"/>
+        </NavLink>
+      )}
+      {user?.owner && !employeePreview && !visitorOnly && (
+        <NavLink to="/page-visit-statistics" onClick={close}
+          className={({isActive})=>"nav-link"+(isActive?" active":"")}>
+          <TrendingUp size={17}/><span className="nav-text">إحصاءات زيارات الصفحات</span>
           <ChevronLeft size={13} className="nav-chevron"/>
         </NavLink>
       )}
@@ -1492,6 +1500,9 @@ function Workspace() {
               <Route path="/design-library" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/page-visit-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
+                <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><PageVisitStatisticsPage /></Suspense> :
+                <Notice tone="error">إحصاءات زيارات الصفحات للمالك فقط.</Notice>}</Protected>} />
               <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
                 <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :
                 <Notice tone="error">إحصاءات الاهتمامات للمالك فقط.</Notice>}</Protected>} />
