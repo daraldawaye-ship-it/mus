@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import type { User } from "../packages/contracts/src/index.ts";
+import { listMedaweeItems } from "../apps/api/src/market-medawee-items.ts";
 import { createMarketApp } from "../apps/api/src/market/app.ts";
 import { signMarketRequest } from "../apps/api/src/market/transport.ts";
 import { medicineMarketRoutes } from "../apps/api/src/routes-medicine-market.ts";
@@ -99,6 +100,37 @@ test("Medawee item intake is owner-only, atomic, idempotent, evidenced, and pres
     assert.equal((await req("POST", owner, { ...failed, rows: [item] })).status, 201);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await db.close();
+  }
+});
+
+test("Medawee list walks all mixed-width bigint IDs in numeric order with string cursors", async () => {
+  const db = await PGlite.create();
+  try {
+    for (const migration of ["20261121_medawee_items_staging.sql", "20261121_medawee_items_staging_intake.sql"]) {
+      await db.exec(await readFile(new URL("../apps/api/market-migrations/" + migration, import.meta.url), "utf8"));
+    }
+    await db.exec(`INSERT INTO medawee_items_staging (id, english_name) OVERRIDING SYSTEM VALUE
+      VALUES (100,'Hundred'), (2,'Two'), (9,'Nine'), (1,'One'), (10,'Ten'), (99,'Ninety-nine'),
+        (9007199254740993,'Large A'), (9007199254740994,'Large B')`);
+    const pool = { query: db.query.bind(db) } as unknown as Pool;
+    const visited: string[] = [];
+    let after = "0";
+    for (const [ids, next] of [
+      [["1", "2", "9"], "9"],
+      [["10", "99", "100"], "100"],
+      [["9007199254740993", "9007199254740994"], null],
+    ] as const) {
+      const page = await listMedaweeItems(pool, { after, pageSize: 3 });
+      assert.deepEqual(page.items.map(row => row.id), ids);
+      assert.equal(page.nextCursor, next);
+      visited.push(...page.items.map(row => row.id));
+      if (next !== null) after = next;
+    }
+    assert.equal(new Set(visited).size, 8);
+    assert.deepEqual(await listMedaweeItems(pool, { after: visited.at(-1)!, pageSize: 3 }),
+      { items: [], nextCursor: null });
+  } finally {
     await db.close();
   }
 });

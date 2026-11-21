@@ -73,7 +73,8 @@ const projection = `id::text AS id, english_name AS "englishName", arabic_name A
 
 export async function listMedaweeItems(pool: Pool, query: z.infer<typeof medaweeItemListSchema>) {
   const { rows } = await pool.query(
-    `SELECT ${projection} FROM medawee_items_staging WHERE id > $1::bigint ORDER BY id LIMIT $2`,
+    // Qualify the sort to avoid comparing the projected text alias rather than the bigint ID.
+    `SELECT ${projection} FROM medawee_items_staging s WHERE s.id > $1::bigint ORDER BY s.id LIMIT $2`,
     [query.after, query.pageSize + 1],
   );
   const items = rows.slice(0, query.pageSize);
