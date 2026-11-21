@@ -18,3 +18,16 @@ export const activityColumns=[
   "purchase_invoices","purchase_return_invoices","purchase_lines","purchase_return_lines",
   "purchase_quantity","purchase_return_quantity",
 ] as const;
+
+/** Supply only quantity deltas to dedicated sales-activity reads; never counts. */
+export function manualSalesQuantityActivitySql(asOfSql:string,itemPredicate=""):string {
+  return `SELECT company_id,item_id,document_date,
+   0::bigint AS sale_invoices,0::bigint AS sale_return_invoices,
+   0::bigint AS sale_lines,0::bigint AS sale_return_lines,
+   sale_quantity,sale_return_quantity,
+   0::bigint AS purchase_invoices,0::bigint AS purchase_return_invoices,
+   0::bigint AS purchase_lines,0::bigint AS purchase_return_lines,
+   0::numeric AS purchase_quantity,0::numeric AS purchase_return_quantity
+   FROM sales_quantity_activity_deltas WHERE company_id=$1 AND document_date<=${asOfSql}
+   ${itemPredicate}`;
+}

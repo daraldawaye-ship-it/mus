@@ -27,6 +27,8 @@ import {
   loadInvoice,
 } from "./services/commerce.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { assertSalesCorrectionAccess, listSalesQuantityCorrections, patchSalesQuantityCorrection,
+  salesCorrectionListSchema, salesCorrectionPatchSchema } from "./services/sales-quantity-corrections.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
@@ -261,6 +263,22 @@ export function commerceRoutes(pool: Pool): Router {
       res.json({ items: items.slice(0, pageSize), hasMore: items.length > pageSize });
     }),
   );
+  router.get(`${base}/item-history/:itemId/sales-quantity-corrections`,handler(async(req,res)=>{
+    const itemId=id(req.params.itemId),input=parse(salesCorrectionListSchema,req.query);
+    const result=await readCommerce(pool,req,async(client,companyId,user)=>{
+      await assertSalesCorrectionAccess(client,user,companyId);
+      return listSalesQuantityCorrections(client,companyId,itemId,input);
+    });
+    res.set("Cache-Control","private, no-store").json(result);
+  }));
+  router.patch(`${base}/item-history/:itemId/sales-quantity-corrections`,handler(async(req,res)=>{
+    const itemId=id(req.params.itemId),input=parse(salesCorrectionPatchSchema,req.body);
+    const item=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
+      await assertSalesCorrectionAccess(client,user,companyId);
+      return patchSalesQuantityCorrection(client,user,companyId,itemId,input);
+    });
+    res.set("Cache-Control","private, no-store").json({item});
+  }));
   router.get(
     `${base}/item-history/:itemId/movement-invoices`,
     handler(async (req, res) => {

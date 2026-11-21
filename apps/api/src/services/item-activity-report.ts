@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivityReport, ItemActivityReportSort, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { HttpError } from "../errors.ts";
-import { stagedDailyActivitySql,activityColumns } from "./staged-activity-sql.ts";
+import { stagedDailyActivitySql,activityColumns,manualSalesQuantityActivitySql } from "./staged-activity-sql.ts";
 import { addItemCoverageToPage, canReadItemCoverage, canReadItemStock, itemCoverageJoin, itemCoverageRedactedSelect, itemCoverageSelect } from "./item-coverage.ts";
 
 export interface ItemActivityReportFilters {
@@ -95,6 +95,7 @@ export async function readItemActivityReport(
        WHERE company_id=$1 AND document_date<=$2::date
      UNION ALL
      SELECT ${activityColumns.join(",")} FROM staged
+     UNION ALL ${manualSalesQuantityActivitySql("$2::date")}
    ), a AS (
      SELECT d.item_id, ${aggregates}
        FROM activity d JOIN candidate i ON i.id=d.item_id

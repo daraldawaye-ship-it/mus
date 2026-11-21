@@ -58,6 +58,7 @@ import { MarketMedicineLookup } from "../MarketMedicineLookup";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { OwnerAdministrativeNotes } from "../OwnerAdministrativeNotes";
 import { ItemImportDialog } from "../ItemImportDialog";
+import { ItemSalesQuantityCorrections } from "../ItemSalesQuantityCorrections";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { ImageUpload } from "../ImageUpload";
@@ -861,6 +862,8 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
           ))}
         </dl>
       )}
+      {activity?.canViewCommerce &&
+        <ItemSalesQuantityCorrections key={`${companyId}:${itemId}`} companyId={companyId} itemId={itemId} />}
       <div className="form-actions">
         <Button variant="ghost" size="compact" disabled={result.isFetching} onClick={()=>void result.refetch()}>
           تحديث الإحصائيات

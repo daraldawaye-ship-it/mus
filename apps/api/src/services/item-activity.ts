@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivity, ItemActivityPeriod, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { missing } from "../errors.ts";
-import { stagedDailyActivitySql,activityColumns } from "./staged-activity-sql.ts";
+import { stagedDailyActivitySql,activityColumns,manualSalesQuantityActivitySql } from "./staged-activity-sql.ts";
 
 /** Date-scoped report; no invoice-table scan on each item-card read. */
 export async function readItemActivity(
@@ -34,6 +34,7 @@ export async function readItemActivity(
      WHERE company_id=$1 AND item_id=$2 AND document_date<=$3::date
    UNION ALL
    SELECT ${activityColumns.join(",")} FROM staged WHERE item_id=$2
+   UNION ALL ${manualSalesQuantityActivitySql("$3::date","AND item_id=$2")}
  )
  SELECT p.label,
    coalesce(sum(d.sale_invoices),0)::text AS "saleInvoices",
