@@ -123,6 +123,11 @@
 .work-panel-tools .work-panel-movement-table { min-width: 320px; }
 .work-panel-movement-table th:nth-child(1) { width: 19%; }
 .work-panel-movement-table th:nth-child(4) { width: 22%; }
+/* Each movement spans the amount row and its details; separate only records. */
+.work-panel-movement-table tbody > .invoice-item-history-details-row:not(:last-child) > td {
+  border-bottom: 2px solid var(--muted);
+  border-bottom-color: color-mix(in srgb, var(--text) 45%, var(--border));
+}
 .work-panel-tools .work-panel-movement-details { flex-wrap: wrap; row-gap: 1px; }
 .work-panel-movement-details span { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
 .work-panel-item-report + .work-panel-item-report { border-top: 2px solid var(--border); padding-top: 5px; }

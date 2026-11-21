@@ -54,7 +54,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
           <th scope="col" className="invoice-item-options-number" title="الكمية بأصغر وحدة">الكمية</th>
           <th scope="col" className="invoice-item-options-number" title="سعر الوحدة الأولى للصنف">السعر</th>
           <th scope="col">التاريخ</th>
-          <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة، لا صافي الصنف">الصافي</th>
+          <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم، لا صافي الصنف">الصافي</th>
           <th scope="col" className="invoice-item-options-number" title="خصم الفاتورة كاملة، لا خصم الصنف">الخصم</th>
         </tr></thead>
         <tbody>{rows.map(row => {
@@ -63,10 +63,11 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
           const invoice = detail?.invoiceLineId === row.invoiceLineId && detail?.invoiceId === row.invoiceId ? detail : undefined;
           const purchase = row.kind === "purchase" || row.kind === "purchase_return";
           const sale = row.kind === "sale" || row.kind === "sales_return";
-          const supplier = purchase ? (invoice?.partyName?.trim() || workPanelPurchaseSupplier(row)) : null;
+          const counterparty = purchase ? (invoice?.partyName?.trim() || workPanelPurchaseSupplier(row)) :
+            sale ? invoice?.partyName?.trim() : null;
           const money = (value: string | null | undefined, description: string) => (
             <td className="invoice-item-options-number"
-              title={value != null ? [description, value, invoice?.currencyCode].filter(Boolean).join(" ") : description}>
+              title={value != null ? `${description} ${value}` : description}>
               <bdi>{value ?? "—"}</bdi>
             </td>
           );
@@ -85,10 +86,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
               <tr className="invoice-item-history-details-row">
                 <td colSpan={6}>
                   <div className="invoice-item-history-details work-panel-movement-details">
-                    {purchase && <span dir="auto" title={supplier ?? undefined}>المورد: {supplier ?? "—"}</span>}
-                    {sale && <span dir="auto" title={invoice?.partyName ?? undefined}>الحساب: {invoice?.partyName?.trim() || "—"}</span>}
-                    {invoice?.currencyCode && <span dir="auto" title="عملة الفاتورة">{invoice.currencyCode}</span>}
-                    {row.locationName && <span dir="auto" title="الموقع">{row.locationName}</span>}
+                    {(purchase || sale) && <span dir="auto" title={counterparty ?? undefined}>{counterparty || "—"}</span>}
                     {row.createdByName && <span dir="auto" title="بواسطة">{row.createdByName}</span>}
                     {row.doctorName && <span dir="auto" title="الطبيب أو الجهة">{row.doctorName}</span>}
                     {reference && <span dir="auto">{reference}</span>}
