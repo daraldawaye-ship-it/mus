@@ -77,6 +77,8 @@ const buttons:readonly [string,string,string][]=[
   ["purchases.post","فاتورة المشتريات","ترحيل الفاتورة"],
   ["purchases.reverse","فاتورة المشتريات","عكس الفاتورة"],
   ["items.save","كرت الصنف","حفظ الصنف"],
+  ["items.settlement-display","كرت الصنف","تسجيل عرض التسوية"],
+  ["items.settlement-approval","كرت الصنف","تسجيل اعتماد التسوية"],
   ["items.adjust","المخزون","جرد وتسوية الصنف"],
   ["items.archive","كرت الصنف","أرشفة الصنف"],
   ["inventory.transfer","المخزون","ترحيل مناقلة"],
@@ -117,7 +119,8 @@ export const centralResources:readonly CentralResource[]=[
   })),
   ...buttons.map(([key,section,name])=>({
     key:`button:${key}`,name,section,kind:"button" as const,description:"",
-    integrated:key==="sales.custody-funding" || key==="sales.custody-transfer",
+    integrated:key==="sales.custody-funding" || key==="sales.custody-transfer" ||
+      key==="items.settlement-display" || key==="items.settlement-approval",
   })),
 ];
 const index=new Map(centralResources.map(r=>[r.key,r]));
