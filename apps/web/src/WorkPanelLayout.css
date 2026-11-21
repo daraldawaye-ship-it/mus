@@ -56,7 +56,8 @@
 .work-panel-tools { display: flex; flex-direction: column; gap: 8px; margin-top: 7px; min-width: 0; }
 .work-panel-tool-card {
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
+  border-color: color-mix(in srgb, var(--border), var(--focus) 38%);
   border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
