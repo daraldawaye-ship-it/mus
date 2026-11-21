@@ -101,6 +101,17 @@ function SlidingYesNoOptions() {
     </button>)}
   </div>;
 }
+function ConnectedOptionGroup({ vertical = false }: { vertical?: boolean }) {
+  const labels = ["الأول", "الثاني", "الثالث"] as const;
+  const [selected, setSelected] = useState<number[]>([]);
+  return <div role="group" aria-label={vertical ? "خيارات فوق بعض" : "خيارات بجوار بعض"}
+    className={`design-connected-options ${vertical ? "design-connected-options-stack" : "design-connected-options-row"}`}>
+    {labels.map((label, index) => <button key={label} type="button"
+      aria-pressed={selected.includes(index)}
+      onClick={() => setSelected(previous => previous.includes(index)
+        ? previous.filter(value => value !== index) : [...previous, index])}>{label}</button>)}
+  </div>;
+}
 function DemoFields() {
   const [choice, setChoice] = useState("الفعال");
   const [checked, setChecked] = useState(true);
@@ -123,6 +134,8 @@ function DemoFields() {
       <Sample code="ح-12" title="اختيار ملف"><label className="design-field">إرفاق مستند<input type="file" aria-label="إرفاق مستند"/></label></Sample>
       <Sample code="ح-18" title="مفاتيح اختيار بارزة" note="اضغط أي مفتاح لتفعيله أو إطفائه. الأحجام الثلاثة للتجربة وتتبع لون المظهر."><PressKeyOptions /></Sample>
       <Sample code="ح-19" title="مفتاح منزلق نعم / لا" note="ثلاثة أحجام تتبع ألوان المظهر. كل مفتاح مستقل للتجربة."><SlidingYesNoOptions /></Sample>
+      <Sample code="ح-20" title="خيارات متلاصقة عموديًا"><ConnectedOptionGroup vertical /></Sample>
+      <Sample code="ح-21" title="خيارات متلاصقة أفقيًا"><ConnectedOptionGroup /></Sample>
     </Group>
   </>;
 }
