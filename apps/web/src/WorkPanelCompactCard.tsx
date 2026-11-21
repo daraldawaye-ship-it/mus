@@ -1,11 +1,12 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Item } from "../../../packages/contracts/src/index";
 import { api, ApiFailure, sessionRequiresLogin, useScopeGuard } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { Notice } from "./ui";
 import { errorMessage } from "./phase2";
-import { compactItemDraft, compactItemFieldPatch, compactNumericFields, stepCompactItemValue } from "./work-panel-compact-card";
+import { compactItemDraft, compactItemSingleFieldPatch, compactNumericFields, createCompactItemAutosave,
+  stepCompactItemValue, type CompactItemDraft, type CompactItemField, type CompactItemValue } from "./work-panel-compact-card";
 
 type Props = { userId:number; companyId:number; itemId:number; canEdit:boolean; online:boolean };
 export function WorkPanelCompactCard(props:Props) {
@@ -30,115 +31,167 @@ export function WorkPanelCompactCard(props:Props) {
 
 function CompactItemEditor({userId,companyId,itemId,canEdit,online,initial,reload}:
     Props & {initial:Item;reload:()=>Promise<Item>}) {
-  const [baseline,setBaseline] = useState(initial);
-  const [draft,setDraft] = useState(()=>compactItemDraft(initial));
-  const [busy,setBusy] = useState(false);
-  const [conflict,setConflict] = useState(false);
-  const [error,setError] = useState("");
-  const [saved,setSaved] = useState(false);
-  const flight=useRef(false);
+  const baseline=useRef(initial);
+  const current=useRef(compactItemDraft(initial));
+  const revisions=useRef<Partial<Record<CompactItemField,number>>>({});
+  const openingRevision=useRef(initial.revision);
+  const [draft,setDraft] = useState(current.current);
+  const [pending,setPending] = useState<Partial<Record<CompactItemField,boolean>>>({});
+  const [errors,setErrors] = useState<Partial<Record<CompactItemField,{message:string;conflict?:boolean}>>>({});
+  const blocked=useRef(new Set<CompactItemField>());
+  const [reloadField,setReloadField]=useState<CompactItemField|null>(null);
   const client=useQueryClient();
   const guard=useScopeGuard(`work-panel-compact-card:${userId}:${companyId}:${itemId}`);
   const id=useId();
-  const previous=compactItemDraft(baseline);
-  const dirty=compactNumericFields.some(({key})=>draft[key]!==previous[key]) || draft.reviewed!==previous.reviewed;
-  const disabled=!canEdit || !online || busy;
+  const access=useRef(canEdit);
+  access.current=canEdit;
+  // The queue captures this item's scope once, while its delegate reads
+  // the latest authorized state. Unmount never redirects a pending write.
+  const saveField=useRef<(key:CompactItemField,value:CompactItemValue)=>Promise<void>>(async()=>{});
+  const [queue]=useState(()=>createCompactItemAutosave(
+    ()=>guard.isCurrent(),(key,value)=>saveField.current(key,value),
+    (key,value)=>setPending(old=>({...old,[key]:value})),
+  ));
+
+  function setValue<K extends CompactItemField>(key:K,value:CompactItemDraft[K]) {
+    current.current={...current.current,[key]:value};
+    setDraft(current.current);
+  }
+
   useEffect(()=>{
-    // Let a fresh refetch replace a cached baseline only while the editor is
-    // untouched. A local draft keeps its own expected values for server OCC.
-    if (!dirty && !busy && initial.revision > baseline.revision) {
-      setBaseline(initial);
-      setDraft(compactItemDraft(initial));
+    // Merge network refetch only into clean fields, without rebasing a
+    // typed or pending edit against a different actor's changes.
+    const old=compactItemDraft(baseline.current);
+    const fresh=compactItemDraft(initial);
+    for (const key of [...compactNumericFields.map(field=>field.key),"reviewed"] as const) {
+      if (initial.revision<=(revisions.current[key]??openingRevision.current) || current.current[key]!==old[key] ||
+          blocked.current.has(key) || queue.isPending(key)) continue;
+      baseline.current={...baseline.current,[key]:initial[key]};
+      revisions.current[key]=initial.revision;
+      current.current={...current.current,[key]:fresh[key]};
     }
-  },[initial,baseline.revision,dirty,busy]);
-  function edit(patch:Partial<typeof draft>) {
-    setSaved(false);
-    setDraft(old=>({...old,...patch}));
+    setDraft(current.current);
+  },[initial,queue,pending]);
+
+  function fieldError(key:CompactItemField,message:string,conflict=false) {
+    setErrors(old=>({...old,[key]:{message,conflict}}));
   }
-  function reset(item:Item) {
-    setBaseline(item);
-    setDraft(compactItemDraft(item));
-    setConflict(false);
-    setError("");
+  function clearError(key:CompactItemField) {
+    setErrors(old=>({...old,[key]:undefined}));
   }
-  const available=()=>canEdit && !isOfflineNow() && !sessionRequiresLogin() && guard.isCurrent() && !flight.current;
-  async function save(event:FormEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!available() || conflict) return;
-    const result=compactItemFieldPatch(baseline,draft);
-    if (result.error!==undefined) {setError(result.error);return;}
-    if (!result.payload) {reset(baseline);return;}
-    flight.current=true;
-    setBusy(true);
-    setSaved(false);
-    setError("");
+  function mergeSavedField(key:CompactItemField,item:Item) {
+    baseline.current={...baseline.current,[key]:item[key]};
+    revisions.current[key]=item.revision;
+  }
+  saveField.current=async(key,value)=>{
+    if (blocked.current.has(key) || !guard.isCurrent()) return;
+    if (!access.current || isOfflineNow() || sessionRequiresLogin()) {
+      fieldError(key,"لا يمكن الحفظ دون اتصال وجلسة صالحة.");
+      return;
+    }
+    const result=compactItemSingleFieldPatch(baseline.current,key,value);
+    if (result.error!==undefined) {fieldError(key,result.error);return;}
+    clearError(key);
+    if (!result.payload) return;
     try {
       const response=await api<{item:Item}>(`/companies/${companyId}/items/${itemId}`,{
         method:"PATCH",body:result.payload,signal:guard.signal,
       });
       if (!guard.isCurrent()) return;
-      if (response.item.id!==itemId || response.item.companyId!==companyId) throw new Error("تعذر تأكيد الصنف المحفوظ.");
-      reset(response.item);
-      setSaved(true);
-      client.setQueryData(["work-panel-compact-card",userId,companyId,itemId],response);
+      const item=response.item;
+      if(item.id!==itemId||item.companyId!==companyId) throw new Error("تعذر تأكيد الصنف المحفوظ.");
+      mergeSavedField(key,item);
+      // Do not replace the whole cached response from parallel field saves.
+      if (current.current[key]===value) setValue(key,compactItemDraft(item)[key]);
       for (const queryKey of [
-        ["items",userId,companyId],
-        ["item-options-list",userId,companyId],
+        ["work-panel-compact-card",userId,companyId,itemId],
+        ["items",userId,companyId],["item-options-list",userId,companyId],
         ["avatar-item-alternatives",userId,companyId,itemId],
       ]) void client.invalidateQueries({queryKey});
-    } catch (reason) {
+    } catch(reason) {
       if (!guard.isCurrent()) return;
-      if (reason instanceof ApiFailure && reason.status===409) {
-        setConflict(true);
-        setError("تغيّرت قيمة محفوظة. حمّل القيم الحديثة قبل إعادة التعديل.");
-      } else setError(errorMessage(reason));
-    } finally {
-      flight.current=false;
-      if (guard.isCurrent()) setBusy(false);
+      if(reason instanceof ApiFailure&&reason.status===409) {
+        blocked.current.add(key);
+        fieldError(key,"تغيّرت القيمة المحفوظة؛ حمّلها قبل تعديل هذا الحقل مجددًا.",true);
+      } else fieldError(key,errorMessage(reason));
+      // A failed write cannot provide the next expected value.
+      throw reason;
     }
+  };
+  function commit(key:CompactItemField,value:CompactItemValue=current.current[key]) {
+    if(canEdit&&online&&!blocked.current.has(key))
+      void queue.enqueue(key,value).catch(()=>{ /* The field displays the error. */ });
   }
-  async function reloadSaved() {
-    if(!available()) return;
-    flight.current=true;
-    setBusy(true);
+  async function reloadSaved(key:CompactItemField) {
+    if(reloadField||!canEdit||!online||!guard.isCurrent()||queue.isPending(key)) return;
+    setReloadField(key);
     try {
       const item=await reload();
-      if (guard.isCurrent()) { reset(item);setSaved(false); }
-    } catch (reason) {
-      if (guard.isCurrent()) setError(errorMessage(reason));
+      if(!guard.isCurrent())return;
+      mergeSavedField(key,item);
+      setValue(key,compactItemDraft(item)[key]);
+      blocked.current.delete(key);
+      clearError(key);
+    } catch(reason) {
+      if(guard.isCurrent())fieldError(key,errorMessage(reason),blocked.current.has(key));
     } finally {
-      flight.current=false;
-      if (guard.isCurrent()) setBusy(false);
+      if(guard.isCurrent())setReloadField(null);
     }
   }
-  return <form className="work-panel-compact-card" aria-label="كرت الصنف المختصر" onSubmit={save}>
+  const disabled=!canEdit||!online;
+  const status=(key:CompactItemField,label:string)=>{
+    const issue=errors[key];
+    if(pending[key])return <small role="status">جارٍ حفظ {label}…</small>;
+    if(!issue)return null;
+    return <div>
+      <small role="alert">{issue.message}</small>
+      {issue.conflict&&<button type="button" className="button button-secondary button-compact"
+        disabled={disabled||reloadField!==null} onClick={()=>void reloadSaved(key)}>تحميل القيمة المحفوظة</button>}
+    </div>;
+  };
+  const onEnter=(event:KeyboardEvent<HTMLInputElement>,key:CompactItemField)=>{
+    if(event.key==="Enter"&&!event.nativeEvent.isComposing){
+      event.preventDefault();
+      event.stopPropagation();
+      commit(key);
+    }
+  };
+  return <section className="work-panel-compact-card" aria-label="كرت الصنف المختصر">
     <div className="work-panel-compact-fields">
       {compactNumericFields.map(({key,label,hint})=>{
         const fieldId=id+"-"+key;
+        const unavailable=disabled||!!errors[key]?.conflict||reloadField===key;
         const step=(direction:-1|1)=>stepCompactItemValue(key,draft[key],direction);
+        const apply=(direction:-1|1)=>{
+          const value=stepCompactItemValue(key,current.current[key],direction);
+          setValue(key,value);
+          commit(key,value);
+        };
         return <div className="work-panel-compact-field" key={key}>
           <label htmlFor={fieldId} title={hint}>{label}</label>
-          <div className="work-panel-compact-stepper" dir="ltr">
-            <button type="button" disabled={disabled || step(-1)===draft[key]}
-              aria-label={`نقص ${label}`} onClick={()=>edit({[key]:step(-1)})}>−</button>
-            <input id={fieldId} inputMode="numeric" maxLength={22} value={draft[key]} disabled={disabled}
-              autoComplete="off" title={hint} onChange={event=>edit({[key]:event.target.value})}/>
-            <button type="button" disabled={disabled || step(1)===draft[key]}
-              aria-label={`زيادة ${label}`} onClick={()=>edit({[key]:step(1)})}>+</button>
+          <div className="work-panel-compact-stepper" dir="ltr" onBlur={event=>{
+            // Moving focus to this same field's step buttons is not an edit
+            // commit; the button will send its final value directly.
+            if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) commit(key);
+          }}>
+            <button type="button" disabled={unavailable||step(-1)===draft[key]}
+              aria-label={`نقص ${label}`} onClick={()=>apply(-1)}>−</button>
+            <input id={fieldId} inputMode="numeric" maxLength={22} value={draft[key]} disabled={unavailable}
+              autoComplete="off" title={hint} onChange={event=>setValue(key,event.target.value)}
+              onKeyDown={event=>onEnter(event,key)}/>
+            <button type="button" disabled={unavailable||step(1)===draft[key]}
+              aria-label={`زيادة ${label}`} onClick={()=>apply(1)}>+</button>
           </div>
+          {status(key,label)}
         </div>;
       })}
     </div>
     <div className="work-panel-compact-actions">
-      <label className="check-label"><input type="checkbox" checked={draft.reviewed} disabled={disabled}
-        onChange={event=>edit({reviewed:event.target.checked})}/>مراجع</label>
-      {canEdit && <button type="submit" className="button button-primary button-compact"
-        disabled={disabled||!dirty||conflict}>{busy?"جارٍ التنفيذ…":"حفظ"}</button>}
-      {canEdit && (dirty||conflict) && <button type="button" className="button button-secondary button-compact"
-        disabled={disabled} onClick={()=>void reloadSaved()}>{conflict?"تحميل القيم الحديثة":"استرجاع المحفوظ"}</button>}
+      <label className="check-label"><input type="checkbox" checked={draft.reviewed}
+        disabled={disabled||!!errors.reviewed?.conflict||reloadField==="reviewed"}
+        onChange={event=>{setValue("reviewed",event.target.checked);commit("reviewed",event.target.checked);}}/>مراجع</label>
+      {status("reviewed","مراجع")}
     </div>
-    {error && <Notice tone="error">{error}</Notice>}
-    {saved && <small role="status">حُفظ كرت الصنف.</small>}
-  </form>;
+    {Object.values(pending).some(Boolean)&&<small>انتظر اكتمال الحفظ قبل الانتقال إلى صنف آخر.</small>}
+  </section>;
 }

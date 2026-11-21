@@ -59,3 +59,40 @@ export function compactItemFieldPatch(item:CompactItemSnapshot,draft:CompactItem
   return validated.success ? {payload:validated.data} as const :
     {error:validated.error.issues[0]?.message ?? "تحقق من القيم."} as const;
 }
+
+export type CompactItemField = keyof CompactItemDraft;
+export type CompactItemValue = string | boolean;
+
+export function compactItemSingleFieldPatch(item:CompactItemSnapshot,key:CompactItemField,value:CompactItemValue) {
+  return compactItemFieldPatch(item,{...compactItemDraft(item),[key]:value});
+}
+
+/** Each field has one request in flight and retains only its latest committed
+ * intent. Different fields stay independent under validation/network errors. */
+export function createCompactItemAutosave(
+  canUse: () => boolean,
+  save: (key:CompactItemField,value:CompactItemValue)=>Promise<void>,
+  onPending: (key:CompactItemField,pending:boolean)=>void,
+) {
+  const inFlight=new Set<CompactItemField>();
+  const next=new Map<CompactItemField,CompactItemValue>();
+  const enqueue=async(key:CompactItemField,value:CompactItemValue)=>{
+    if (!canUse()) return;
+    next.set(key,value);
+    if (inFlight.has(key)) return;
+    inFlight.add(key);
+    onPending(key,true);
+    try {
+      while (canUse() && next.has(key)) {
+        const current=next.get(key)!;
+        next.delete(key);
+        await save(key,current);
+      }
+    } finally {
+      inFlight.delete(key);
+      next.delete(key);
+      if (canUse()) onPending(key,false);
+    }
+  };
+  return {enqueue,isPending:(key:CompactItemField)=>inFlight.has(key)};
+}
