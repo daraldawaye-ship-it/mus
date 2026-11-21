@@ -45,6 +45,7 @@ import { openingInventoryRoutes } from "./routes-opening-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { shortcutRoutes } from "./routes-shortcuts.ts";
+import { dailyInvoiceLineRoutes } from "./routes-daily-invoice-lines.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { stagedInvoiceReadRoutes } from "./routes-staged-invoice-read.ts";
 import { doctorRoutes } from "./routes-doctors.ts";
@@ -129,6 +130,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     salesTimeReportRoutes(pool),
     saleCustomerRoutes(pool),
     commerceRoutes(pool),
+    dailyInvoiceLineRoutes(pool),
     stagedInvoiceReadRoutes(pool),
   );
   return router;

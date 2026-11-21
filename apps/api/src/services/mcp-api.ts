@@ -63,6 +63,9 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "GET /system-monitor/main": { source: "routes-system-monitor.ts", queryFields: [] },
   "GET /system-monitor/main/count": { source: "routes-system-monitor.ts", queryFields: ["schema", "table"] },
   "GET /medicine-market/admin/monitor": { source: "market/app.ts", queryFields: [] },
+  "GET /companies/:companyId/daily-invoice-line-counts": {
+    source:"routes-daily-invoice-lines.ts",pathParams:["companyId"],queryFields:["dateFrom","dateTo","includeRaw"],
+  },
   "GET /medicine-market/staging/:sourceId/product-link-status": {
     source:"market/product-market-link.ts",queryFields:[],pathParams:["sourceId"]
   },
