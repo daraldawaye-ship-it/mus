@@ -282,7 +282,6 @@ export function commerceRoutes(pool: Pool): Router {
   router.get(
     `${base}/item-history/:itemId/movement-invoices`,
     handler(async (req, res) => {
-      if (!actor(req).owner) throw new HttpError(403, "forbidden", "هذا العرض متاح لمالك الموقع فقط");
       const itemId = id(req.params.itemId);
       const selected = req.query.movementIds;
       if (typeof selected !== "string" || !selected || selected.length > 110)
@@ -291,11 +290,28 @@ export function commerceRoutes(pool: Pool): Router {
       if (tokens.length > 10)
         throw new HttpError(400, "invalid_query", "حدد حتى 10 حركات مخزون");
       const movementIds = [...new Set(tokens.map(value => id(value)))];
-      const items = await readCommerce(pool, req, async (client, companyId, user) => {
-        if (!user.owner) throw new HttpError(403, "forbidden", "هذا العرض متاح لمالك الموقع فقط");
-        await companyAccess(client, user, companyId, "inventory.view");
+      const items = await transaction(pool, async client => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const companyId = id(req.params.companyId);
+        const user = await currentActor(client, actor(req), false);
+        const context = await companyAccess(client, user, companyId, "inventory.view");
+        const employee = context.employee;
+        if (user.suspended || (!user.owner && (!employee?.active ||
+          !employee.positions.some(position => position === "sales" || position === "cashier"))))
+          throw new HttpError(403, "forbidden", "حاوية الصنف غير متاحة لهذا المستخدم");
+        if (!user.owner) {
+          const movements = (await directoryEntries(client, user, companyId))
+            .find(entry => entry.key === "company.stock-movements");
+          if (!movements) throw new HttpError(403, "forbidden", "حركة الصنف غير متاحة لهذا المستخدم");
+          assertDirectoryAccess(movements, "view");
+        }
+        // Expose only the values used for quantity and unit price to staff,
+        // not full invoice totals, accounts, currency, or discounts.
+        const sql = user.owner ? workPanelMovementInvoiceSql :
+          `SELECT "movementId", "invoiceLineId", "invoiceId", "postedUnitPrice", "firstUnitMultiplier"
+           FROM (${workPanelMovementInvoiceSql}) AS exact_movements`;
         const { rows } = await client.query(
-          workPanelMovementInvoiceSql,
+          sql,
           [companyId, itemId, movementIds],
         );
         return rows;

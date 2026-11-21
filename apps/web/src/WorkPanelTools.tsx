@@ -55,7 +55,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const pages=pagesError?undefined:pageEntries;
   const reads=dockDataReads(context,pages);
   const accountAccess=dockAccountAccess(context,pages);
-  const access = workPanelItemActionAccess(user.owner?context:undefined,pages);
+  const access = workPanelItemActionAccess(context,pages);
   const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
 
   function refreshInventory(itemId: number) {
@@ -111,14 +111,14 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
-                  {user.owner && <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
+                  <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
                     itemId={selected?.id??0} allowCompositionEdit={canEditComposition}
                     openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
                     canPublicRequest={access["public-request"] && !requesting}
                     canEdit={access.edit} canAdjust={access.adjust}
                     canTransfer={access.transfer} canReport={access.report}
-                    onAction={action => { if (selected) openAction(action, selected); }} />}
+                    onAction={action => { if (selected) openAction(action, selected); }} />
                   {itemViews.filter(view=>reads[view.key]).map(view => {
                     const enabled = views.includes(view.key);
                     return (
@@ -137,12 +137,12 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && reads.card && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
-                        canEdit={access.edit} online={online} />
+                        canEdit={user.owner&&access.edit} online={online} />
                     ) : <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}
                       workPanelMovement={view.key === "movement" || view.key === "purchases"}
-                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={user.owner} />}
+                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={reads.movement} />}
                   </div>
                 ))}
               </>
