@@ -5,7 +5,9 @@ import type { CompanyContext, User } from "../../../packages/contracts/src/index
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { WorkPanelCompactCard } from "./WorkPanelCompactCard";
 import { ItemMenuHistory } from "./ItemMenuHistory";
-import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "./InvoiceItemActionsDropdown";
+import type { InvoiceItemAction } from "./InvoiceItemActionsDropdown";
+import { InvoiceItemCompositionActions,InvoiceItemCompositionEditor } from "./InvoiceItemCompositionActions";
+import { canEditInvoiceItemComposition } from "./invoice-item-composition-access";
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { api, sessionRequiresLogin, useScopeGuard } from "./api";
 import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
@@ -29,6 +31,7 @@ const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module =>
 export function WorkPanelTools({ user, context }: { user: User; context?: CompanyContext }) {
   const companyId = context?.company.id ?? null;
   const [views, setViews] = useState<ItemView[]>([]);
+  const [editingComposition,setEditingComposition]=useState<number|null>(null);
   const [active, setActive] = useState<{ action: "adjust" | "transfer" | "report"; id: number; name: string } | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string; memoId?: number } | null>(null);
   const [requesting, setRequesting] = useState(false);
@@ -39,6 +42,7 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
   const client = useQueryClient();
   const directory = usePageDirectory(companyId ?? undefined);
   const access = workPanelItemActionAccess(context, directory.data);
+  const canEditComposition=canEditInvoiceItemComposition(context,directory.data);
   const canViewCard = !!context && (context.general || context.permissions.includes("items.view")) &&
     ["company.items", "company.item-card"].every(key => {
       const page=directory.data?.find(entry=>entry.key===key);
@@ -98,7 +102,9 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
-                  <InvoiceItemActionsDropdown key={selected?.id ?? "none"}
+                  <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
+                    itemId={selected?.id??0} allowCompositionEdit={canEditComposition}
+                    openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
                     canPublicRequest={access["public-request"] && !requesting}
                     canEdit={access.edit} canAdjust={access.adjust}
@@ -134,6 +140,9 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
       </section>
       {notice && <Notice tone={notice.tone}>{notice.message} {notice.memoId && companyId &&
         <Link to={`/companies/${companyId}/memos/${notice.memoId}`}>فتح التقرير</Link>}</Notice>}
+      {editingComposition!==null&&context&&canEditComposition&&
+        <InvoiceItemCompositionEditor context={context} userId={user.id} compositionId={editingComposition}
+          onClose={()=>setEditingComposition(null)} />}
       {active && context && <Suspense fallback={<Notice>جارٍ فتح العملية…</Notice>}>
         {active.action === "adjust" && <AdjustItem context={context} itemId={active.id}
           onClose={() => setActive(null)} onSaved={refreshInventory} />}

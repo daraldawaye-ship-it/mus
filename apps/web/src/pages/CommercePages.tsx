@@ -30,7 +30,9 @@ import { StagedInvoicesPanel } from "../StagedInvoiceViews";
 import { InvoicePrintSheet, type PrintableInvoice } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
 import { InvoiceSideOverview } from "../InvoiceSideOverview";
-import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
+import type { InvoiceItemAction } from "../InvoiceItemActionsDropdown";
+import { InvoiceItemCompositionActions,InvoiceItemCompositionEditor } from "../InvoiceItemCompositionActions";
+import { canEditInvoiceItemComposition } from "../invoice-item-composition-access";
 import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -1850,6 +1852,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   }, [user?.id,companyId]);
   const controls = useControls(companyId, context.employee?.id ?? null);
   const directory = usePageDirectory(companyId);
+  const canEditComposition=canEditInvoiceItemComposition(context,directory.data);
+  const [editingComposition,setEditingComposition]=useState<{companyId:number;userId:number;id:number}|null>(null);
   const canCreatePublicRequest = !!directory.data?.find(
     entry => entry.key === "company.public-requests" &&
       entry.enabled && entry.actionAccess.create);
@@ -4187,7 +4191,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                         )}
                         <td className="commerce-line-action-cell">
                           <div className="commerce-line-actions">
-                            <InvoiceItemActionsDropdown
+                            <InvoiceItemCompositionActions userId={user?.id??null} companyId={companyId}
+                              itemId={line.itemId} allowCompositionEdit={kind==="sale"&&canEditComposition}
+                              openComposition={id=>{if(user)setEditingComposition({companyId,userId:user.id,id});}}
                               itemName={line.itemName || "الصنف"}
                               disabled={!line.itemId || locked}
                               canPublicRequest={canCreatePublicRequest && !publicRequestBusy}
@@ -4598,6 +4604,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           </div>
         </div>
       </Dialog>
+      {editingComposition&&editingComposition.companyId===companyId&&editingComposition.userId===user?.id&&canEditComposition&&
+        <InvoiceItemCompositionEditor context={context} userId={editingComposition.userId} compositionId={editingComposition.id}
+          onClose={()=>setEditingComposition(null)} />}
       {adjustingItem!==null && (
         <InvoiceItemAdjustmentSheet context={context} itemId={adjustingItem}
           onClose={()=>setAdjustingItem(null)}

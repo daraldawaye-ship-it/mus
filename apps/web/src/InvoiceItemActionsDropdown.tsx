@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Pencil } from "lucide-react";
 
@@ -14,7 +14,7 @@ export const invoiceItemActionLabels: Record<InvoiceItemAction, string> = {
 
 /** Portal-based dropdown escapes the horizontally scrolling invoice matrix. */
 export function InvoiceItemActionsDropdown({
-  itemName, disabled, canPublicRequest = false, canEdit, canAdjust, canTransfer, canReport, onAction,
+  itemName, disabled, canPublicRequest = false, canEdit, canAdjust, canTransfer, canReport, onAction, onOpenChange, onEditComposition,
 }: {
   itemName: string;
   disabled: boolean;
@@ -24,16 +24,19 @@ export function InvoiceItemActionsDropdown({
   canTransfer: boolean;
   canReport: boolean;
   onAction: (action: InvoiceItemAction) => void;
+  onOpenChange?: (open:boolean)=>void;
+  onEditComposition?: ()=>void;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{top:number;left:number}|null>(null);
-  function close() { setPosition(null); }
+  function close() { setPosition(null); onOpenChange?.(false); }
   function toggle() {
     if(position){close();return;}
     const rect=button.current?.getBoundingClientRect();
     if(!rect)return;
     const menuWidth=Math.min(270,window.innerWidth-16);
+    onOpenChange?.(true);
     setPosition({
       top: Math.max(8,Math.min(rect.bottom+4,window.innerHeight-160)),
       left: Math.max(8,Math.min(rect.right-menuWidth,window.innerWidth-menuWidth-8)),
@@ -72,7 +75,7 @@ export function InvoiceItemActionsDropdown({
       <div ref={menu} role="menu" aria-label={`خيارات الصنف ${itemName}`}
         className="invoice-item-actions-dropdown" style={{top:position.top,left:position.left}}>
         {(["public-request","edit","adjust","transfer","report"] as const).map(action=>
-          <button key={action} type="button" role="menuitem"
+          <Fragment key={action}><button type="button" role="menuitem"
             disabled={action==="public-request"?!canPublicRequest:action==="edit"?!canEdit:action==="adjust"?!canAdjust:action==="transfer"?!canTransfer:!canReport}
             title={action==="public-request"&&!canPublicRequest?"طلب الجمهور غير متاح لهذا المستخدم":
               action==="edit"&&!canEdit?"تعديل الأصناف غير مسموح":
@@ -82,6 +85,9 @@ export function InvoiceItemActionsDropdown({
             onClick={()=>{close();onAction(action);}}>
             {invoiceItemActionLabels[action]}
           </button>
+          {action==="edit"&&onEditComposition&&<button type="button" role="menuitem"
+            onClick={()=>{close();onEditComposition();}}>تعديل كرت التركيب</button>}
+          </Fragment>
         )}
       </div>,
       document.body,
