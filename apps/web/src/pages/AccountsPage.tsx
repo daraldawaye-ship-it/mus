@@ -760,8 +760,8 @@ export function AccountLedgerPreview({
   hideFullLink?:boolean;
 }) {
   const { user } = useSession();
-  const [dateFrom, setDateFrom] = useState(todayInAdenForAccountPreview);
-  const [dateTo, setDateTo] = useState(todayInAdenForAccountPreview);
+  const [dateFrom, setDateFrom] = useState(()=>hideFullLink?"":todayInAdenForAccountPreview());
+  const [dateTo, setDateTo] = useState(()=>hideFullLink?"":todayInAdenForAccountPreview());
   const [page, setPage] = useState(1);
   useEffect(() => {
     // Preserve the same deliberate-view audit event used by the full ledger.
@@ -772,8 +772,8 @@ export function AccountLedgerPreview({
   }, [companyId, account.id]);
   const query = new URLSearchParams({
     accountId: String(account.id),
-    dateFrom,
-    dateTo,
+    ...((!hideFullLink||dateFrom)?{dateFrom}:{}),
+    ...((!hideFullLink||dateTo)?{dateTo}:{}),
     page: String(page),
     pageSize: "20",
     sort: "documentDate:desc,documentId:desc,lineNumber:desc",
@@ -793,7 +793,12 @@ export function AccountLedgerPreview({
     "&dateTo=" + encodeURIComponent(dateTo);
   return (
     <Card title="كشف الحساب">
-      <div className="accounts-ledger-dates">
+      {hideFullLink ? <div className="work-panel-date-range" role="group" aria-label="فترة كشف الحساب">
+        <label>من <input type="date" aria-label="بداية فترة كشف الحساب" value={dateFrom}
+          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
+        <label>إلى <input type="date" aria-label="نهاية فترة كشف الحساب" value={dateTo}
+          onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
+      </div> : <div className="accounts-ledger-dates">
         <Field
           label="من تاريخ"
           type="date"
@@ -806,7 +811,7 @@ export function AccountLedgerPreview({
           value={dateTo}
           onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
         />
-      </div>
+      </div>}
       {ledger.error && <Notice tone="error">{errorMessage(ledger.error)}</Notice>}
       {ledger.isFetching && <Notice>جارٍ تحميل كشف الحساب…</Notice>}
       {totals && (
