@@ -6,6 +6,8 @@ export async function prepareItemSaleRankings(pool: Pool): Promise<void> {
   await pool.query("SELECT prepare_staged_item_sale_rankings()");
   // Requests roll out of the 30-day window at Aden midnight.
   await pool.query("SELECT prepare_item_market_order_statistics()");
+  // Reconcile saved signed count differences once per Aden day, outside item-list reads.
+  await pool.query("SELECT prepare_item_adjustment_net_quantities()");
 }
 
 /** Prepares tomorrow independently of notifications and waits on graceful shutdown. */
