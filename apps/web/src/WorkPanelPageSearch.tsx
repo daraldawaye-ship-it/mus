@@ -1,4 +1,5 @@
-import { lazy,Suspense,useId,useState } from "react";
+import {DockSearchResults,focusFirstDockResult} from "./DockSearchResults";
+import { lazy,Suspense,useId,useRef,useState } from "react";
 import { Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { pageKeyForLocation,type CompanyContext,type PageEntry,type User } from "../../../packages/contracts/src/index";
@@ -14,6 +15,7 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
   const searching=edit?.route===currentRoute;
   const query=searching?edit.value:currentLabel;
   const resultsId=useId();
+  const fieldAnchor=useRef<HTMLLabelElement>(null);
   const [cardOpen,setCardOpen]=useState(false);
   const [pathname,search]=currentRoute.split("?",2);
   const routeCompany=pathname?.match(/^\/companies\/([1-9]\d*)(?:\/|$)/)?.[1];
@@ -24,20 +26,24 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
   const results=findWorkPanelPages(error||!searching?undefined:pages,user,companyId,query);
   return <section className="work-panel-tool-card work-panel-page-container" aria-label="بحث عن صفحة">
     <div className="user-menu-entity-section">
-      <label className="user-menu-entity-input-wrap has-field-label">
+      <label ref={fieldAnchor} className="user-menu-entity-input-wrap has-field-label">
         <Search size={15} aria-hidden="true" />
         <span className="user-menu-entity-field-label">بحث عن صفحة</span>
         <input type="search" value={query} onChange={event=>setEdit({route:currentRoute,value:event.currentTarget.value})}
-          aria-controls={searching&&query.trim()?resultsId:undefined} autoComplete="off" />
+          aria-controls={searching&&query.trim()?resultsId:undefined} autoComplete="off"
+          onKeyDown={event=>{
+            if(event.key==="Escape"&&searching){event.stopPropagation();setEdit(null);}
+            if(event.key==="Tab"&&!event.shiftKey&&focusFirstDockResult(resultsId))event.preventDefault();
+          }} />
       </label>
-      {searching&&query.trim()&&<div id={resultsId}>
+      {searching&&query.trim()&&<DockSearchResults anchor={fieldAnchor} onDismiss={()=>setEdit(null)}><div id={resultsId}>
         {results.length>0 ? <ul className="work-panel-page-results" aria-label="الصفحات المطابقة">
           {results.map(page=><li key={page.key}>
             <Link to={page.href} onClick={()=>setEdit(null)}>{page.name}</Link>
           </li>)}
         </ul> : <small role="status" className="muted">{error ? "تعذّر التحقق من الصفحات المتاحة." :
           loading ? "جارٍ التحقق من الصفحات المتاحة…" : "لا توجد صفحات مطابقة."}</small>}
-      </div>}
+      </div></DockSearchResults>}
       <div className="work-panel-entity-actions">
         <Button size="compact" variant="secondary" disabled={!entry} onClick={()=>setCardOpen(true)}>كرت الصفحة</Button>
       </div>

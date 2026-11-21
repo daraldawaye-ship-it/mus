@@ -379,3 +379,20 @@
 .work-panel-account-ledger .card { padding:5px; }
 .work-panel-account-ledger .work-panel-date-range { margin-block-end: 4px; }
 .work-panel-account-ledger .accounts-ledger-scroll { max-height:180px; overflow:auto; }
+
+/* Rendered under body, never inside the clipped/scrollable dock card. Native
+   modal dialogs stay above (and suppress) nonmodal search suggestions. */
+.dock-search-results-layer {
+  position: fixed; z-index: 30; box-sizing: border-box;
+  padding: 3px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--card-shadow);
+}
+.dock-search-results-layer[data-side="above"] { transform: translateY(-100%); }
+.dock-search-results-layer[hidden], body:has(dialog[open]) > .dock-search-results-layer { display:none; }
+.dock-search-results-layer .user-menu-entity-results,
+.dock-search-results-layer .work-panel-page-results { max-height:none; overflow:visible; margin:0; }
+.dock-search-results-layer .user-menu-entity-choice,
+.dock-search-results-layer a { min-width:0; width:100%; overflow-wrap:anywhere; }
+.dock-search-results-layer .user-menu-entity-choice { gap: 5px; padding: 6px; }
+.dock-search-results-layer .user-menu-entity-choice span { white-space: normal; overflow-wrap: anywhere; }

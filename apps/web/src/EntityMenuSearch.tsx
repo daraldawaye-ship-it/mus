@@ -1,3 +1,4 @@
+import {DockSearchResults,focusFirstDockResult} from "./DockSearchResults";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -19,7 +20,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection, floatingResults=false,
 }: {
   user: User;
   companyId: number | null;
@@ -35,6 +36,7 @@ export function EntityMenuSearch({
   renderSelection?: (selected: RecentEntity | null) => ReactNode;
   fieldLabel?: string;
   dockSelection?: RecentEntity;
+  floatingResults?:boolean;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -49,6 +51,7 @@ export function EntityMenuSearch({
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const fieldAnchor=useRef<HTMLSpanElement>(null);
   const resultsId = useId();
   const {label, placeholder} = config[kind];
   const company = companyId ?? 0;
@@ -111,52 +114,8 @@ export function EntityMenuSearch({
     setFocused(false);setSearch("");setPage(1);setActive(0);
     input.current?.blur();
   };
-  return (
-    <div className="user-menu-entity-section">
-      <label className="user-menu-entity-search">
-        <span className={`user-menu-entity-input-wrap${fieldLabel ? " has-field-label" : ""}`}>
-          {fieldLabel && <span className="user-menu-entity-field-label">{fieldLabel}</span>}
-          <Search size={17} aria-hidden="true" />
-          <input
-            ref={input}
-            type="search"
-            data-operator-search={kind === "item" ? "items.search" : undefined}
-            aria-label={fieldLabel ?? `البحث عن ${label}`}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={canSearch && focused}
-            aria-controls={canSearch && focused ? resultsId : undefined}
-            autoComplete="off"
-            placeholder={placeholder}
-            value={entry}
-            onFocus={event => { setFocused(true); event.currentTarget.select(); }}
-            onChange={event => { setEntry(event.target.value); setFocused(true); setActive(0); }}
-            onKeyDown={event => {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                setActive(index => Math.max(0, Math.min(choices.length - 1,
-                  index + (event.key === "ArrowDown" ? 1 : -1))));
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (choices[active] && !result.isFetching && search === entry.trim()) choose(choices[active]);
-              }
-              if (event.key === "Escape") {
-                event.stopPropagation();setFocused(false);setEntry(selected?.name ?? "");
-                input.current?.blur();
-              }
-            }}
-          />
-        </span>
-      </label>
-      {company === 0 && (
-        <p className="user-menu-entity-hint">
-          {kind === "employee"
-            ? "المستخدم الافتراضي هو حسابك. البحث عن الموظفين متاح عند الدخول إلى شركة."
-            : "افتح الشركة للبحث عن " + label + " فيها."}
-        </p>
-      )}
-      {company > 0 && focused && !!entry.trim() && (
+  const suggestionsOpen=company>0&&focused&&!!entry.trim();
+  const suggestions=suggestionsOpen ? (
         <div className="user-menu-entity-results"
           id={resultsId} role="listbox" aria-label={`نتائج ${label}`}>
           {result.isFetching && <p className="user-menu-entity-hint">جارٍ البحث…</p>}
@@ -186,7 +145,58 @@ export function EntityMenuSearch({
             </div>
           )}
         </div>
+  ) : null;
+  return (
+    <div className="user-menu-entity-section">
+      <label className="user-menu-entity-search">
+        <span ref={fieldAnchor} className={`user-menu-entity-input-wrap${fieldLabel ? " has-field-label" : ""}`}>
+          {fieldLabel && <span className="user-menu-entity-field-label">{fieldLabel}</span>}
+          <Search size={17} aria-hidden="true" />
+          <input
+            ref={input}
+            type="search"
+            data-operator-search={kind === "item" ? "items.search" : undefined}
+            aria-label={fieldLabel ?? `البحث عن ${label}`}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={floatingResults?suggestionsOpen:canSearch&&focused}
+            aria-controls={(floatingResults?suggestionsOpen:canSearch&&focused) ? resultsId : undefined}
+            autoComplete="off"
+            placeholder={placeholder}
+            value={entry}
+            onFocus={event => { setFocused(true); event.currentTarget.select(); }}
+            onChange={event => { setEntry(event.target.value); setFocused(true); setActive(0); }}
+            onKeyDown={event => {
+              if(floatingResults&&event.key==="Tab"&&!event.shiftKey&&focusFirstDockResult(resultsId)){
+                event.preventDefault();return;
+              }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                setActive(index => Math.max(0, Math.min(choices.length - 1,
+                  index + (event.key === "ArrowDown" ? 1 : -1))));
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (choices[active] && !result.isFetching && search === entry.trim()) choose(choices[active]);
+              }
+              if (event.key === "Escape") {
+                event.stopPropagation();setFocused(false);setEntry(selected?.name ?? "");
+                input.current?.blur();
+              }
+            }}
+          />
+        </span>
+      </label>
+      {company === 0 && (
+        <p className="user-menu-entity-hint">
+          {kind === "employee"
+            ? "المستخدم الافتراضي هو حسابك. البحث عن الموظفين متاح عند الدخول إلى شركة."
+            : "افتح الشركة للبحث عن " + label + " فيها."}
+        </p>
       )}
+      {suggestionsOpen && (floatingResults
+        ? <DockSearchResults anchor={fieldAnchor} onDismiss={()=>setFocused(false)}>{suggestions}</DockSearchResults>
+        : suggestions)}
       {renderSelection?.(selected)}
       {!renderSelection && kind === "item" && company > 0 && (
         <ItemMenuHistory userId={user.id} companyId={company}

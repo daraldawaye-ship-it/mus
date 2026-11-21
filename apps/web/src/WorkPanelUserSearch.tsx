@@ -1,3 +1,4 @@
+import {DockSearchResults,focusFirstDockResult,isDockResultFocus} from "./DockSearchResults";
 import { lazy,Suspense,useEffect,useId,useRef,useState } from "react";
 import {useQuery} from "@tanstack/react-query";
 import {Search} from "lucide-react";
@@ -17,6 +18,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
   const [focused,setFocused]=useState(false);
   const [path,setPath]=useState<string|null>(null);
   const field=useRef<HTMLInputElement>(null);
+  const fieldAnchor=useRef<HTMLLabelElement>(null);
   const resultsId=useId();
   useEffect(()=>{
     if(!allowed){
@@ -52,16 +54,19 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
   const collisionIds=dockUserCollisionIds(currentRequest ? result.data??[] : []);
   return <section className="work-panel-tool-card work-panel-user-container" aria-label="بحث عن مستخدم">
     <div className="user-menu-entity-section" onFocus={()=>setFocused(true)}
-      onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(false);}}>
-      <label className="user-menu-entity-input-wrap has-field-label">
+      onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget)&&!isDockResultFocus(resultsId,event.relatedTarget))setFocused(false);}}>
+      <label ref={fieldAnchor} className="user-menu-entity-input-wrap has-field-label">
         <Search size={15} aria-hidden="true" />
         <span className="user-menu-entity-field-label">بحث عن مستخدم</span>
         <input type="search" ref={field} value={input} maxLength={100} autoComplete="off"
           aria-controls={visible?resultsId:undefined} onChange={event=>{setInput(event.currentTarget.value);setSelected(null);setCardId(null);setFocused(true);}}
-          onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setFocused(false);}}} />
+          onKeyDown={event=>{
+            if(event.key==="Escape"){event.stopPropagation();setFocused(false);}
+            if(event.key==="Tab"&&!event.shiftKey&&focusFirstDockResult(resultsId))event.preventDefault();
+          }} />
       </label>
       {selected?.showId && <small className="muted" role="status">المستخدم المحدد <bdi>#{selected.id}</bdi></small>}
-      {visible&&<div id={resultsId}>
+      {visible&&<DockSearchResults anchor={fieldAnchor} onDismiss={()=>setFocused(false)}><div id={resultsId}>
         {!currentRequest || result.isPending ? <small className="muted" role="status">جارٍ البحث…</small>
           : result.isError ? <small role="status">تعذّر البحث عن المستخدمين.</small>
           : result.data?.length ? <ul className="work-panel-page-results" aria-label="المستخدمون المطابقون">
@@ -73,7 +78,7 @@ export function WorkPanelUserSearch({user,pages,dockSelection}:{user:User;pages?
               </button></li>;
             })}
           </ul> : <small className="muted" role="status">لا يوجد مستخدم مطابق.</small>}
-      </div>}
+      </div></DockSearchResults>}
       <div className="work-panel-entity-actions">
         <Button size="compact" variant="secondary" disabled={verifiedSelection===null}
           onClick={()=>{setFocused(false);setCardId(verifiedSelection);}}>كرت المستخدم</Button>

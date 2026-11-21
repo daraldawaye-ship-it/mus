@@ -109,7 +109,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     <div className="work-panel-tools">
       {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
-          <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
+          <EntityMenuSearch user={user} companyId={companyId} kind="item" floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
@@ -166,7 +166,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           }} />}
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
+        <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
           <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}`}
             actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} />
           : null} />
