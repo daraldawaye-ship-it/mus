@@ -22,6 +22,26 @@ const marketLink=(card:CardCount)=>card.target_type.startsWith("market:")?
   card.target_type.startsWith("company-item:")?
     "/companies/"+card.target_type.split(":")[1]+"/items/"+card.target_id:null;
 
+function SectionTable({headers,rows}:{headers:string[];rows:React.ReactNode[][]}){
+ const [expanded,setExpanded]=useState(false);
+ const limit=30;
+ const visibleRows=expanded?rows:rows.slice(0,limit);
+ return <>
+  <div style={{overflowX:"auto"}}>
+   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+    <thead><tr>{headers.map((h,i)=><th key={i} scope="col" style={cell}>{h}</th>)}</tr></thead>
+    <tbody>{visibleRows.map((row,i)=><tr key={i}>{row.map((x,j)=><td key={j} style={cell}>{x}</td>)}</tr>)}
+     {!rows.length&&<tr><td colSpan={headers.length} style={cell}>لا توجد نتائج لهذه الفترة.</td></tr>}</tbody>
+   </table>
+  </div>
+  {rows.length>limit&&<div style={{marginTop:8}}>
+   <Button variant="secondary" size="compact" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
+    {expanded?"عرض أقل":"المزيد"}
+   </Button>
+  </div>}
+ </>;
+}
+
 export function InterestStatisticsPage(){
  const [days,setDays]=useState(30);
  const report=useQuery({queryKey:["interest-events-report",days],
@@ -29,14 +49,6 @@ export function InterestStatisticsPage(){
   refetchOnWindowFocus:false,staleTime:30000});
  const data=report.data;
  const total=data?.actions.reduce((sum,a)=>sum+Number(a.total),0)??0;
- const table=(headers:string[],rows:(string|number|React.ReactNode)[][])=>
-  <div style={{overflowX:"auto"}}>
-   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-    <thead><tr>{headers.map((h,i)=><th key={i} scope="col" style={cell}>{h}</th>)}</tr></thead>
-    <tbody>{rows.map((row,i)=><tr key={i}>{row.map((x,j)=><td key={j} style={cell}>{x}</td>)}</tr>)}
-     {!rows.length&&<tr><td colSpan={headers.length} style={cell}>لا توجد نتائج لهذه الفترة.</td></tr>}</tbody>
-   </table>
-  </div>;
  return <section dir="rtl">
   <PageHeader title="إحصاءات اهتمامات الزوار والمستخدمين"
    description="النقرات وفتح الصفحات والكروت وعمليات البحث. للمالك فقط؛ سجل تحليلي منفصل عن تدقيق المحاسبة والتعديلات."
@@ -57,28 +69,28 @@ export function InterestStatisticsPage(){
   </Card>
   {data&&<>
    <Card title="الحركات حسب نوع الحدث">
-    {table(["الحدث","إجمالي المرات","المستخدمون والزوار"],data.actions.map(a=>
-     [formats[a.action]??a.action,number(a.total),number(a.visitors)]))}
+    <SectionTable key={days} headers={["الحدث","إجمالي المرات","المستخدمون والزوار"]} rows={data.actions.map(a=>
+     [formats[a.action]??a.action,number(a.total),number(a.visitors)])} />
    </Card>
    <Card title="أكثر الكروت فتحًا" description="يعرض معرف الكرت الحقيقي؛ النقر على كرت السوق يفتحه.">
-    {table(["الكرت","نوع الكرت","مرات الفتح","عدد الأشخاص"],data.cards.map(c=>
+    <SectionTable key={days} headers={["الكرت","نوع الكرت","مرات الفتح","عدد الأشخاص"]} rows={data.cards.map(c=>
      [marketLink(c)?<Link to={marketLink(c)!}>{c.label||"كرت #"+c.target_id}</Link>:
        c.label||"كرت #"+c.target_id,
-      c.target_type,number(c.total),number(c.visitors)]))}
+      c.target_type,number(c.total),number(c.visitors)])} />
    </Card>
    <Card title="كلمات وحروف البحث المتكررة" description="تُحسب الكلمة عند التوقف عن الكتابة لحظة قصيرة، لا عند كل ضغطة مفتاح.">
-    {table(["ما جرى البحث عنه","مرات البحث","الأشخاص"],data.searches.map(s=>
-     [s.term,number(s.total),number(s.visitors)]))}
+    <SectionTable key={days} headers={["ما جرى البحث عنه","مرات البحث","الأشخاص"]} rows={data.searches.map(s=>
+     [s.term,number(s.total),number(s.visitors)])} />
    </Card>
    <Card title="نشاط كل مستخدم أو زائر" description="تتضمن الزيارات المجهولة دون معرفة هوية صاحب الجهاز.">
-    {table(["المستخدم / الزائر","عدد التفاعلات"],data.users.map(u=>
-      [actorLabel(u.subject_key,u.name),number(u.total)]))}
+    <SectionTable key={days} headers={["المستخدم / الزائر","عدد التفاعلات"]} rows={data.users.map(u=>
+      [actorLabel(u.subject_key,u.name),number(u.total)])} />
    </Card>
    <Card title="أحدث 100 حركة مسجلة">
-    {table(["الوقت","المستخدم أو الزائر","الحدث","الهدف أو البحث","الصفحة"],data.recent.map(e=>
+    <SectionTable key={days} headers={["الوقت","المستخدم أو الزائر","الحدث","الهدف أو البحث","الصفحة"]} rows={data.recent.map(e=>
       [formatDate(e.occurred_at),actorLabel(e.subject_key,e.name),formats[e.action]??e.action,
        e.action==="search"?e.dimension_text:e.label||e.target_type+(e.target_id?" #"+e.target_id:""),
-       e.pathname]))}
+       e.pathname])} />
    </Card>
    <p style={{fontSize:12,opacity:.8}}>
     تُحذف التفاصيل الأقدم من {data.retentionDays} يومًا على دفعات،
