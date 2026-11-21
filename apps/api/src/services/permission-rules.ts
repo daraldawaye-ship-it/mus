@@ -252,6 +252,12 @@ export async function requestPermissionTargets(
             ? "company.employees"
             : "company.accounts";
   }
+  // A display/approval stamp is an independently authorized item-card action.
+  // The button's central edit policy is checked by the route, while the item
+  // card only needs to be readable; generic card edit must not be required.
+  if (resource === "items" && /^\d+$/.test(detail ?? "") &&
+      segments[2] === "settlement-timestamp" && verb === "PATCH")
+    return [pagePermissionAliases("company.item-card", "view")];
   if (resource === "items")
     page =
       action === "create" && !detail
