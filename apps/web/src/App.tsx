@@ -1459,7 +1459,7 @@ function Workspace() {
           <DockTableContext scopeKey={`${user?.id??"guest"}:${dockCompanyId??0}:${!!employeePreview}`}
             scope={{companyId:dockCompanyId,companyRoute:inCompany && companyId===dockCompanyId,
               userRoute:currentDockPageKey==="public.users",item:ownerDock,account:accountDock,user:dockUser}}>
-          <WorkPanelLayout key={user?.id ?? "guest"} enabled={workPanelEnabled} userId={user?.id ?? null} defaultOpen={hasWorkPanelTools}
+          <WorkPanelLayout key={user?.id ?? "guest"} enabled={workPanelEnabled} userId={user?.id ?? null}
             renderTools={() => workPanelEnabled && user && (hasWorkPanelTools ? (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
                 user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock} showPrivateNotes={notesDock}

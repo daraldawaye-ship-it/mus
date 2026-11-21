@@ -5,38 +5,36 @@ import { mobileWorkPanelAvailableHeight,mobileWorkPanelMaxSize,watchMobileWorkPa
 import "./WorkPanelLayout.css";
 
 type StoredPanel = { desktop: number; mobile: number; open: boolean };
-const DEFAULT: StoredPanel = { desktop: 320, mobile: 320, open: true };
+const DEFAULT: StoredPanel = { desktop: 200, mobile: 145, open: true };
 const DESKTOP_RAIL = 24;
 const MOBILE_RAIL = 30;
 const STORAGE_PREFIX = "alraesy:work-panel:v1:";
 const MOBILE_QUERY = "(max-width: 680px)";
 
-function loadPanel(userId: number | null, defaultOpen: boolean): StoredPanel {
-  const fallback = { ...DEFAULT, open: defaultOpen };
-  if (userId == null) return fallback;
+function loadPanel(userId: number | null): StoredPanel {
+  if (userId == null) return DEFAULT;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_PREFIX + userId) || "null");
     return {
       desktop: Number.isFinite(saved?.desktop) ? saved.desktop : DEFAULT.desktop,
       mobile: Number.isFinite(saved?.mobile) ? saved.mobile : DEFAULT.mobile,
-      open: typeof saved?.open === "boolean" ? saved.open : fallback.open,
+      open: typeof saved?.open === "boolean" ? saved.open : DEFAULT.open,
     };
   } catch {
-    return fallback;
+    return DEFAULT;
   }
 }
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), Math.max(min, max));
 }
 
-export function WorkPanelLayout({ enabled, userId, defaultOpen = true, renderTools, children }: {
+export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   enabled: boolean;
   userId: number | null;
-  defaultOpen?: boolean;
   renderTools?: (availableHeight: number) => ReactNode;
   children: ReactNode;
 }) {
-  const [settings, setSettings] = useState<StoredPanel>(() => loadPanel(userId, defaultOpen));
+  const [settings, setSettings] = useState<StoredPanel>(() => loadPanel(userId));
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
   const [headerHeight, setHeaderHeight] = useState(44);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
