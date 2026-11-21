@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {test} from "node:test";
+const file=(name:string)=>readFile(new URL("../apps/web/src/"+name,import.meta.url),"utf8");
+test("drafts use the canonical layout for desktop/opt-in mobile while preserving selections, editing, planning and print snapshots",async()=>{
+ const drafts=await file("pages/ItemOrderDraftsPage.tsx");
+ assert.match(drafts,/<InteractiveColumnsTable[\s\S]*rows=\{visible\}/);
+ assert.match(drafts,/row\.draftId\+":"\+row\.item\.id/);
+ assert.match(drafts,/visibleColumns=\{visibleColumns\} storageKey=\{columnsStorageKey\+":d13-layout"\}/);
+ assert.match(drafts,/header:key==="select".*type="checkbox"/);
+ assert.match(drafts,/drafts\.updateItemQuantity\(row\.draftId, row\.item\.id, quantity\)/);
+ assert.match(drafts,/renderRowDetails=\{row=>expandedItemId===row\.item\.id\?planningControls/);
+ assert.match(drafts,/const sorted = \[\.\.\.filtered\][\s\S]*const visible = sorted\.slice/);
+ assert.match(drafts,/printableRows\("all"\)/);
+ assert.match(drafts,/saveFullDraftExport/);
+ assert.match(drafts,/item-order-drafts-mobile-list/);
+ assert.match(drafts,/mobileD13\?"عرض البطاقات":"عرض الجدول"/);
+});
+test("export and comparison each have distinct settings, preserve actions, and retain report sorting and links",async()=>{
+ const exports=await file("pages/OrderDraftExportsPage.tsx");
+ assert.equal((exports.match(/<InteractiveColumnsTable/g)??[]).length,2);
+ assert.match(exports,/d13:purchase-comparison:\$\{companyId\}:\$\{user\?\.id/);
+ assert.match(exports,/d13:order-draft-exports:\$\{companyId\}:\$\{user\?\.id/);
+ assert.match(exports,/const sortedItems = useMemo/);
+ assert.match(exports,/const totalPages = Math.max\(1, Math.ceil\(\(result\.data\?\.total \?\? 0\)\/100\)\)/);
+ assert.match(exports,/renderRowDetails=\{row=>expanded===row\.itemId\?/);
+ assert.match(exports,/PurchaseComparisonItemPanel companyId=\{companyId\}/);
+ assert.equal((exports.match(/dockRowSource=\{row=>\(\{companyId,itemId:row\.itemId,itemName:row\.itemName\}\)\}/g)??[]).length,2);
+});
+test("canonical extensions are optional, preserve mounted editors and sync only ordinary row clicks",async()=>{
+ const table=await file("InteractiveColumnsTable.tsx");
+ assert.match(table,/dockRowSource\?:/);
+ assert.match(table,/renderRowDetails\?:/);
+ assert.match(table,/allowColumnVisibility\?:boolean/);
+ assert.match(table,/if\(!availableColumns\.some\(column=>!next\.includes\(column\)\)\)return/);
+ assert.match(table,/style=\{visibleColumns\.includes\(key\) \? undefined : \{ display: "none" \}\}/);
+ assert.match(table,/colSpan=\{Math.max\(1,shown.length\)\}/);
+ assert.match(table,/!target\.closest\(dockInteractiveSelector\)/);
+ assert.match(table,/selection\.containsNode\(event\.currentTarget,true\)/);
+ assert.match(table,/updateDock\(dockRowSource\(item\.row\)\)/);
+});

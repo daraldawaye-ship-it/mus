@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import InteractiveColumnsTable,{type InteractiveTableColumn} from "../InteractiveColumnsTable";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext, ItemCompositionPeers, Page } from "../../../../packages/contracts/src/index.ts";
@@ -110,7 +111,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const tableViewport = useRef<HTMLDivElement>(null);
   const hasRows = !!rows;
   useLayoutEffect(() => {
-    const viewport = tableViewport.current;
+    const viewport = tableViewport.current?.querySelector<HTMLElement>(".interactive-columns-scroll");
     if (!viewport) return;
     const fit = () => {
       const top = viewport.getBoundingClientRect().top;
@@ -131,18 +132,30 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         : compareQuantity(left, right);
       return (sort.descending ? -order : order) || a.itemId - b.itemId;
     });
-  const headerDrag = useRef<{ label: HTMLElement; pointerId: number; x: number; left: number } | null>(null);
-  const dragged = useRef(false);
-  const heading = (column: ComparisonColumn) => {
-    const active = sort?.column === column;
-    return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
-      <button type="button" title={comparisonColumns[column]} style={{ display: "inline-flex", alignItems: "center", gap: 2, padding: 0, border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "grab", whiteSpace: "nowrap", userSelect: "none" }}
-        onClick={() => setSort(current => ({ column, descending: current?.column === column && !current.descending }))}>
-        <span data-column-label style={{ display: "block", maxWidth: column === "itemName" ? "6em" : "3.4em", overflowX: "auto", scrollbarWidth: "none", overscrollBehaviorX: "contain" }}>{comparisonColumns[column]}</span>
-        <span aria-hidden="true">{active ? (sort.descending ? "▼" : "▲") : "↕"}</span>
-      </button>
-    </th>;
-  };
+  type ComparisonRow=NonNullable<typeof rows>[number];
+  const columnOrder:ComparisonColumn[]=["itemName","requested","purchased","difference","saleQuantityMonth","availableUnit1","actualPrice","actualValue","defaultPrice","defaultValue"];
+  const comparisonTableColumns:InteractiveTableColumn<ComparisonRow,ComparisonColumn>[]=columnOrder.map(key=>({
+    key,label:comparisonColumns[key],sortable:true,width:key==="itemName"?205:95,scrollText:key!=="itemName",
+    cell:row=>{
+      switch(key){
+        case "itemName": return <div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
+              aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
+              onClick={() => setExpanded(current => current === row.itemId ? null : row.itemId)}>⋯</button>
+              <button type="button" className="purchase-comparison-item-select"
+                aria-pressed={sidePanel?.itemId === row.itemId}
+                onClick={() => setSidePanel(current => ({ itemId: row.itemId, itemName: row.itemName, view: current?.view ?? "purchase" }))}>
+                {row.itemName}
+              </button>
+              <Link className="purchase-comparison-item-card-link" to={`/companies/${companyId}/items/${row.itemId}`}
+                title="فتح كرت الصنف" aria-label={`فتح كرت الصنف ${row.itemName}`}>↗</Link></div>;
+        case "requested": return row.requested??"—";
+        case "purchased": return row.purchased;
+        case "saleQuantityMonth": return <bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(row.saleQuantityMonth)}</bdi>;
+        case "availableUnit1": return <bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(row.availableUnit1)}</bdi>;
+        default:return comparisonValue(row[key],["difference","actualValue","defaultValue"].includes(key));
+      }
+    },
+  }));
   return <section className="purchase-comparison-page">
     <PageHeader title="فارق الشراء والطلبيه"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الفارق = المشتَرى − المطلوب. سعر الفواتير متوسط مرجّح بالكمية للوحدة الأولى."
@@ -181,57 +194,20 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
         <Notice>جارٍ تحميل حالة المراجعة لجميع الأصناف لتطبيق الفلتر…</Notice>}
       {rows && <>
-        <div ref={tableViewport} className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
-          <thead
-            onPointerDown={event => {
-              dragged.current = false;
-              if (event.pointerType !== "mouse" || event.button !== 0) return;
-              const button = (event.target as Element).closest("button");
-              const label = button?.querySelector<HTMLElement>("[data-column-label]");
-              if (!button || !label) return;
-              button.setPointerCapture(event.pointerId);
-              headerDrag.current = { label, pointerId: event.pointerId, x: event.clientX, left: label.scrollLeft };
-            }}
-            onPointerMove={event => {
-              const start = headerDrag.current;
-              if (!start || start.pointerId !== event.pointerId) return;
-              const delta = event.clientX - start.x;
-              if (!dragged.current && Math.abs(delta) < 5) return;
-              dragged.current = true;
-              start.label.scrollLeft = start.left - delta;
-            }}
-            onLostPointerCapture={() => { headerDrag.current = null; }}
-            onClickCapture={event => {
-              if (dragged.current && event.detail > 0) event.stopPropagation();
-              dragged.current = false;
-            }}>
-            <tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("saleQuantityMonth")}{heading("availableUnit1")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
-          <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={[index % 2 ? "alternate" : "", sidePanel?.itemId === row.itemId ? "selected" : ""].filter(Boolean).join(" ")}>
-            <td><div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
-              aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
-              onClick={() => setExpanded(current => current === row.itemId ? null : row.itemId)}>⋯</button>
-              <button type="button" className="purchase-comparison-item-select"
-                aria-pressed={sidePanel?.itemId === row.itemId}
-                onClick={() => setSidePanel(current => ({ itemId: row.itemId, itemName: row.itemName, view: current?.view ?? "purchase" }))}>
-                {row.itemName}
-              </button>
-              <Link className="purchase-comparison-item-card-link" to={`/companies/${companyId}/items/${row.itemId}`}
-                title="فتح كرت الصنف" aria-label={`فتح كرت الصنف ${row.itemName}`}>↗</Link></div></td>
-            <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
-            <td>{comparisonValue(row.difference, true)}</td>
-            <td><bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(row.saleQuantityMonth)}</bdi></td>
-            <td><bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(row.availableUnit1)}</bdi></td>
-            <td>{comparisonValue(row.actualPrice)}</td>
-            <td>{comparisonValue(row.actualValue, true)}</td>
-            <td>{comparisonValue(row.defaultPrice)}</td>
-            <td>{comparisonValue(row.defaultValue, true)}</td>
-          </tr>{expanded === row.itemId && <tr className="purchase-comparison-details"><td colSpan={10}>
-            {!row.info && metricsError ? <Notice tone="error">{errorMessage(metricsError)}</Notice> :
-              <OrderPlanningFields companyId={companyId} itemId={row.itemId} itemName={row.itemName}
-                info={row.info} canEdit={!!access?.enabled && !!access.actionAccess.edit} />}
-          </td></tr>}</Fragment>)}</tbody>
-        </table></div>
-        {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
+        <div ref={tableViewport} className="purchase-comparison-d13">
+          <InteractiveColumnsTable columns={comparisonTableColumns} rows={rows} rowKey={row=>row.itemId}
+            ariaLabel="فارق الشراء والطلبيه" visibleColumns={columnOrder} allowColumnVisibility
+            storageKey={`alraesy:d13:purchase-comparison:${companyId}:${user?.id??"guest"}`}
+            sortKey={sort?.column} sortDirection={sort?.descending?"desc":"asc"}
+            onSort={column=>setSort(current=>({column,descending:current?.column===column&&!current.descending}))}
+            dockRowSource={row=>({companyId,itemId:row.itemId,itemName:row.itemName})}
+            rowClassName={row=>sidePanel?.itemId===row.itemId?"selected":undefined}
+            renderRowDetails={row=>expanded===row.itemId?
+              (!row.info&&metricsError?<Notice tone="error">{errorMessage(metricsError)}</Notice>:
+                <OrderPlanningFields companyId={companyId} itemId={row.itemId} itemName={row.itemName}
+                  info={row.info} canEdit={!!access?.enabled&&!!access.actionAccess.edit}/>):null}
+            emptyMessage="لا توجد أصناف مطابقة." />
+        </div>
       </>}
     </Card>
     <aside id="purchase-comparison-detail-pane" className="purchase-comparison-detail-pane" aria-live="polite">
@@ -414,12 +390,12 @@ function ExportHistory({ context }: { context: CompanyContext }) {
     if (sort === column) setDescending(value => !value);
     else { setSort(column); setDescending(column === "date"); }
   };
-  const heading = (column: typeof sort, label: string) =>
-    <button type="button" onClick={() => changeSort(column)}
-      aria-label={`ترتيب حسب ${label}`} aria-sort={sort === column ? (descending ? "descending" : "ascending") : undefined}
-      style={{ border:0, background:"transparent", color:"inherit", font:"inherit", fontWeight:"inherit", cursor:"pointer", padding:0 }}>
-      {label}{sort === column ? (descending ? " ▼" : " ▲") : ""}
-    </button>;
+  const exportColumns:InteractiveTableColumn<ExportRow,typeof sort>[]=[
+    {key:"name",label:"الصنف",width:228,sortable:true,cell:row=><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link>},
+    {key:"required",label:"الكمية المطلوبة",width:108,sortable:true,cell:row=><bdi>{quantityText(row.requiredQuantity,true)}</bdi>},
+    {key:"available",label:"المتوفر وقت الترحيل دون المرتجعات",width:155,sortable:true,cell:row=><bdi>{quantityText(row.availableQuantity)}</bdi>},
+    {key:"date",label:"تاريخ ووقت الترحيل",width:168,sortable:true,cell:row=><bdi title={row.exportedAt}>{dateTimeText(row.exportedAt)}</bdi>},
+  ];
   return <section className="order-export-followup">
     <PageHeader title="متابعة الطلبيات المرحلة"
       description="سجل مشترك لجميع أجهزة الشركة؛ الصنف لا يُسجل أكثر من مرة في اليوم، والسجلات الأقدم من 40 يومًا تُحذف تلقائيًا."
@@ -437,21 +413,12 @@ function ExportHistory({ context }: { context: CompanyContext }) {
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       {result.isPending && <Notice>جارٍ تحميل سجل الطلبيات…</Notice>}
       {!!result.data && <>
-        <div role="region" tabIndex={0} aria-label="سجل الطلبيات المرحلة"
-          style={{ maxHeight:"68vh", overflow:"auto", border:"1px solid var(--border, #888)", borderRadius:6 }}>
-          <table className="data-table" dir="rtl" style={{ width:"100%", minWidth:560, borderCollapse:"collapse", fontSize:13, tableLayout:"auto" }}>
-            <thead><tr><th>{heading("name", "الصنف")}</th><th>{heading("required", "الكمية المطلوبة")}</th><th>{heading("available", "المتوفر وقت الترحيل دون المرتجعات")}</th><th>{heading("date", "تاريخ ووقت الترحيل")}</th></tr></thead>
-            <tbody>
-              {sortedItems.map(row => <tr key={row.id}>
-                <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
-                <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.requiredQuantity, true)}</td>
-                <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.availableQuantity)}</td>
-                <td dir="ltr" title={row.exportedAt} style={{ textAlign:"center", whiteSpace:"nowrap" }}>{dateTimeText(row.exportedAt)}</td>
-              </tr>)}
-            </tbody>
-          </table>
-        </div>
-        {!result.data.items.length && <Notice>لا توجد أصناف مرحلة خلال آخر 40 يومًا.</Notice>}
+        <InteractiveColumnsTable className="order-export-d13" columns={exportColumns} rows={sortedItems} rowKey={row=>row.id}
+          ariaLabel="سجل الطلبيات المرحلة" visibleColumns={exportColumns.map(column=>column.key)} allowColumnVisibility
+          storageKey={`alraesy:d13:order-draft-exports:${companyId}:${user?.id??"guest"}`}
+          sortKey={sort} sortDirection={descending?"desc":"asc"} onSort={changeSort}
+          dockRowSource={row=>({companyId,itemId:row.itemId,itemName:row.itemName})}
+          emptyMessage="لا توجد أصناف مرحلة خلال آخر 40 يومًا." />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginTop:8 }}>
           <small>الإجمالي: {result.data.total} — الصفحة {page} من {totalPages}</small>
           <div style={{ display:"flex", gap:6 }}>

@@ -137,3 +137,39 @@
   }
   .purchase-comparison-page .purchase-comparison-split-layout > .card { padding: 8px; }
 }
+
+.purchase-comparison-d13 .interactive-columns-scroll { max-height:var(--comparison-height,58vh); }
+.order-export-d13 .interactive-columns-scroll { max-height:68vh; }
+.purchase-comparison-d13 .interactive-columns-grid tr.selected td {
+  background: color-mix(in srgb, var(--surface), var(--focus) 13%);
+}
+@media print {
+  .purchase-comparison-d13 .interactive-columns-scroll,.order-export-d13 .interactive-columns-scroll {
+    max-height:none; overflow:visible;
+  }
+  .purchase-comparison-d13 .interactive-columns-toolbar,.order-export-d13 .interactive-columns-toolbar { display:none; }
+}
+
+.item-order-drafts-mobile-table-switch { display:none; }
+.item-order-drafts-table-scroll th[data-column="select"] .interactive-column-header-extra {
+  position:absolute; inset-block-start:50%; inset-inline-end:18px; transform:translateY(-50%); z-index:1;
+}
+.item-order-drafts-table-scroll th[data-column="select"] .interactive-column-label { visibility:hidden; }
+.item-order-drafts-table-scroll tr.item-order-draft-detail-selected td {
+  background:color-mix(in srgb,var(--surface),var(--focus) 13%);
+}
+.item-order-drafts-table-scroll .item-order-draft-deleted td[data-column="name"] a { text-decoration:line-through; }
+.interactive-columns-grid tbody tr.interactive-column-row-details > td { white-space:normal; }
+@media (max-width: 680px) {
+  .item-order-drafts-page .item-order-drafts-mobile-table-switch { display:block; }
+  .item-order-drafts-page.is-mobile-d13 .item-order-drafts-table-scroll { display:block; }
+  .item-order-drafts-page.is-mobile-d13 .item-order-drafts-mobile-list { display:none; }
+}
+@media print {
+  :is(.purchase-comparison-d13,.order-export-d13) .interactive-columns-grid {
+    width:100% !important; min-width:0 !important; table-layout:auto;
+  }
+  :is(.purchase-comparison-d13,.order-export-d13) .interactive-columns-grid col { width:auto !important; }
+  :is(.purchase-comparison-d13,.order-export-d13) .interactive-columns-grid :is(td,th) { white-space:normal; }
+  :is(.purchase-comparison-d13,.order-export-d13) .interactive-column-resizer { display:none; }
+}

@@ -1,5 +1,6 @@
+import InteractiveColumnsTable,{type InteractiveTableColumn} from "../InteractiveColumnsTable";
 import { formatNumber, formatStockSaleQuantity } from "../order-draft-quantities";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery,useQueryClient } from "@tanstack/react-query";
@@ -52,7 +53,7 @@ type DraftColumn = (typeof draftColumnOptions)[number][0];
 // Compact laptop widths. The heading text scrolls inside these widths rather
 // than expanding a column or wrapping into a tall table header.
 const draftColumnWidths: Record<DraftColumn, number> = {
-  select: 40, quantity: 150, name: 215, details: 39,
+  select: 64, quantity: 150, name: 215, details: 39,
   stock: 89, sold: 88, month: 83, year: 83,
   price: 88, value: 96, action: 72, option: 140,
   coverage: 100, coverageWithReserve: 110, compositionCoverage: 118,
@@ -142,6 +143,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [classificationFilters,setClassificationFilters]=useState<Set<DraftClassificationFilter>>(
     ()=>new Set(draftClassificationFilters.map(option=>option.value)));
   const [page, setPage] = useState(1);
+  const [mobileD13,setMobileD13]=useState(false);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const columnsStorageKey = "alraesy:order-drafts-columns:v1:" +
@@ -156,16 +158,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     setEditingColumns(selected);
     setColumnsDialogOpen(false);
   }, [columnsStorageKey]);
-  const columnStyle = (column: DraftColumn) =>
-    visibleColumns.includes(column) ? undefined : { display: "none" as const };
-  const headerColumnStyle = (column: DraftColumn) => ({
-    ...columnStyle(column), width: draftColumnWidths[column],
-    minWidth: draftColumnWidths[column], maxWidth: draftColumnWidths[column],
-  });
-  const visibleTableWidth = visibleColumns.reduce(
-    (total, column) => total + draftColumnWidths[column], 0);
-  const defaultColumnLayout = visibleColumns.length === defaultDraftColumns.length &&
-    defaultDraftColumns.every(column => visibleColumns.includes(column));
+  const columnStyle=(column:DraftColumn)=>visibleColumns.includes(column)?undefined:{display:"none" as const};
+  const defaultColumnLayout=visibleColumns.length===defaultDraftColumns.length&&
+    defaultDraftColumns.every(column=>visibleColumns.includes(column));
   const needsItemCoverage = visibleColumns.includes("coverage") ||
     visibleColumns.includes("coverageWithReserve") ||
     sortKey === "coverage" || sortKey === "coverageWithReserve";
@@ -486,25 +481,11 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const allVisibleSelected = visibleActiveIds.length > 0
     && visibleActiveIds.every(id => selectedIds.has(id));
   const resetPage = () => setPage(1);
-  // Drag the header label horizontally without triggering the sort click.
-  // Normal click and keyboard activation still sort the full draft list.
-  const headerDrag = useRef<{ label: HTMLElement; pointerId: number;
-    x: number; left: number } | null>(null);
-  const headerDragged = useRef(false);
-  const sortHeader = (key: DraftSortKey, label: string) =>
-    <th scope="col" style={headerColumnStyle(key)} aria-sort={sortKey === key ?
-      (sortDir === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" className="item-order-draft-sort" onClick={() => {
-        setSortDir(sortKey === key && sortDir === "asc" ? "desc" : "asc");
-        setSortKey(key);
-        setSortVersion(version => version + 1);
-        setPage(1);
-      }} title={label + " — انقر للترتيب أو اسحب النص لقراءته"}>
-        <span data-column-label className="item-order-draft-sort-label" dir="rtl">{label}</span>
-        <span aria-hidden="true">{sortKey === key ?
-          (sortDir === "asc" ? "▲" : "▼") : "⇵"}</span>
-      </button>
-    </th>;
+  const sortDraftColumn=(key:DraftColumn)=>{
+    if(key==="select"||key==="details"||key==="action")return;
+    setSortDir(sortKey===key&&sortDir==="asc"?"desc":"asc");
+    setSortKey(key);setSortVersion(version=>version+1);setPage(1);
+  };
 
   const applyColumns = () => {
     if (!editingColumns.length) return;
@@ -579,7 +560,45 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         if (drafts.setItemDeleted(row.draftId, row.item.id, true)) selectItem(row.item.id, false);
       }}>حذف</Button>;
 
-  return <div className="wallet-page item-order-drafts-page">
+  const draftCell=(column:DraftColumn,row:DraftRow)=>{
+    const info=metricsById.get(row.item.id);
+    switch(column){
+      case "select": return <><input type="checkbox" aria-label={"اختيار " + row.item.name}
+                  disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
+                  onChange={event => {
+                  selectItem(row.item.id, event.target.checked);
+                  showItemDetails(row.item.id, row.item.name, true);
+                }} /></>;
+      case "quantity": return <><DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                  onInspect={() => showItemDetails(row.item.id, row.item.name)}
+                  onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} /></>;
+      case "name": return <><Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
+                {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}</>;
+      case "details": return <>{moreButton(row)}</>;
+      case "stock": return <><span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span></>;
+      case "sold": return <><span className="item-order-drafts-sold-quantity"><bdi>{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi></span></>;
+      case "month": return <><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></>;
+      case "year": return <><bdi>{formatNumber(info?.saleTimesYear)}</bdi></>;
+      case "price": return <><bdi>{formatNumber(info?.purchasePrice)}</bdi></>;
+      case "value": return <><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></>;
+      case "action": return <><div className="item-order-draft-inline-actions">{action(row)}</div></>;
+      case "option": return <>{optionName(row)}</>;
+      case "coverage": return <><bdi>{formatNumber(info?.approximateCoverageDays)}</bdi></>;
+      case "coverageWithReserve": return <><bdi>{formatNumber(info?.coverageAfterReserveDays)}</bdi></>;
+      case "compositionCoverage": return <><bdi>{formatNumber(info?.compositionCoverageDays)}</bdi></>;
+    }
+  };
+  const desktopDraftColumns:InteractiveTableColumn<DraftRow,DraftColumn>[]=
+    draftColumnOptions.map(([key,label])=>({
+      key,label,width:draftColumnWidths[key],cell:row=>draftCell(key,row),
+      sortable:key!=="select"&&key!=="details"&&key!=="action",
+      scrollText:key!=="select"&&key!=="quantity"&&key!=="details"&&key!=="action",
+      header:key==="select"?<input type="checkbox" aria-label="اختيار جميع أصناف الصفحة غير المحذوفة"
+        disabled={!visibleActiveIds.length} checked={allVisibleSelected}
+        onChange={event=>selectVisible(event.currentTarget.checked)} />:undefined,
+    }));
+
+  return <div className={`wallet-page item-order-drafts-page${mobileD13?" is-mobile-d13":""}`}>
     <PageHeader title="متابعة مسودات الطلبيات"
       description="جميع أصناف المسودات المحفوظة محليًا على هذا الجهاز"
       actions={<><Link className="button button-secondary"
@@ -811,118 +830,20 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
         <Notice>جارٍ تحميل حالات المراجعة لجميع أصناف المسودات لتطبيق الفلتر…</Notice>}
       {!drafts.drafts.length && <Notice>لا توجد مسودات محفوظة على هذا الجهاز حاليًا. أنشئ مسودة أو اختر تجميعًا أعلاه.</Notice>}
-      {!!drafts.drafts.length && <div className="table-scroll item-order-drafts-table-scroll" role="region"
-        aria-label="قائمة أصناف جميع المسودات">
-        <table className={"item-order-drafts-table" +
-          (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
-          style={{ width: visibleTableWidth + "px", minWidth: "100%", tableLayout: "fixed" }}>
-          <thead
-            onPointerDown={event => {
-              headerDragged.current = false;
-              if (event.pointerType !== "mouse" || event.button !== 0) return;
-              const button = (event.target as Element).closest<HTMLButtonElement>(".item-order-draft-sort");
-              const label = button?.querySelector<HTMLElement>("[data-column-label]");
-              if (!button || !label) return;
-              button.setPointerCapture(event.pointerId);
-              headerDrag.current = { label, pointerId: event.pointerId,
-                x: event.clientX, left: label.scrollLeft };
-            }}
-            onPointerMove={event => {
-              const start = headerDrag.current;
-              if (!start || start.pointerId !== event.pointerId) return;
-              const delta = event.clientX - start.x;
-              if (!headerDragged.current && Math.abs(delta) < 5) return;
-              headerDragged.current = true;
-              start.label.scrollLeft = start.left - delta;
-            }}
-            onLostPointerCapture={() => { headerDrag.current = null; }}
-            onClickCapture={event => {
-              if (headerDragged.current && event.detail > 0) {
-                event.preventDefault();
-                event.stopPropagation();
-              }
-              headerDragged.current = false;
-            }}>
-            <tr>
-            <th className="item-order-drafts-select-col" style={headerColumnStyle("select")}>
-              <input type="checkbox" aria-label="اختيار جميع أصناف الصفحة غير المحذوفة"
-                disabled={!visibleActiveIds.length} checked={allVisibleSelected}
-                onChange={event => selectVisible(event.target.checked)} />
-            </th>
-            {sortHeader("quantity", "الكمية المطلوبة (و1)")}
-            {sortHeader("name", "اسم الصنف")}
-            <th scope="col" aria-label="إظهار التفاصيل" style={headerColumnStyle("details")}>⋯</th>
-            {sortHeader("stock", "المتوفر دون المرتجعات (و1)")}
-            {sortHeader("sold", "الكمية المباعة في شهر (و1)")}
-            {sortHeader("month", "المبيعات مرات في شهر")}
-            {sortHeader("year", "المبيعات مرات في سنة")}
-            {sortHeader("price", "سعر الشراء")}
-            {sortHeader("value", "قيمة المطلوب")}
-            <th style={headerColumnStyle("action")}>الإجراء</th>
-            {sortHeader("option", "اسم الخيارات")}
-            {sortHeader("coverage", "الكفاية بدون الاحتياط (يوم)")}
-            {sortHeader("coverageWithReserve", "الكفاية مع الاحتياط (يوم)")}
-            {sortHeader("compositionCoverage", "الكفاية التقريبية للتركيب (يوم)")}
-          </tr></thead>
-          <tbody>{visible.map(row => {
-            const info = metricsById.get(row.item.id);
-            return <Fragment key={row.draftId + ":" + row.item.id}>
-              <tr className={[
-                row.item.deleted ? "item-order-draft-deleted" : "",
-                sidePanel?.itemId === row.item.id ? "item-order-draft-detail-selected" : "",
-              ].filter(Boolean).join(" ")}>
-              <td data-label="اختيار" style={columnStyle("select")}>
-                <input type="checkbox" aria-label={"اختيار " + row.item.name}
-                  disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
-                  onChange={event => {
-                  selectItem(row.item.id, event.target.checked);
-                  showItemDetails(row.item.id, row.item.name, true);
-                }} />
-              </td>
-              <td data-label="الكمية المطلوبة" style={columnStyle("quantity")}>
-                <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
-                  onInspect={() => showItemDetails(row.item.id, row.item.name)}
-                  onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
-              </td>
-              <td data-label="اسم الصنف" style={columnStyle("name")}>
-                <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
-                {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
-              </td>
-              <td data-label="إظهار التفاصيل" style={columnStyle("details")}>{moreButton(row)}</td>
-              <td data-label="المتوفر دون المرتجعات" style={columnStyle("stock")}>
-                <span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span>
-              </td>
-              <td data-label="المباع في شهر" style={columnStyle("sold")}>
-                <span className="item-order-drafts-sold-quantity"><bdi>{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi></span>
-              </td>
-              <td data-label="مرات شهر" style={columnStyle("month")}><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
-              <td data-label="مرات سنة" style={columnStyle("year")}><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
-              <td data-label="سعر الشراء" style={columnStyle("price")}><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
-              <td data-label="قيمة المطلوب" style={columnStyle("value")}><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
-              <td data-label="الإجراء" style={columnStyle("action")}>
-                <div className="item-order-draft-inline-actions">{action(row)}</div>
-              </td>
-              <td data-label="اسم الخيارات" style={columnStyle("option")} title={"مسودة " + row.draftId}>{optionName(row)}</td>
-              <td data-label="الكفاية بدون الاحتياط" style={columnStyle("coverage")}>
-                <bdi>{formatNumber(info?.approximateCoverageDays)}</bdi>
-              </td>
-              <td data-label="الكفاية مع الاحتياط" style={columnStyle("coverageWithReserve")}>
-                <bdi>{formatNumber(info?.coverageAfterReserveDays)}</bdi>
-              </td>
-              <td data-label="الكفاية التقريبية للتركيب" style={columnStyle("compositionCoverage")}>
-                <bdi>{formatNumber(info?.compositionCoverageDays)}</bdi>
-              </td>
-              </tr>
-              {expandedItemId === row.item.id && <tr className="item-order-draft-expanded-row">
-                <td colSpan={visibleColumns.length}>{planningControls(row, info)}</td>
-              </tr>}
-            </Fragment>;
-          })}
-          {reviewFilterReady && classificationFilterReady && !filtered.length &&
-            <tr><td colSpan={visibleColumns.length}>لا توجد أصناف مطابقة للخيارات الحالية.</td></tr>}
-          </tbody>
-        </table>
+      {!!drafts.drafts.length&&<div className="item-order-drafts-mobile-table-switch">
+        <Button type="button" size="compact" variant="secondary" aria-pressed={mobileD13}
+          onClick={()=>setMobileD13(value=>!value)}>{mobileD13?"عرض البطاقات":"عرض الجدول"}</Button>
       </div>}
+      {!!drafts.drafts.length && <InteractiveColumnsTable
+        className="item-order-drafts-table-scroll" ariaLabel="قائمة أصناف جميع المسودات"
+        columns={desktopDraftColumns} rows={visible} rowKey={row=>row.draftId+":"+row.item.id}
+        visibleColumns={visibleColumns} storageKey={columnsStorageKey+":d13-layout"}
+        sortKey={sortKey??undefined} sortDirection={sortDir} onSort={sortDraftColumn}
+        dockRowSource={row=>({companyId,itemId:row.item.id,itemName:row.item.name})}
+        rowClassName={row=>[row.item.deleted?"item-order-draft-deleted":"",
+          sidePanel?.itemId===row.item.id?"item-order-draft-detail-selected":""].join(" ")}
+        renderRowDetails={row=>expandedItemId===row.item.id?planningControls(row,metricsById.get(row.item.id)):null}
+        emptyMessage={reviewFilterReady&&classificationFilterReady?"لا توجد أصناف مطابقة للخيارات الحالية.":""} />}
       {!!drafts.drafts.length && <div className="item-order-drafts-mobile-list" aria-label="متابعة الأصناف على الهاتف">
         {visible.map(row => {
           const info = metricsById.get(row.item.id);

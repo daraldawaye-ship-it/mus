@@ -1,11 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ArrowDownUp, GripVertical, RotateCcw } from "lucide-react";
+import {useDockTableUpdate} from "./DockTableContext";
+import {dockInteractiveSelector} from "./dock-table-references";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./InteractiveColumnsTable.css";
 
 export type InteractiveTableColumn<Row, Key extends string = string> = {
   key: Key; label: string; width: number; cell: (row: Row) => ReactNode;
-  sortable?: boolean; className?: string;
+  sortable?: boolean; className?: string; header?:ReactNode; scrollText?:boolean;
 };
 type Props<Row, Key extends string> = {
   columns: readonly InteractiveTableColumn<Row, Key>[]; rows: readonly Row[];
@@ -13,6 +15,7 @@ type Props<Row, Key extends string> = {
   sortKey?: string; sortDirection?: "asc" | "desc"; onSort?: (key: Key) => void;
   rowClassName?: (row: Row) => string | undefined; onRowClick?: (row: Row) => void;
   ariaLabel: string; emptyMessage?: string; className?: string;
+  dockRowSource?:(row:Row)=>unknown; renderRowDetails?:(row:Row)=>ReactNode; allowColumnVisibility?:boolean;
 };
 type Layout<Key extends string> = { order: Key[]; widths: Record<Key, number> };
 type Drag<Key extends string> = {
@@ -57,9 +60,24 @@ export default function InteractiveColumnsTable<Row, Key extends string = string
 }
 
 function InteractiveColumnsTableState<Row, Key extends string>({
-  columns, rows, rowKey, visibleColumns, storageKey, sortKey, sortDirection, onSort,
-  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className,
+  columns, rows, rowKey, visibleColumns:availableColumns, storageKey, sortKey, sortDirection, onSort,
+  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className, dockRowSource,renderRowDetails,allowColumnVisibility,
 }: Props<Row, Key>) {
+  const updateDock=useDockTableUpdate();
+  const [hidden,setHidden]=useState<Key[]>(()=>{
+    try{
+      const saved:unknown=JSON.parse(window.localStorage.getItem(storageKey+":hidden")??"[]");
+      return Array.isArray(saved)?columns.map(column=>column.key).filter(key=>saved.includes(key)):[];
+    }catch{return [];}
+  });
+  const effective=allowColumnVisibility?availableColumns.filter(key=>!hidden.includes(key)):availableColumns;
+  const visibleColumns=effective.length?effective:availableColumns;
+  const toggleVisibility=(key:Key)=>{
+    const next=hidden.includes(key)?hidden.filter(item=>item!==key):[...hidden,key];
+    if(!availableColumns.some(column=>!next.includes(column)))return;
+    setHidden(next);
+    try{window.localStorage.setItem(storageKey+":hidden",JSON.stringify(next));}catch{/* optional */}
+  };
   const [layout, setLayout] = useState(() => readLayout(columns, storageKey));
   const [resizing, setResizing] = useState<Key | null>(null);
   const [preview, setPreview] = useState<Preview<Key> | null>(null);
@@ -249,7 +267,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
 
   // Keep cell subtrees stable during resizing; observers handle their changed viewport widths.
   const renderedRows = useMemo(() => rows.map(row => ({ row, key: rowKey(row), className: rowClassName?.(row),
-    cells: new Map(columns.map(column => [column.key, <ScrollableTableCell>{column.cell(row)}</ScrollableTableCell>])) })),
+    cells: new Map(columns.map(column => [column.key, column.scrollText===false?column.cell(row):<ScrollableTableCell>{column.cell(row)}</ScrollableTableCell>])) })),
   [rows, columns, rowKey, rowClassName]);
   const columnMap = new Map(columns.map(column => [column.key, column]));
   const shown = layout.order.filter(key => visibleColumns.includes(key));
@@ -259,6 +277,16 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   const isDefault = sameOrder(layout.order, defaults.order) && columns.every(column => layout.widths[column.key] === defaults.widths[column.key]);
   return <div className={`interactive-columns-table${preview ? " is-moving-column" : ""}${resizing ? " is-resizing-column" : ""}${className ? ` ${className}` : ""}`} dir="rtl">
     <div className="interactive-columns-toolbar">
+      {allowColumnVisibility&&<details className="interactive-columns-help">
+        <summary>الأعمدة الظاهرة</summary>
+        {columns.filter(column=>availableColumns.includes(column.key)).map(column=>
+          <label key={column.key} className="checkbox-field">
+            <input type="checkbox" checked={visibleColumns.includes(column.key)}
+              disabled={visibleColumns.length===1&&visibleColumns[0]===column.key}
+              onChange={()=>toggleVisibility(column.key)} />
+            {column.label}
+          </label>)}
+      </details>}
       <details className="interactive-columns-help"><summary>طريقة تحريك الأعمدة</summary>
         <p id={helpId}>اسحب عنوان العمود لتغيير ترتيبه، أو الفاصل الأيسر لتغيير عرضه. انقر العنوان للفرز، واسحب النص الطويل داخل الخلية لقراءة بقيته. تُحفظ العروض والترتيب على هذا الجهاز.</p>
         <p>بلوحة المفاتيح: <bdi>Alt + ← / →</bdi> على العنوان لنقله، والأسهم على الفاصل لتغيير العرض. <bdi>Esc</bdi> يلغي السحب الجاري.</p>
@@ -294,6 +322,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
                 {sortable && (sortKey === key ? <span className="interactive-column-sort" aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span>
                   : <ArrowDownUp size={11} className="interactive-column-sort" aria-hidden="true" />)}
               </button>
+              {column.header&&<div className="interactive-column-header-extra">{column.header}</div>}
               <div className={`interactive-column-resizer${resizing === key ? " is-resizing" : ""}`} role="separator" tabIndex={0}
                 aria-label={`تغيير عرض عمود ${column.label}`} aria-orientation="vertical" aria-controls={`${helpId}-table`}
                 aria-valuemin={MIN_WIDTH} aria-valuemax={MAX_WIDTH} aria-valuenow={layout.widths[key]} aria-valuetext={`${layout.widths[key]} بكسل`}
@@ -304,12 +333,25 @@ function InteractiveColumnsTableState<Row, Key extends string>({
                 onKeyDown={event => resizeKey(event, key)} onDragStart={event => event.preventDefault()} />
             </th>;
           })}</tr></thead>
-          <tbody>{renderedRows.map(item => <tr key={item.key} className={item.className} onClick={() => onRowClick?.(item.row)}>
+          <tbody>{renderedRows.map(item => {
+            const details=renderRowDetails?.(item.row);
+            return <Fragment key={item.key}><tr className={item.className} onClick={event=>{
+              if(updateDock&&dockRowSource&&!event.defaultPrevented&&event.detail===1&&
+                  !event.altKey&&!event.ctrlKey&&!event.shiftKey&&!event.metaKey){
+                const target=event.target as HTMLElement;
+                const selection=target.ownerDocument.getSelection();
+                if(target.closest("tr")===event.currentTarget&&!target.closest(dockInteractiveSelector)&&
+                   (!selection||selection.isCollapsed||!selection.containsNode(event.currentTarget,true)))
+                  updateDock(dockRowSource(item.row));
+              }
+              onRowClick?.(item.row);
+            }}>
             {/* Keep hidden editors mounted so an in-flight debounced edit is not cancelled. */}
             {layout.order.map(key => <td key={key} data-column={key} data-last-visible={key === lastVisible ? "true" : undefined}
               style={visibleColumns.includes(key) ? undefined : { display: "none" }}
               className={`${columnMap.get(key)?.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}>{item.cells.get(key)}</td>)}
-          </tr>)}{!rows.length && <tr><td colSpan={Math.max(1, shown.length)}>{emptyMessage}</td></tr>}</tbody>
+          </tr>{details!=null&&<tr className="interactive-column-row-details"><td colSpan={Math.max(1,shown.length)}>{details}</td></tr>}</Fragment>;
+          })}{!rows.length && <tr><td colSpan={Math.max(1, shown.length)}>{emptyMessage}</td></tr>}</tbody>
         </table>
       </div>
       {preview && <><div className="interactive-column-ghost" aria-hidden="true" style={{ left: preview.left, top: preview.top, width: preview.width, opacity: preview.valid ? 1 : .5 }}><GripVertical size={12} />{label(preview.key)}</div>
