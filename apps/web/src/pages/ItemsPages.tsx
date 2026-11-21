@@ -498,10 +498,12 @@ export function ItemPage({ context }: { context: CompanyContext }) {
   );
 }
 
+type ItemSettlementStampAccess = { display:boolean; approval:boolean };
 type InvoiceItemEditorProps = {
   context: CompanyContext;
   itemId: number;
   readOnly?: boolean;
+  settlementStampsDisabled?: boolean;
   onSaved: (item: Item) => void;
   onClose: () => void;
   onSavingChange?: (saving: boolean) => void;
@@ -546,6 +548,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
       key={`${user?.id}:${props.context.company.id}:${props.itemId}`}
       {...props}
       readOnly={readOnly}
+      settlementStampsDisabled={props.readOnly===true}
     />
   );
 }
@@ -557,6 +560,7 @@ function InvoiceItemDetail({
   onClose,
   onSavingChange,
   readOnly,
+  settlementStampsDisabled,
 }: InvoiceItemEditorProps) {
   const { user } = useSession();
   const [openingKey] = useState(() => crypto.randomUUID());
@@ -572,7 +576,7 @@ function InvoiceItemDetail({
       openingKey,
     ],
     queryFn: async ({ signal }) => {
-      const response = await api<{ item: Item }>(
+      const response = await api<{ item: Item; settlementStampAccess: ItemSettlementStampAccess }>(
         `/companies/${context.company.id}/items/${itemId}`,
         { signal },
       );
@@ -616,6 +620,8 @@ function InvoiceItemDetail({
       item={item}
       embedded
       readOnly={readOnly}
+      settlementStampsDisabled={settlementStampsDisabled}
+      settlementStampAccess={result.data.settlementStampAccess}
       onClose={onClose}
       onSavingChange={onSavingChange}
       onSaved={onSaved}
@@ -641,7 +647,7 @@ function ItemDetail({
   const result = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
-      api<{ item: Item }>(`/companies/${context.company.id}/items/${itemId}`, {
+      api<{ item: Item; settlementStampAccess: ItemSettlementStampAccess }>(`/companies/${context.company.id}/items/${itemId}`, {
         signal,
       }),
     enabled: itemId !== "new",
@@ -673,6 +679,7 @@ function ItemDetail({
         key={`${result.data?.item.id ?? "new"}:${result.data?.item.revision ?? 0}:${epoch}`}
         context={context}
         item={result.data?.item ?? null}
+        settlementStampAccess={result.data?.settlementStampAccess}
         onSaved={(item, message) => {
           client.setQueryData(queryKey, { item });
           setEpoch((value) => value + 1);
@@ -1187,6 +1194,8 @@ function ItemEditor({
   onSaved,
   embedded = false,
   readOnly = false,
+  settlementStampsDisabled = false,
+  settlementStampAccess,
   onClose,
   onReloaded,
   onSavingChange,
@@ -1196,6 +1205,8 @@ function ItemEditor({
   onSaved: (item: Item, message: string) => void;
   embedded?: boolean;
   readOnly?: boolean;
+  settlementStampsDisabled?: boolean;
+  settlementStampAccess?: ItemSettlementStampAccess;
   onClose?: () => void;
   onReloaded?: (item: Item) => void;
   onSavingChange?: (saving: boolean) => void;
@@ -1586,7 +1597,8 @@ function ItemEditor({
     }
   }
   async function stampSettlement(kind: "display" | "approval") {
-    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || settlementStampBusy ||
+    if (!item || settlementStampsDisabled || !settlementStampAccess?.[kind] ||
+        dirty || saving || stocktakeBusy || settlementStampBusy ||
         optionBusy || unknownCreation || savingRequest.current) return;
     setSettlementStampBusy(kind);
     setError("");
@@ -2258,8 +2270,9 @@ function ItemEditor({
                       : field.historicalDate ? field.historicalDate + " (الساعة غير مسجلة)" : ""}
                     placeholder="لم يُسجل بعد"
                     aria-label={field.label} />
-                  {item && <Button type="button" variant="secondary" size="compact"
-                    disabled={disabled || dirty || saving || stocktakeBusy || !!settlementStampBusy || optionBusy}
+                  {item && !settlementStampsDisabled && settlementStampAccess?.[field.kind] &&
+                    <Button type="button" variant="secondary" size="compact"
+                    disabled={dirty || saving || stocktakeBusy || !!settlementStampBusy || optionBusy || unknownCreation}
                     onClick={() => void stampSettlement(field.kind)}>
                     {settlementStampBusy === field.kind ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
                   </Button>}
