@@ -1152,6 +1152,7 @@ export interface PageEntry extends PageDefinition {
   href: string | null;
   enabled: boolean;
   configuredVisible: boolean;
+  showOnCompanyOverview: boolean;
   configuredEnabled: boolean;
   globalVisible: boolean;
   globalEnabled: boolean;
@@ -1169,6 +1170,12 @@ export interface PageDirectory extends Page<PageEntry> {
     reports: number;
   };
 }
+export const companyOverviewVisibilitySchema = z
+  .object({ showOnCompanyOverview: z.boolean() })
+  .strict();
+export type CompanyOverviewVisibility = z.infer<typeof companyOverviewVisibilitySchema>;
+export type CompanyOverviewVisibilityResult = CompanyOverviewVisibility & { pageKey: string };
+
 export const pageSettingSchema = z
   .object({
     companyId: z

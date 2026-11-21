@@ -96,6 +96,41 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
   const data = list.data as PageDirectory | undefined;
   const [search, setSearch] = useState(list.query);
   const [selected, setSelected] = useState<string | null>(null);
+  const overviewClient=useQueryClient();
+  const overviewGuard=useScopeGuard(`company-overview-visibility:${companyId??"public"}`);
+  const [overviewSaving,setOverviewSaving]=useState<string|null>(null);
+  const [overviewFailure,setOverviewFailure]=useState("");
+  const overviewInFlight=useRef<string|null>(null);
+  useEffect(()=>{overviewInFlight.current=null;setOverviewSaving(null);setOverviewFailure("");},[companyId,pageUser?.id]);
+  const toggleOverview=async(entry:PageEntry)=>{
+    if(!companyId||!userOwner||entry.key==="company.pages"||entry.record||!entry.href||
+       overviewInFlight.current||!overviewGuard.isCurrent())return;
+    const pending=`${companyId}:${entry.key}`;
+    overviewInFlight.current=pending;
+    setOverviewSaving(entry.key);setOverviewFailure("");
+    const showOnCompanyOverview=entry.showOnCompanyOverview===false;
+    try{
+      await api<{pageKey:string;showOnCompanyOverview:boolean}>(
+        `/companies/${companyId}/page-catalog/${encodeURIComponent(entry.key)}/overview-visibility`,
+        {method:"PATCH",body:{showOnCompanyOverview},signal:overviewGuard.signal});
+      await overviewClient.invalidateQueries({queryKey:["page-directory",pageUser?.id,companyId]});
+      await overviewClient.invalidateQueries({queryKey:["list",pageUser?.id,"page-directory"]});
+    }catch(error){
+      if(overviewGuard.isCurrent())setOverviewFailure(errorMessage(error));
+    }finally{
+      if(overviewInFlight.current===pending)overviewInFlight.current=null;
+      if(overviewGuard.isCurrent())setOverviewSaving(null);
+    }
+  };
+  const overviewControl=(entry:PageEntry)=>entry.key==="company.pages" ? <span className="muted">رابط ثابت</span>
+    : entry.record || !entry.href ? <span aria-label="لا يوجد رابط مباشر">—</span>
+    : <Button type="button" variant="secondary" size="compact"
+        disabled={overviewSaving!==null}
+        aria-label={(entry.showOnCompanyOverview===false?"إظهار ":"إخفاء ")+entry.name+" من واجهة الشركة"}
+        onClick={()=>void toggleOverview(entry)}>
+        {overviewSaving===entry.key?"جارٍ الحفظ…":
+          entry.showOnCompanyOverview===false?"إظهار من واجهة الشركة":"إخفاء من واجهة الشركة"}
+      </Button>;
   useEffect(() => setSearch(list.query), [list.query]);
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -184,6 +219,10 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
           ),
         }),
       ),
+      ...(companyId && userOwner ? [{
+        id:"company-overview-visibility", header:"واجهة الشركة", size:144, enableSorting:false,
+        cell:({row})=>overviewControl(row.original),
+      } satisfies ColumnDef<PageEntry,unknown>] : []),
       {
         id: "links",
         size: 70,
@@ -219,7 +258,7 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
           ),
       },
     ],
-    [companyId],
+    [companyId,userOwner,overviewControl],
   );
   const entry = catalog.data?.find((entry) => entry.key === selected);
   return (
@@ -320,6 +359,7 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
             </Button>
           </Notice>
         )}
+        {overviewFailure&&!selected&&<Notice tone="error">تعذّر تحديث ظهور الصفحة في واجهة الشركة: {overviewFailure}</Notice>}
         <div className="page-directory-table">
           <DataTable
             columns={columns}
@@ -348,6 +388,11 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
         onClose={() => setSelected(null)}
       >
         {entry ? (
+          <>
+          {companyId&&userOwner&&<Card title="الظهور في واجهة الشركة">
+            <div className="form-actions">{overviewControl(entry)}</div>
+            {overviewFailure&&<Notice tone="error">تعذّر تحديث ظهور الصفحة في واجهة الشركة: {overviewFailure}</Notice>}
+          </Card>}
           <PageDetails
             key={`${companyId ?? "public"}:${entry.key}`}
             entry={entry}
@@ -355,6 +400,7 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
             canManagePermissions={!!context?.general || !!context?.permissions.includes("pages.manage")}
             onUpdated={() => void list.refetch()}
           />
+          </>
         ) : (
           <Notice>
             {catalog.error

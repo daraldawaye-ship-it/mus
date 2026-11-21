@@ -1,3 +1,4 @@
+import { companyOverviewShortcuts,type CompanyShortcutGroup } from "../company-overview-shortcuts";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
@@ -22,7 +23,6 @@ import {
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
-import { moduleAccess } from "../phase2";
 import { ImageUpload } from "../ImageUpload";
 import { AttendancePunchControls } from "../AttendancePunchControls";
 import { QuickArchiveUpload } from "../QuickArchiveUpload";
@@ -256,92 +256,26 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const { company, employee, general, permissions } = context;
   const directory = usePageDirectory(company.id);
-  // Match each shortcut to the page catalogue, including its enabled state
-  // and its own view/create permission. Never expose unauthorized shortcuts.
-  const commerceShortcuts = ([
-    { key: "company.sale-new", label: "إضافة فاتورة مبيعات", href: `/companies/${company.id}/invoices/new?kind=sale`, action: "create" },
-    { key: "company.sales", label: "فواتير المبيعات", href: `/companies/${company.id}/sales`, action: "view" },
-    { key: "company.purchase-new", label: "إضافة فاتورة مشتريات", href: `/companies/${company.id}/invoices/new?kind=purchase`, action: "create" },
-    { key: "company.purchases", label: "فواتير المشتريات", href: `/companies/${company.id}/purchases`, action: "view" },
-    { key: "company.item-options-list", label: "قائمة الأصناف", href: `/companies/${company.id}/item-options-list`, action: "view" },
-    { key: "company.public-requests", label: "طلب الجمهور", href: `/companies/${company.id}/public-requests`, action: "view" },
-    { key: "company.item-options-list", label: "متابعة مسودات الطلبيات", href: `/companies/${company.id}/item-order-drafts`, action: "view" },
-    { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
-    { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
-    { key: "company.doctor-sales-movements", label: "حركة مبيعات الأطباء والممرضين", href: `/companies/${company.id}/doctor-sales-movements`, action: "view" },
-    { key: "company.doctor-movement-comparison", label: "مقارنة حركة الأطباء والجهات", href: `/companies/${company.id}/doctor-movement-comparison`, action: "view" },
-    { key: "company.items", label: "الأصناف", href: `/companies/${company.id}/items`, action: "view" },
-    { key: "company.item-statistics-report", label: "تقرير إحصائيات الأصناف", href: `/companies/${company.id}/item-statistics-report`, action: "view" },
-    { key: "company.item-compositions", label: "تراكيب الأصناف", href: `/companies/${company.id}/item-compositions`, action: "view" },
-    { key: "company.item-form-differences", label: "متابعة اختلاف شكل الصنف والتركيب", href: `/companies/${company.id}/item-form-differences`, action: "view" },
-    { key: "company.settlement-follow-up", label: "متابعة التسويات للأصناف", href: `/companies/${company.id}/settlement-follow-up`, action: "view" },
-    { key: "company.stock-balances", label: "أرصدة المخزون", href: `/companies/${company.id}/stock-balances`, action: "view" },
-  ] as const).filter(shortcut => {
-    const page = directory.data?.find(entry => entry.key === shortcut.key);
-    return !!page?.visible && !!page.enabled && !!page.actionAccess[shortcut.action];
-  });
-  // A separate untitled financial shortcuts card sits immediately under
-  // sales/purchases. The central page catalogue remains authoritative for
-  // each destination: this reorganization does not grant any access.
-  const financialShortcuts = ([
-    { key: "company.administrative-custody", label: "العهدة الإدارية", href: `/companies/${company.id}/administrative-custody`, action: "view" },
-    { key: "company.accounts", label: "دليل الحسابات", href: `/companies/${company.id}/accounts`, action: "view" },
-    { key: "company.account-balances", label: "أرصدة الحسابات", href: `/companies/${company.id}/account-balances`, action: "view" },
-    { key: "company.account-ledger", label: "كشف حساب", href: `/companies/${company.id}/account-ledger`, action: "view" },
-    { key: "company.slip-movements", label: "متابعة حركة القصاصات", href: `/companies/${company.id}/slip-movements`, action: "view" },
-    { key: "company.my-cashbox-ledger", label: "كشف حساب صندوقي", href: `/companies/${company.id}/my-cashbox-ledger`, action: "view" },
-    { key: "company.account-statistics", label: "إحصاءات الحسابات", href: `/companies/${company.id}/account-statistics`, action: "view" },
-    { key: "company.sales-time-report", label: "مبيعات الأيام والأوقات", href: `/companies/${company.id}/sales-time-report`, action: "view" },
-    { key: "company.trial-balance", label: "ميزان المراجعة", href: `/companies/${company.id}/trial-balance`, action: "view" },
-    { key: "company.cash-flows", label: "التدفقات المالية", href: `/companies/${company.id}/cash-flows`, action: "view" },
-    { key: "company.financial-documents", label: "العمليات المالية", href: `/companies/${company.id}/financial-documents`, action: "view" },
-    { key: "company.financial-new", label: "إضافة مستند مالي", href: `/companies/${company.id}/financial-documents/new`, action: "create" },
-    { key: "company.journals", label: "قيود اليومية", href: `/companies/${company.id}/journals`, action: "view" },
-    { key: "company.receipts", label: "سندات القبض", href: `/companies/${company.id}/receipts`, action: "view" },
-    { key: "company.payments", label: "سندات الصرف", href: `/companies/${company.id}/payments`, action: "view" },
-    { key: "company.pouch-receipts", label: "استلام الترحيلات", href: `/companies/${company.id}/pouch-receipts`, action: "view" },
-    { key: "company.electronic-receipts", label: "استلام المحفظة الإلكترونية", href: `/companies/${company.id}/electronic-receipts`, action: "view" },
-    { key: "company.currencies", label: "العملات", href: `/companies/${company.id}/currencies`, action: "view" },
-    { key: "company.exchange-rates", label: "أسعار الصرف", href: `/companies/${company.id}/exchange-rates`, action: "view" },
-  ] as const).filter(shortcut => {
-    const page = directory.data?.find(entry => entry.key === shortcut.key);
-    return !!page?.visible && !!page.enabled && !!page.actionAccess[shortcut.action];
-  });
+  const shortcuts=companyOverviewShortcuts(directory.data,company.id,!!user?.owner);
+  const shortcutCard=(group:CompanyShortcutGroup,title:string)=>shortcuts[group].length>0 && (
+    <Card title={title} className="company-overview-z19">
+      <div className="form-actions company-overview-shortcuts" role="group" aria-label={title}>
+        {shortcuts[group].map(shortcut=>(
+          <Link key={shortcut.href} className={shortcut.action==="create"
+            ? "button button-primary company-shortcut company-shortcut-create"
+            : "button button-secondary company-shortcut"} to={shortcut.href}>
+            {shortcut.action==="create" && <Plus size={14} aria-hidden="true" />}
+            {shortcut.label}
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
   return (
     <>
       <PageHeader title={company.name} />
-      {commerceShortcuts.length > 0 && (
-        <Card className="company-overview-z19">
-          <div className="form-actions company-overview-shortcuts">
-            {commerceShortcuts.map(shortcut => (
-              <Link key={shortcut.href}
-                className={shortcut.action === "create"
-                  ? "button button-primary company-shortcut company-shortcut-create"
-                  : "button button-secondary company-shortcut"}
-                to={shortcut.href}>
-                {shortcut.action === "create" && <Plus size={14} aria-hidden="true" />}
-                {shortcut.label}
-              </Link>
-            ))}
-          </div>
-        </Card>
-      )}
-      {financialShortcuts.length > 0 && (
-        <Card className="company-overview-z19">
-          <div className="form-actions company-overview-shortcuts" role="group" aria-label="الاختصارات المالية">
-            {financialShortcuts.map(shortcut => (
-              <Link key={shortcut.key}
-                className={shortcut.action === "create"
-                  ? "button button-primary company-shortcut company-shortcut-create"
-                  : "button button-secondary company-shortcut"}
-                to={shortcut.href}>
-                {shortcut.action === "create" && <Plus size={14} aria-hidden="true" />}
-                {shortcut.label}
-              </Link>
-            ))}
-          </div>
-        </Card>
-      )}
+      {shortcutCard("items","الأصناف")}
+      {shortcutCard("accounts","الحسابات")}
       <Card className="company-overview-z19">
         <AttendancePunchControls
           companyId={company.id}
@@ -352,69 +286,8 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
           )}
         />
       </Card>
-      <Card title="إدارة الشركة" className="company-overview-z19">
-        <div className="form-actions company-overview-shortcuts">
-          {user?.owner && (
-            <Link className="button button-secondary" to="/design-library">مكتبة التصاميم</Link>
-          )}
-          {directory.data?.some(entry =>
-            entry.key === "company.approved-devices" &&
-            entry.visible && entry.enabled && entry.actionAccess.view
-          ) && (
-            <Link className="button button-secondary"
-              to={`/companies/${company.id}/approved-devices`}>
-              الأجهزة
-            </Link>
-          )}
-          {directory.data?.some(entry =>
-            entry.key === "company.central-access" &&
-            entry.visible && entry.enabled && entry.actionAccess.view
-          ) && (
-            <Link className="button button-secondary"
-              to={`/companies/${company.id}/central-access`}>
-              مركز الصلاحيات وخيارات النظام
-            </Link>
-          )}
-          {directory.data?.some(entry =>
-            entry.key === "company.notification-templates" &&
-            entry.visible && entry.enabled && entry.actionAccess.view
-          ) && (
-            <Link className="button button-secondary"
-              to={`/companies/${company.id}/notification-templates`}>
-              أنواع التنبيهات
-            </Link>
-          )}
-          <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
-          {moduleAccess(context, "locations") && <>
-            <Link className="button button-secondary" to={`/companies/${company.id}/branches`}>الفروع</Link>
-            <Link className="button button-secondary" to={`/companies/${company.id}/locations`}>المعارض والمخازن</Link>
-          </>}
-          {(general || permissions.includes("employees.view")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/employees`}
-            >
-              الموظفون
-            </Link>
-          )}
-          {(general || permissions.includes("company.edit")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/settings`}
-            >
-              بيانات الشركة
-            </Link>
-          )}
-          {(general || permissions.includes("audit.view")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/audit`}
-            >
-              سجل الشركة
-            </Link>
-          )}
-        </div>
-      </Card>
+      {shortcutCard("operations","التشغيل والمتابعة")}
+      {shortcutCard("administration","إدارة الشركة")}
       <div className="card-grid">
         <Card title="بيانات الشركة">
           <dl className="details-list">

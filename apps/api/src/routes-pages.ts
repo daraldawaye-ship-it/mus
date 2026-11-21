@@ -2,16 +2,19 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Pool } from "pg";
 import {
+  companyOverviewVisibilitySchema,
   pageActions,
   pageByKey,
   pageReferenceSchema,
   pageSettingSchema,
+  type CompanyOverviewVisibilityResult,
   type PageDirectory,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
+import { setCompanyOverviewPageVisibility } from "./services/company-overview-page-visibility.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery } from "./services/lists.ts";
 import {
@@ -72,7 +75,7 @@ export function pageRoutes(pool: Pool): Router {
           "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
         );
         const user = await currentActor(client, actor(req), false);
-        const directory = await directoryEntries(client, user, companyId);
+        const directory = await directoryEntries(client, user, companyId, true);
         // Administrators may audit and configure the entire page catalog.
         // Other users should discover only pages they can actually open.
         // Public user management and public chat keep their existing admin
@@ -167,6 +170,32 @@ export function pageRoutes(pool: Pool): Router {
           sections,
           summary,
         } satisfies PageDirectory;
+      });
+      res.json(result);
+    }),
+  );
+  router.patch(
+    "/companies/:companyId/page-catalog/:pageKey/overview-visibility",
+    handler(async (req, res) => {
+      const companyId = id(String(req.params.companyId));
+      const pageKey = String(req.params.pageKey);
+      const { showOnCompanyOverview } = parse(companyOverviewVisibilitySchema, req.body);
+      const result = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        ownerOnly(user);
+        await companyAccess(client, user, companyId, undefined, true);
+        if (!pageByKey(pageKey)) missing();
+        if (pageKey === "company.pages" && !showOnCompanyOverview)
+          throw new HttpError(403, "protected_page", "قائمة صفحات الشركة تبقى ظاهرة في النظرة العامة.");
+        const changed = await setCompanyOverviewPageVisibility(
+          client, companyId, pageKey, showOnCompanyOverview,
+        );
+        if (changed) {
+          await audit(client, user, "page.settings", "pageOverview", null,
+            { pageKey, showOnCompanyOverview: !showOnCompanyOverview },
+            { pageKey, showOnCompanyOverview }, companyId);
+        }
+        return { pageKey, showOnCompanyOverview } satisfies CompanyOverviewVisibilityResult;
       });
       res.json(result);
     }),
@@ -362,7 +391,7 @@ export function pageRoutes(pool: Pool): Router {
           snapshot(after),
           input.companyId,
         );
-        return (await directoryEntries(client, user, input.companyId)).find(
+        return (await directoryEntries(client, user, input.companyId, true)).find(
           (entry) => entry.key === definition.key,
         )!;
       });

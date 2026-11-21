@@ -17,6 +17,7 @@ import {
 import type { Database } from "../db.ts";
 import { companyAccess } from "../policies/access.ts";
 import { HttpError, missing } from "../errors.ts";
+import { companyOverviewHiddenPageKeys } from "./company-overview-page-visibility.ts";
 import {
   permissionRuleEffects,
   pagePermissionAliases,
@@ -154,6 +155,7 @@ export async function directoryEntries(
   db: Database,
   user: User,
   companyId: number | null,
+  includeOverviewVisibility = false,
 ): Promise<PageEntry[]> {
   const { context, baseContext, effects } = await directoryPermissionState(
     db,
@@ -227,6 +229,9 @@ export async function directoryEntries(
     matches.sort((a,b)=>rank(b)-rank(a) || (a.effect === "deny" ? -1 : 1));
     return matches[0].effect;
   };
+  const overviewHidden = includeOverviewVisibility
+    ? await companyOverviewHiddenPageKeys(db, companyId)
+    : null;
   return pageDefinitions.map((definition) => {
     const globalSetting = global.get(definition.key),
       localSetting =
@@ -236,6 +241,7 @@ export async function directoryEntries(
     return {
       ...definition,
       id: definition.key,
+      showOnCompanyOverview: !overviewHidden?.has(definition.key),
       href: pageHref(definition, companyId),
       order: own?.sort_order ?? globalSetting?.sort_order ?? definition.order,
       visible:
