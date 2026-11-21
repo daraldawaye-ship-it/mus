@@ -78,7 +78,10 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
             <Fragment key={row.id}>
               <tr>
                 <td title={stockMovementKindLabels[row.kind]}>{workPanelMovementKindLabels[row.kind]}</td>
-                <td className="invoice-item-options-number" title={quantity}><bdi>{quantity}</bdi></td>
+                <td className="invoice-item-options-number" title={quantity}>
+                  <bdi data-work-panel-quantity={quantity.startsWith("+") ? "positive" :
+                    /^-[0-9]*[1-9][0-9]*$/.test(quantity) ? "negative" : undefined}>{quantity}</bdi>
+                </td>
                 {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
                 <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
                 {money(invoice?.invoiceNet, "صافي الفاتورة:")}
