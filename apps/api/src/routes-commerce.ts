@@ -44,13 +44,7 @@ import { resolveInvoicePostingDate } from "./services/invoice-posting-date.ts";
 export const workPanelMovementInvoiceSql = `SELECT m.id AS "movementId", il.id AS "invoiceLineId", i.id AS "invoiceId",
              CASE WHEN i.kind='purchase' THEN NULLIF(i.supplier_account_name,'')
                   ELSE NULLIF(i.counterparty_account_name,'') END AS "partyName",
-             CASE WHEN i.kind='purchase' THEN
-               round(il.total::numeric / NULLIF(il.smallest_quantity,0) *
-                 (il.factor2::numeric * il.factor3::numeric),4)
-             ELSE round(il.unit_price::numeric * CASE il.unit
-               WHEN 1 THEN 1 WHEN 2 THEN il.factor2
-               ELSE il.factor2::numeric * il.factor3 END,2)
-             END::text AS "unitPriceFirstUnit",
+             il.unit_price::text AS "postedUnitPrice",
              CASE WHEN il.factor2 > 0 AND il.factor3 > 0
                THEN (il.factor2::bigint * il.factor3::bigint)::text END AS "firstUnitMultiplier",
              i.total::text AS "invoiceNet", i.discount::text AS "invoiceDiscount",

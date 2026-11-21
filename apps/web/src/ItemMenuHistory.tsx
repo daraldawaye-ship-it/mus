@@ -36,7 +36,7 @@ type MovementInvoiceDetail = {
   invoiceLineId: number;
   invoiceId: number;
   partyName: string | null;
-  unitPriceFirstUnit: string | null;
+  postedUnitPrice: string | null;
   firstUnitMultiplier: string | null;
   invoiceNet: string | null;
 };
@@ -54,7 +54,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
         <thead><tr>
           <th scope="col">النوع</th>
           <th scope="col" className="invoice-item-options-number" title="الكمية بالوحدة الأولى">الكمية</th>
-          <th scope="col" className="invoice-item-options-number" title="سعر الوحدة الأولى للصنف">السعر</th>
+          <th scope="col" className="invoice-item-options-number" title="سعر الوحدة المستخدمة في سطر الفاتورة">السعر</th>
           <th scope="col">التاريخ</th>
           <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم، لا صافي الصنف">الصافي</th>
         </tr></thead>
@@ -87,7 +87,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails }: {
                 <td className="invoice-item-options-number" title={quantity.exact ?? "لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
                   <bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
                 </td>
-                {money(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى:")}
+                {money(invoice?.postedUnitPrice, "سعر الوحدة حسب الفاتورة:")}
                 <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
                 {money(invoice?.invoiceNet, "صافي الفاتورة:")}
               </tr>
