@@ -168,12 +168,12 @@ function CompactItemEditor({userId,companyId,itemId,canEdit,online,initial,reloa
           commit(key,value);
         };
         return <div className="work-panel-compact-field" key={key}>
-          <label htmlFor={fieldId} title={hint}>{label}</label>
           <div className="work-panel-compact-stepper" dir="ltr" onBlur={event=>{
             // Moving focus to this same field's step buttons is not an edit
             // commit; the button will send its final value directly.
             if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) commit(key);
           }}>
+            <label className="work-panel-compact-label" dir="rtl" htmlFor={fieldId} title={hint}>{label}</label>
             <button type="button" disabled={unavailable||step(-1)===draft[key]}
               aria-label={`نقص ${label}`} onClick={()=>apply(-1)}>−</button>
             <input id={fieldId} inputMode="numeric" maxLength={22} value={draft[key]} disabled={unavailable}
