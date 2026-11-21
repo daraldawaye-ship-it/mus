@@ -58,34 +58,39 @@ test("guide creation contract preserves defaults, full text, and strict ACL limi
   assert.equal(contract.properties.evidence.maxLength, 100000);
 });
 
-test("guide update contract exposes the existing full-field parser without inventing concurrency fields", () => {
-  const schema = explanationMcpSchemas.nodeFields;
+test("guide update contract requires the latest read token while retaining full-field defaults and limits", () => {
+  const schema = explanationMcpSchemas.updateNode;
+  const expectedUpdatedAt = "2026-11-21T03:00:00.123+03:00";
   const defaults = {
     title: "", body: "", evidence: "", kind: "paragraph", color: null,
     fontSize: null, readAcl: null, editAcl: null,
   };
-  assert.deepEqual(schema.parse({}), defaults);
+  assert.equal(schema.safeParse({}).success, false);
+  assert.equal(schema.safeParse({ body: "updated" }).success, false);
+  assert.deepEqual(schema.parse({ expectedUpdatedAt }), { ...defaults, expectedUpdatedAt });
   // PATCH uses the full-field parser: omitted fields retain its existing defaults.
-  assert.deepEqual(schema.parse({ body: "updated" }), { ...defaults, body: "updated" });
+  assert.deepEqual(schema.parse({ body: "updated", expectedUpdatedAt }), { ...defaults, body: "updated", expectedUpdatedAt });
   const valid = {
     title: "Guide", body: "x".repeat(250000), evidence: "e".repeat(100000),
     kind: "heading", color: "#123ABC", fontSize: 36,
-    readAcl: { users: [1], kinds: ["admin"] }, editAcl: { users: [2], kinds: [] },
+    readAcl: { users: [1], kinds: ["admin"] }, editAcl: { users: [2], kinds: [] }, expectedUpdatedAt,
   };
   assert.deepEqual(schema.parse(valid), valid);
   for (const invalid of [
     { ...valid, body: valid.body + "x" }, { ...valid, evidence: valid.evidence + "x" },
     { ...valid, readAcl: { users: [0] } }, { ...valid, editAcl: { users: [], owner: true } },
     { ...valid, fontSize: 37 }, { ...valid, revision: 1 },
-    { ...valid, expectedUpdatedAt: "2026-11-16T00:00:00Z" },
+    { ...valid, expectedUpdatedAt: "2026-11-21" }, { ...valid, expectedUpdatedAt: null },
+    { ...valid, expectedUpdatedAt: "2026-11-21T03:00:00" },
   ]) assert.equal(schema.safeParse(invalid).success, false);
   const contract = published["PATCH /explanations/nodes/:nodeId"];
   assert.deepEqual(contract.pathParams, ["nodeId"]);
   assert.deepEqual(contract.queryFields, []);
-  assert.equal(contract.bodyContract, "nodeFields");
-  assert.deepEqual(Object.keys(contract.bodySchema.properties).sort(), Object.keys(defaults).sort());
+  assert.equal(contract.bodyContract, "updateNode");
+  assert.deepEqual(Object.keys(contract.bodySchema.properties).sort(), [...Object.keys(defaults), "expectedUpdatedAt"].sort());
   assert.equal(contract.bodySchema.additionalProperties, false);
-  assert.deepEqual(contract.bodySchema.required ?? [], []);
+  assert.deepEqual(contract.bodySchema.required, ["expectedUpdatedAt"]);
+  assert.equal(contract.bodySchema.properties.expectedUpdatedAt.format, "date-time");
   assert.equal(contract.bodySchema.properties.body.maxLength, 250000);
   assert.equal(contract.bodySchema.properties.evidence.maxLength, 100000);
 });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, useSession } from "../api";
+import { api, ApiFailure, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { errorMessage } from "../phase2";
 import "./ExplanationsPage.css";
@@ -9,13 +9,14 @@ import "./ExplanationsPage.css";
 type Acl={users:number[];kinds:("admin"|"supervisor"|"member")[]}|null;
 type Group={id:number;slug:string;title:string;canEdit:boolean;defaultRead:Acl;defaultEdit:Acl};
 type Node={id:number;groupId:number;parentId:number|null;position:number;kind:"heading"|"paragraph";title:string;preview:string;color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl;canEdit:boolean};
-type Detail={record:Node&{body:string;evidence:string};assets:{id:number;filename:string;displayName:string;mimeType:string}[]};
+type Detail={record:Node&{body:string;evidence:string;updatedAt:string};assets:{id:number;filename:string;displayName:string;mimeType:string}[]};
 type Person={id:number;name:string;kind:string};
 type Draft={title:string;body:string;evidence:string;kind:"heading"|"paragraph";color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl};
 type Insertion={groupId:number;parentId:number|null;afterId:number|null};
 type UploadAsset={key:string;file:File;displayName:string};
 type SavedAsset={id:number;filename:string;displayName:string;mimeType:string};
 const blank=(kind:"heading"|"paragraph"="paragraph"):Draft=>({title:"",body:"",evidence:"",kind,color:null,fontSize:null,readAcl:null,editAcl:null});
+const draftFrom=(r:Detail["record"]):Draft=>({title:r.title,body:r.body,evidence:r.evidence,kind:r.kind,color:r.color,fontSize:r.fontSize,readAcl:r.readAcl,editAcl:r.editAcl});
 const kinds=[{value:"admin",name:"إدارة"},{value:"supervisor",name:"مشرف"},{value:"member",name:"مستخدم"}] as const;
 function AclField({title,value,onChange,people}:{title:string;value:Acl;onChange:(acl:Acl)=>void;people:Person[]}) {
  return <div className="explain-acl"><Select label={title} value={value===null?"inherit":"custom"} onChange={e=>onChange(e.target.value==="inherit"?null:{users:[],kinds:[]})}>
@@ -121,7 +122,8 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
 }
 export function ExplanationsPage() {
  const {user}=useSession(),client=useQueryClient(),[params,setParams]=useSearchParams();
- const [editor,setEditor]=useState<{id:number|null;where:Insertion}|null>(null);
+ const [editor,setEditor]=useState<{id:number|null;where:Insertion;updatedAt:string|null}|null>(null);
+ const [conflict,setConflict]=useState(false),[previousDrafts,setPreviousDrafts]=useState<Draft[]>([]);
  const [pendingAssets,setPendingAssets]=useState<UploadAsset[]>([]);
  const [assetNames,setAssetNames]=useState<Record<number,string>>({});
  const [uploadStatus,setUploadStatus]=useState("");
@@ -195,19 +197,32 @@ export function ExplanationsPage() {
   catch(e){setError(errorMessage(e));}finally{setBusy(false);}
  };
  function beginInsert(where:Insertion,kind:"heading"|"paragraph"){
+  if(busy)return;
   setDraft(blank(kind));setPendingAssets([]);setAssetNames({});setUploadStatus("");
-  setEditor({id:null,where});setError("");
+  setEditor({id:null,where,updatedAt:null});setError("");setConflict(false);setPreviousDrafts([]);
  }
  async function beginEdit(node:Node) {
+  if(busy)return;
   setBusy(true);setError("");
   try{const result=await api<Detail>("/explanations/nodes/"+node.id);
    const r=result.record;
-   setDraft({title:r.title,body:r.body,evidence:r.evidence,kind:r.kind,color:r.color,fontSize:r.fontSize,readAcl:r.readAcl,editAcl:r.editAcl});
+   setDraft(draftFrom(r));setConflict(false);setPreviousDrafts([]);
    setPendingAssets([]);setAssetNames({});setUploadStatus("");
-   setEditor({id:node.id,where:{groupId:node.groupId,parentId:node.parentId,afterId:null}});
+   setEditor({id:node.id,where:{groupId:node.groupId,parentId:node.parentId,afterId:null},updatedAt:r.updatedAt});
+  }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+ }
+ async function loadLatestDraft(){
+  if(busy||!editor||editor.id===null)return;
+  setBusy(true);setError("");
+  try{
+   const {record}=await api<Detail>("/explanations/nodes/"+editor.id);
+   setPreviousDrafts(previous=>[...previous,draft]);setDraft(draftFrom(record));
+   setEditor({...editor,updatedAt:record.updatedAt});setConflict(false);
+   setNotice("حُمّلت النسخة الأحدث في الحقول. مسودتك السابقة ظاهرة أسفلها للمقارنة؛ ادمج ما يلزم ثم احفظ.");
   }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
  }
  function removeNode(node:Node){
+  if(busy)return;
   if(!window.confirm("حذف هذا السجل؟ لا يمكن حذف عنوان يحتوي فروعًا."))return;
   void run(async()=>{await api("/explanations/nodes/"+node.id,{method:"DELETE"});});
  }
@@ -219,11 +234,17 @@ export function ExplanationsPage() {
    throw new Error("اكتب اسمًا لكل مرفق لا يتجاوز 250 حرفًا.");
   let recordId=editor.id;
   if(recordId===null){
-   const result=await api<{id:number}>("/explanations/nodes",{method:"POST",body:{...draft,...editor.where}});
+   const result=await api<{id:number;updatedAt:string}>("/explanations/nodes",{method:"POST",body:{...draft,...editor.where}});
    recordId=result.id;
-   setEditor({...editor,id:recordId});
+   setEditor({...editor,id:recordId,updatedAt:result.updatedAt});
   }else{
-   await api("/explanations/nodes/"+recordId,{method:"PATCH",body:draft});
+   try{
+    const result=await api<{updatedAt:string}>("/explanations/nodes/"+recordId,{method:"PATCH",body:{...draft,expectedUpdatedAt:editor.updatedAt}});
+    setEditor({...editor,updatedAt:result.updatedAt});
+   }catch(e){
+    if(e instanceof ApiFailure&&e.code==="explanation_conflict")setConflict(true);
+    throw e;
+   }
   }
   try{
    for(let i=0;i<pendingAssets.length;i++){
@@ -267,7 +288,7 @@ export function ExplanationsPage() {
     <Button disabled={busy||!newGroupName.trim()||!newGroupSlug} onClick={saveGroup}>إنشاء</Button><Button variant="secondary" onClick={()=>setNewGroup(false)}>إلغاء</Button>
   </div></Card>}
   <div className="explain-group-switch"><label htmlFor="explain-group">مجموعة الشروح</label>
-  <select id="explain-group" value={group?.slug??""} onChange={e=>{setParams({group:e.target.value});setEditor(null);}}>
+  <select id="explain-group" disabled={busy} value={group?.slug??""} onChange={e=>{setParams({group:e.target.value});setEditor(null);}}>
    {(groups.data?.items??[]).map(g=><option key={g.id} value={g.slug}>{g.title}</option>)}
   </select>
   {group&&user?.owner&&<Button variant="secondary" size="compact" onClick={()=>{setEditGroup(true);setGroupDraft({title:group.title,defaultRead:group.defaultRead,defaultEdit:group.defaultEdit});}}>إعدادات المجموعة والصلاحيات</Button>}
@@ -279,7 +300,11 @@ export function ExplanationsPage() {
     <div className="explain-actions"><Button disabled={busy} onClick={saveGroup}>حفظ المجموعة</Button><Button variant="secondary" onClick={()=>setEditGroup(false)}>إلغاء</Button></div>
   </Card>}
   {editor&&<div ref={editorAnchor} className="explain-editor-anchor"><Card title={editor.id===null?"إضافة سجل ومرفقاته":"تعديل السجل ومرفقاته"}>
-    <div className="explain-fields">
+    {conflict&&<Notice tone="error">
+     تعارض الحفظ مع تعديل أحدث. مسودتك والمرفقات المختارة باقية هنا.
+     <Button size="compact" variant="secondary" disabled={busy} onClick={()=>void loadLatestDraft()}>تحميل أحدث نسخة مع إبقاء مسودتي للمقارنة</Button>
+    </Notice>}
+    <fieldset className="explain-fields" disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
      <Select label="نوع السجل" value={draft.kind} onChange={e=>setDraft({...draft,kind:e.target.value as Draft["kind"]})}>
       <option value="heading">عنوان</option><option value="paragraph">فقرة شرح</option>
      </Select>
@@ -292,7 +317,21 @@ export function ExplanationsPage() {
      </Select>
      <AclField title="صلاحيات القراءة" value={draft.readAcl} people={people} onChange={v=>setDraft({...draft,readAcl:v})}/>
      <AclField title="صلاحيات التعديل" value={draft.editAcl} people={people} onChange={v=>setDraft({...draft,editAcl:v})}/>
-    </div>
+    </fieldset>
+    {previousDrafts.map((previousDraft,index)=><details key={index} open={index===previousDrafts.length-1} className="explain-previous-draft">
+     <summary>المسودة {index+1} قبل تحميل النسخة الأحدث — للمقارنة والنسخ</summary>
+     <div className="explain-fields">
+      <Field label="العنوان في مسودتك" value={previousDraft.title} readOnly/>
+      <label>الشرح في مسودتك<textarea rows={6} value={previousDraft.body} readOnly/></label>
+      <label>وجه الاستدلال في مسودتك<textarea rows={3} value={previousDraft.evidence} readOnly/></label>
+      <small>النوع: {previousDraft.kind==="heading"?"عنوان":"فقرة شرح"}؛ اللون: {previousDraft.color||"تلقائي"}؛ حجم الخط: {previousDraft.fontSize??"تلقائي"}.</small>
+      {(["readAcl","editAcl"] as const).map(key=><small key={key}>
+       {key==="readAcl"?"صلاحيات القراءة":"صلاحيات التعديل"}: {previousDraft[key]===null?"الافتراضي — يرث صلاحيات الأب":
+        [...previousDraft[key].kinds.map(k=>kinds.find(item=>item.value===k)?.name??k),
+         ...previousDraft[key].users.map(id=>people.find(p=>p.id===id)?.name??("المستخدم "+id))].join("، ")||"لم يُحدد مستخدم أو دور"}
+      </small>)}
+     </div>
+    </details>)}
     <section className="explain-editor-assets" aria-label="إضافة وإدارة المرفقات">
       <h3>📎 المرفقات — إضافة صور (بما فيها GIF) وملفات PDF</h3>
       <p>يمكن إضافة أي عدد من الصور والملفات دفعة واحدة. يُحفظ اسم الملف الأصلي مع الاسم الذي تختاره ليظهر كزر داخل الشرح.</p>
@@ -338,7 +377,7 @@ export function ExplanationsPage() {
       </>}
     </section>
     {uploadStatus&&<Notice>{uploadStatus}</Notice>}
-    <div className="explain-actions"><Button disabled={busy} onClick={save}>{busy?"جارٍ الحفظ…":"حفظ السجل والمرفقات"}</Button><Button variant="secondary" disabled={busy} onClick={()=>{setEditor(null);setPendingAssets([]);}}>إلغاء</Button></div>
+    <div className="explain-actions"><Button disabled={busy||conflict} onClick={save}>{busy?"جارٍ الحفظ…":"حفظ السجل والمرفقات"}</Button><Button variant="secondary" disabled={busy} onClick={()=>{setEditor(null);setPendingAssets([]);}}>إلغاء</Button></div>
    </Card></div>}
   {groups.isPending&&<Notice>جارٍ تحميل مجموعات الشروح…</Notice>}
   {groups.error&&<Notice tone="error">{errorMessage(groups.error)}</Notice>}

@@ -48,7 +48,7 @@ export function AiTasksPage() {
   const [section, setSection] = useState("");
   const [company, setCompany] = useState("");
   const [search, setSearch] = useState("");
-  const [sorting, setSorting] = useState<SortingState>([{ id: "lastRunTimestamp", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "lastStartedAt", desc: true }]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showNew, setShowNew] = useState(false);
@@ -85,11 +85,20 @@ export function AiTasksPage() {
     { id: "section", accessorFn: sectionLabel, header: "القسم" },
     { accessorKey: "description", header: "الشرح والآلية", cell: ({ row }) =>
       <Button type="button" onClick={() => setDetails(row.original)}>عرض</Button> },
-    { id: "lastRunTimestamp", accessorFn: task => task.lastStartedAt ?? task.lastFinishedAt,
-      header: "آخر إنجاز", cell: ({ row }) => {
+    { id: "lastStartedAt", accessorFn: task => task.lastStartedAt ? Date.parse(task.lastStartedAt) : null,
+      header: "آخر بدء", cell: ({ row }) => {
         const task = row.original;
-        if (task.lastStartedAt) return <span title="وقت بدء آخر جولة">{formatDate(task.lastStartedAt)}</span>;
-        return task.lastFinishedAt ? <span title="لا يوجد وقت بدء محفوظ">انتهت {formatDate(task.lastFinishedAt)}</span> : "—";
+        return <span title={task.latestRunInProgress ? "الجولة الأخيرة قيد التنفيذ" : "وقت بدء آخر جولة"}>
+          {formatDate(task.lastStartedAt)}{task.latestRunInProgress && " · جارٍ"}
+        </span>;
+      } },
+    { id: "lastFinishedAt", accessorFn: task => task.lastFinishedAt ? Date.parse(task.lastFinishedAt) : null,
+      header: "آخر انتهاء", cell: ({ row }) => {
+        const task = row.original;
+        return <span title={task.latestRunInProgress
+          ? "وقت انتهاء آخر جولة مكتملة؛ الجولة الحالية لم تنتهِ بعد" : "وقت انتهاء آخر جولة مكتملة"}>
+          {formatDate(task.lastFinishedAt)}{task.latestRunInProgress && task.lastFinishedAt && " · سابقة"}
+        </span>;
       } },
     { id: "cadenceHours", accessorFn: task => task.cadenceHours ?? task.cadenceLabel, header: "تُنجز كل", cell: ({ row }) => {
       const task = row.original;

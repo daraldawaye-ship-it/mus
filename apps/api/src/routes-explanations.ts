@@ -33,12 +33,15 @@ const createNode = nodeFields.extend({
   groupId: integer, parentId: integer.nullable().default(null),
   afterId: integer.nullable().default(null),
 });
+const updateNode = nodeFields.extend({
+  expectedUpdatedAt: z.string().datetime({offset:true}),
+});
 const documentQuery = z.object({
   offset:z.coerce.number().int().min(0).max(1000000).default(0),
   all:z.enum(["true","false"]).optional(),
 }).strict();
 // Publish the same schemas used by the handlers, without duplicating their limits/defaults.
-export const explanationMcpSchemas = { createNode, documentQuery, nodeFields };
+export const explanationMcpSchemas = { createNode, documentQuery, nodeFields, updateNode };
 const imageTypes = new Set(["image/png","image/jpeg","image/webp","image/gif","application/pdf"]);
 type Rule = { users?:number[]; kinds?:string[] } | null;
 type NodeRow = QueryResultRow & {id:number;group_id:number;parent_id:number|null;position:number;read_acl:Rule;edit_acl:Rule};
@@ -311,21 +314,29 @@ export function explanationRoutes(pool:Pool):Router {
       }
       await client.query("UPDATE explanation_nodes SET position=position+1 WHERE group_id=$1 AND parent_id IS NOT DISTINCT FROM $2 AND position >= $3",[input.groupId,input.parentId,order]);
       const inserted=await client.query(
-        "INSERT INTO explanation_nodes(group_id,parent_id,position,kind,title,body,evidence,color,font_size,read_acl,edit_acl,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$12) RETURNING id",
+        "INSERT INTO explanation_nodes(group_id,parent_id,position,kind,title,body,evidence,color,font_size,read_acl,edit_acl,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$12) RETURNING id,updated_at",
         [input.groupId,input.parentId,order,input.kind,input.title,input.body,input.evidence,input.color||null,input.fontSize,
         JSON.stringify(input.readAcl),JSON.stringify(input.editAcl),user.id]);
-      return inserted.rows[0].id as number;
+      return {id:inserted.rows[0].id as number,updatedAt:inserted.rows[0].updated_at};
     });
-    res.status(201).json({id:result});
+    res.status(201).json(result);
   }));
   router.patch("/explanations/nodes/:nodeId",handler(async(req,res)=>{
-    const input=parse(nodeFields,req.body),user=actor(req),nodeId=id(req.params.nodeId);
-    await transaction(pool,async(client)=>{
+    const input=parse(updateNode,req.body),user=actor(req),nodeId=id(req.params.nodeId);
+    const updatedAt=await transaction(pool,async(client)=>{
       const {permissions}=await nodeAccess(client,user,nodeId);requireEdit(permissions.edit);
-      await client.query("UPDATE explanation_nodes SET kind=$2,title=$3,body=$4,evidence=$5,color=$6,font_size=$7,read_acl=$8::jsonb,edit_acl=$9::jsonb,updated_by=$10,updated_at=now() WHERE id=$1",
-        [nodeId,input.kind,input.title,input.body,input.evidence,input.color||null,input.fontSize,JSON.stringify(input.readAcl),JSON.stringify(input.editAcl),user.id]);
+      // pg serializes timestamps to milliseconds. Match that precision atomically,
+      // and advance the next token even when two edits occur in the same millisecond.
+      const result=await client.query(`UPDATE explanation_nodes
+        SET kind=$2,title=$3,body=$4,evidence=$5,color=$6,font_size=$7,read_acl=$8::jsonb,edit_acl=$9::jsonb,updated_by=$10,
+          updated_at=GREATEST(clock_timestamp(),date_trunc('milliseconds',updated_at)+interval '1 millisecond')
+        WHERE id=$1 AND date_trunc('milliseconds',updated_at)=$11::timestamptz
+        RETURNING updated_at`,
+        [nodeId,input.kind,input.title,input.body,input.evidence,input.color||null,input.fontSize,JSON.stringify(input.readAcl),JSON.stringify(input.editAcl),user.id,input.expectedUpdatedAt]);
+      if(!result.rowCount)throw new HttpError(409,"explanation_conflict","تغيّر السجل بعد فتحه. اقرأ النسخة الأحدث وادمج تعديلك قبل الحفظ.");
+      return result.rows[0].updated_at;
     });
-    res.json({ok:true});
+    res.json({ok:true,updatedAt});
   }));
   router.delete("/explanations/nodes/:nodeId",handler(async(req,res)=>{
     const user=actor(req),nodeId=id(req.params.nodeId);

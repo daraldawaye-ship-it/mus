@@ -28,8 +28,8 @@ export const guideMcpContracts = {
   },
   "PATCH /explanations/nodes/:nodeId": {
     ...explanationContract(["nodeId"]),
-    bodyContract: "nodeFields",
-    bodySchema: inputSchema(explanationMcpSchemas.nodeFields),
+    bodyContract: "updateNode",
+    bodySchema: inputSchema(explanationMcpSchemas.updateNode),
   },
   "GET /page-catalog": {
     queryFields: ["q", "page", "pageSize", "sort", "section", "scope", "type", "status", "companyId"],
