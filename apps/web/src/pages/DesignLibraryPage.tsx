@@ -96,6 +96,17 @@ function DemoButtons() {
       <Sample code="ز-05" title="زر بإيقونة ونص"><button className="button button-primary" onClick={() => setLast("زر الإضافة")}><Plus size={15}/> إضافة جديد</button></Sample>
       <Sample code="ز-06" title="زر أيقونة فقط"><button className="button button-secondary design-icon-only" title="إعدادات — نموذج" aria-label="إعدادات — نموذج" onClick={() => setLast("زر الإعدادات")}><Settings2 size={16}/></button></Sample>
     </Group>
+    <Group title="الأزرار اللامعة" subtitle="لمعة زجاجية ثابتة بلون المظهر الحالي، وثلاثة أحجام قابلة للتجربة.">
+      <Sample code="ز-19" title="زر لامع صغير جدًا">
+        <button type="button" className="design-gloss-btn design-gloss-btn-xs" onClick={() => setLast("زر لامع صغير جدًا")}>صغير جدًا</button>
+      </Sample>
+      <Sample code="ز-20" title="زر لامع صغير">
+        <button type="button" className="design-gloss-btn" onClick={() => setLast("زر لامع صغير")}>صغير</button>
+      </Sample>
+      <Sample code="ز-21" title="زر لامع كبير">
+        <button type="button" className="design-gloss-btn design-gloss-btn-lg" onClick={() => setLast("زر لامع كبير")}>كبير</button>
+      </Sample>
+    </Group>
     <Group title="الأحجام والحالات" subtitle="اختيار الحجم مستقل عن نوع الزر.">
       <Sample code="ز-07" title="أحجام الأزرار"><div className="design-inline"><button className="button button-secondary design-btn-sm" onClick={() => setLast("زر صغير")}>صغير</button><button className="button button-secondary" onClick={() => setLast("زر متوسط")}>متوسط</button><button className="button button-secondary design-btn-lg" onClick={() => setLast("زر كبير")}>كبير</button></div></Sample>
       <Sample code="ز-08" title="زر معطّل"><button className="button button-secondary" disabled>غير متاح</button></Sample>
