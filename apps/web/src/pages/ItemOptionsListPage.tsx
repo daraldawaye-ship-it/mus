@@ -152,6 +152,8 @@ type Row = {
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string;
   marketOrder30Days: number; marketOrderAfterPurchase30Days: number;
+  adjustmentQtySinceDisplay: string; adjustmentValueSinceDisplay: string;
+  adjustmentQtySinceApproval: string; adjustmentValueSinceApproval: string;
   saleTimesFourMonths: string;
   compositionSaleUnit1Month: string | null; compositionAvailableUnit1: string | null;
   compositionCoverageDays: string | null; saleTimesYear: string;
@@ -172,6 +174,11 @@ function formatAmountGroup(amount: string): string {
   const decimals = fraction.replace(/0+$/, "");
   return decimals ? `${normalized}.${decimals}` : normalized;
 }
+function formatSignedAmount(amount: string): string {
+  const formatted = formatAmountGroup(amount);
+  return amount.startsWith("-") || /^0(?:\.0+)?$/.test(amount)
+    ? formatted : "+" + formatted;
+}
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
@@ -191,8 +198,12 @@ const sortOptions = [
   ["compositionSaleMonth", "كمية التركيب المباعة في شهر"],
   ["compositionStock", "الكمية المتوفرة للتركيب"],
   ["compositionCoverage", "الكفاية التقريبية للتركيب"],
+  ["adjustmentQtySinceDisplay", "صافي كمية الجرد منذ آخر عرض"],
+  ["adjustmentValueSinceDisplay", "صافي قيمة الجرد منذ آخر عرض"],
+  ["adjustmentQtySinceApproval", "صافي كمية الجرد منذ آخر اعتماد"],
+  ["adjustmentValueSinceApproval", "صافي قيمة الجرد منذ آخر اعتماد"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["marketOrder30Days","مرات الطلب من السوق آخر 30 يوم"],["marketOrderAfterPurchase30Days","مرات الطلب من السوق آخر 30 يوم بعد آخر شراء"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"],["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["marketOrder30Days","مرات الطلب من السوق آخر 30 يوم"],["marketOrderAfterPurchase30Days","مرات الطلب من السوق آخر 30 يوم بعد آخر شراء"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"],["compositionSaleMonth","كمية التركيب المباعة في شهر (الوحدة الأولى)"],["compositionStock","الكمية المتوفرة للتركيب (الوحدة الأولى)"],["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"],["adjustmentQtySinceDisplay","صافي كمية العجز والزيادة منذ آخر عرض"],["adjustmentValueSinceDisplay","صافي قيمة العجز والزيادة منذ آخر عرض"],["adjustmentQtySinceApproval","صافي كمية العجز والزيادة منذ آخر اعتماد"],["adjustmentValueSinceApproval","صافي قيمة العجز والزيادة منذ آخر اعتماد"]] as const;
 const planningColumns = ["minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed"] as const;
 const marketOrderColumns = ["marketOrder30Days", "marketOrderAfterPurchase30Days"] as const;
 const compositionColumns = ["compositionSaleMonth", "compositionStock", "compositionCoverage"] as const;
@@ -201,6 +212,8 @@ const allTableColumns = tableColumnOptions.map(([id]) => id);
 const defaultHiddenTableColumns: ReadonlySet<TableColumn> = new Set([
   "reserve", "purchaseFactor", "orderStoppedUntil",
   "minOrderQuantity", "orderAlertQuantity", "reviewed",
+  "adjustmentQtySinceDisplay", "adjustmentValueSinceDisplay",
+  "adjustmentQtySinceApproval", "adjustmentValueSinceApproval",
 ]);
 const defaultVisibleTableColumns = allTableColumns.filter(id => !defaultHiddenTableColumns.has(id));
 const tableColumnWidths: Record<TableColumn, number> = {
@@ -232,37 +245,40 @@ const tableColumnWidths: Record<TableColumn, number> = {
   compositionSaleMonth: 77,
   compositionStock: 65,
   compositionCoverage: 65,
+  adjustmentQtySinceDisplay: 92,
+  adjustmentValueSinceDisplay: 105,
+  adjustmentQtySinceApproval: 92,
+  adjustmentValueSinceApproval: 105,
 };
 function readVisibleTableColumns(key: string): TableColumn[] {
   if (typeof window === "undefined") return defaultVisibleTableColumns;
   try {
-    // v7 introduces six hidden-by-default editing columns. Migrate an older
-    // fully visible layout to the new default without losing custom selections.
-    // Explicit v7 choices, including "إظهار الكل", always win.
     const current = window.localStorage.getItem(key);
-    const prior = (version: number) => window.localStorage.getItem(key.replace(":v7:", `:v${version}:`));
-    const previousV6 = current === null ? prior(6) : null;
-    const previousV5 = current === null && previousV6 === null ? prior(5) : null;
-    const previousV4 = current === null && previousV6 === null && previousV5 === null ? prior(4) : null;
-    const previousV3 = current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(3) : null;
-    const previousV2 = previousV3 === null && current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(2) : null;
-    const previousV1 = previousV2 === null && previousV3 === null && current === null && previousV6 === null && previousV5 === null && previousV4 === null ? prior(1) : null;
-    const raw = current ?? previousV6 ?? previousV5 ?? previousV4 ?? previousV3 ?? previousV2 ?? previousV1;
+    const prior = (version: number) =>
+      window.localStorage.getItem(key.replace(":v8:", `:v${version}:`));
+    const versions = [7, 6, 5, 4, 3, 2, 1] as const;
+    let priorVersion: number | null = null;
+    let raw = current;
+    if (raw === null) {
+      for (const version of versions) {
+        const saved = prior(version);
+        if (saved !== null) { raw = saved; priorVersion = version; break; }
+      }
+    }
     if (!raw) return defaultVisibleTableColumns;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return defaultVisibleTableColumns;
-    const oldBeforePlanning = current === null && previousV6 === null &&
-      previousV5 === null && previousV4 === null;
-    const isLegacy = previousV1 !== null;
-    const valid = allTableColumns.filter(id => parsed.includes(id) ||
-      (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")) ||
-      (oldBeforePlanning && planningColumns.includes(id as typeof planningColumns[number])) ||
-      (oldBeforePlanning && compositionColumns.includes(id as typeof compositionColumns[number])) ||
-      (current === null && previousV6 === null && previousV5 === null && id === "compositionCoverage") ||
-      (current === null && previousV6 === null && marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
+    const legacy = priorVersion === 1;
+    const oldBeforePlanning = priorVersion !== null && priorVersion < 4;
+    const valid = allTableColumns.filter(id => parsed.includes(id)
+      || (legacy && id === "coverageWithReserve" && parsed.includes("coverage"))
+      || (oldBeforePlanning && planningColumns.includes(id as typeof planningColumns[number]))
+      || (oldBeforePlanning && compositionColumns.includes(id as typeof compositionColumns[number]))
+      || (priorVersion !== null && priorVersion < 5 && id === "compositionCoverage")
+      || (priorVersion !== null && priorVersion < 6 &&
+          marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
     if (!valid.length) return defaultVisibleTableColumns;
-    return current === null && valid.length === allTableColumns.length
-      ? defaultVisibleTableColumns : valid;
+    return valid;
   } catch { return defaultVisibleTableColumns; }
 }
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
@@ -277,7 +293,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v7:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v8:${companyId}:${user?.id ?? "guest"}`;
   const columnLayoutStorageKey = `alraesy:item-options-table-layout:v1:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
@@ -891,6 +907,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     compositionSaleMonth: row => <><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi></>,
     compositionStock: row => <><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi></>,
     compositionCoverage: row => <><bdi>{row.compositionCoverageDays ?? "0"}</bdi></>,
+    adjustmentQtySinceDisplay: row => <bdi>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>,
+    adjustmentValueSinceDisplay: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    adjustmentQtySinceApproval: row => <bdi>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>,
+    adjustmentValueSinceApproval: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
   };
   const columns: InteractiveTableColumn<Row, TableColumn>[] = tableColumnOptions.map(([key, label]) => ({
     key, label, width: tableColumnWidths[key], cell: columnCells[key],
@@ -1390,6 +1410,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </div>
               <div style={hiddenColumnStyle("compositionCoverage")} className="item-options-mobile-stat">
                 <span>الكفاية التقريبية للتركيب/يوم</span><bdi>{row.compositionCoverageDays ?? "0"}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("adjustmentQtySinceDisplay")} className="item-options-mobile-stat">
+                <span>صافي كمية العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("adjustmentValueSinceDisplay")} className="item-options-mobile-stat">
+                <span>صافي قيمة العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)} {row.purchaseCurrencyCode}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("adjustmentQtySinceApproval")} className="item-options-mobile-stat">
+                <span>صافي كمية العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("adjustmentValueSinceApproval")} className="item-options-mobile-stat">
+                <span>صافي قيمة العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)} {row.purchaseCurrencyCode}</bdi>
               </div>
                       </div>
           </article>)}
