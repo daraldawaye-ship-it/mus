@@ -43,7 +43,8 @@ import {
 } from "./services/item-coverage.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess } from "./policies/access.ts";
-import { HttpError, missing } from "./errors.ts";
+import { HttpError, missing, deny } from "./errors.ts";
+import { itemSettlementStampAccess } from "./services/item-settlement-access.ts";
 import {
   itemAgentDTO,
   itemAgentSelect,
@@ -979,6 +980,7 @@ export function itemRoutes(pool: Pool): Router {
           item: itemDTO(
             await masterRow(client, itemSelect, "i", companyId, rowId),
           ),
+          settlementStampAccess: await itemSettlementStampAccess(client,actor(req),companyId),
         })),
       );
     }),
@@ -990,7 +992,12 @@ export function itemRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const rowId = id(req.params.id);
       const input = parse(z.object({ kind: z.enum(["display", "approval"]) }).strict(), req.body);
-      const item = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+      const item = await mutateMaster(pool, req, "items.view", async (client, user, companyId) => {
+        const access=await itemSettlementStampAccess(client,user,companyId);
+        if(!access[input.kind])
+          deny(input.kind==="display"
+            ? "تسجيل عرض التسوية للمالك أو من مُنح صلاحية عرض التسوية في مركز الصلاحيات."
+            : "اعتماد التسوية للمالك أو من مُنح صلاحية الاعتماد في مركز الصلاحيات.");
         await client.query(
           "SELECT id FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
           [companyId, rowId],
@@ -1096,6 +1103,18 @@ export function itemRoutes(pool: Pool): Router {
                 revision: before.revision,
               })
             : fullInput!;
+          // The generic item edit cannot bypass the two independent settlement
+          // policies by changing the legacy date fields directly.
+          if ((input.settlementDisplayDate ?? null)!==(before.settlementDisplayDate ?? null) ||
+              (input.settlementApprovalDate ?? null)!==(before.settlementApprovalDate ?? null)) {
+            const access=await itemSettlementStampAccess(client,user,companyId);
+            if ((input.settlementDisplayDate ?? null)!==(before.settlementDisplayDate ?? null) &&
+                !access.display)
+              deny("لا تملك صلاحية تعديل تاريخ عرض التسوية.");
+            if ((input.settlementApprovalDate ?? null)!==(before.settlementApprovalDate ?? null) &&
+                !access.approval)
+              deny("لا تملك صلاحية تعديل تاريخ اعتماد التسوية.");
+          }
           // An archived item must have no remaining stock in any location.
           // Include negative balances and opposing showroom/warehouse balances:
           // a zero company total alone does not mean the item is empty.
