@@ -18,7 +18,8 @@ test("AI task company schedule preserves task identity, privacy, and optimistic 
     CREATE TABLE companies (id int PRIMARY KEY, name text);
     INSERT INTO companies VALUES (2,'دار الدواء');
     CREATE TABLE general_table (general_table_id int PRIMARY KEY, general_table_table_name text,
-      general_table_category text, updated_at timestamptz NOT NULL, general_table_description text);
+      general_table_category text, updated_at timestamptz NOT NULL, general_table_description text,
+      created_at timestamptz NOT NULL DEFAULT '2026-11-08T01:02:03Z');
     CREATE TABLE ai_tasks (task_id int PRIMARY KEY, section text, company_id int REFERENCES companies,
       cadence_hours int, cadence_label text, private_title text, private_description text, archived_at timestamptz);
     CREATE TABLE audit_events(actor_id int,actor_name text,scope text,company_id int,action text,

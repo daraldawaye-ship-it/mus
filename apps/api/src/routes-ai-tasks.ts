@@ -29,7 +29,7 @@ export const aiTaskCompanyScheduleInput = z.object({
 }).strict();
 export const aiTaskCadenceInput = aiTaskCompanyScheduleInput.pick({cadenceHours: true, expectedUpdatedAt: true});
 export const aiTaskArchiveInput = z.object({ archived: z.boolean() }).strict();
-const taskQuery = `SELECT t.*, g.*, c.name AS company_name
+const taskQuery = `SELECT t.*, g.*, g.created_at AS task_created_at, c.name AS company_name
   FROM ai_tasks t JOIN general_table g ON g.general_table_id=t.task_id
   LEFT JOIN companies c ON c.id=t.company_id
   WHERE (g.general_table_table_name=$1 OR t.private_title IS NOT NULL)`;
@@ -40,6 +40,7 @@ type Run = {
   detail: string;
   startedAt: string | null;
   finishedAt: string | null;
+  durationSeconds?: number | null;
   recordedAt: string;
   resumeFrom: string | null;
 };
@@ -49,6 +50,12 @@ const dateValue = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d\d-\d\dT/.test(value) &&
     /(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value))
     ? new Date(value).toISOString() : null;
+
+const elapsedSeconds = (start: string | null, finish: string | null) => {
+  if (!start || !finish) return null;
+  const elapsed = Date.parse(finish) - Date.parse(start);
+  return Number.isFinite(elapsed) && elapsed >= 0 ? Math.floor(elapsed / 1000) : null;
+};
 
 function runMetadata(texts: string[]) {
   const entries: Record<string, unknown>[] = [];
@@ -91,8 +98,8 @@ function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
     const recordedAt = new Date(row.created_at).toISOString();
     const startedAt = dateValue(entry?.startedAt);
     const terminal = !entry?.status || endStates.test(String(entry.status));
-    const finishedAt = dateValue(entry?.endedAt ?? entry?.finishedAt ?? entry?.completedAt)
-      ?? (terminal ? recordedAt : null);
+    const recordedFinish = dateValue(entry?.endedAt ?? entry?.finishedAt ?? entry?.completedAt);
+    const finishedAt = recordedFinish ?? (terminal ? recordedAt : null);
     const run = {
       id: Number(row.general_table_id),
       title,
@@ -100,6 +107,7 @@ function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
       recordedAt,
       startedAt,
       finishedAt,
+      durationSeconds: elapsedSeconds(startedAt, recordedFinish),
       resumeFrom: typeof entry?.resumeFrom === "string" ? entry.resumeFrom : null,
     };
     for (const linkedTask of linkedTasks) {
@@ -128,11 +136,14 @@ export function taskDTO(row: QueryResultRow, history: Run[]) {
   const notes = [row.general_table_text7, row.general_table_text8, row.general_table_text9] as string[];
   const knownFinishes = [];
   const noteStarts: string[] = [];
+  const notePairs: { start: string; finish: string }[] = [];
   for (const entry of runMetadata(notes)) {
     if (Number(entry.taskId) === row.task_id || entry.taskId === undefined) {
       const startedAt = dateValue(entry.startedAt);
       if (startedAt) noteStarts.push(startedAt);
-      knownFinishes.push(dateValue(entry.endedAt ?? entry.finishedAt ?? entry.completedAt));
+      const finishedAt = dateValue(entry.endedAt ?? entry.finishedAt ?? entry.completedAt);
+      knownFinishes.push(finishedAt);
+      if (startedAt && finishedAt) notePairs.push({ start: startedAt, finish: finishedAt });
     }
   }
   for (const note of notes) {
@@ -150,6 +161,10 @@ export function taskDTO(row: QueryResultRow, history: Run[]) {
     .filter((value): value is string => value !== null).sort().at(-1) ?? null;
   const lastFinishedAt = embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null;
   const latestRunInProgress = lastStartedAt !== null && (lastFinishedAt === null || lastStartedAt > lastFinishedAt);
+  const hasMatchingPair = notePairs.some(pair => pair.start === lastStartedAt && pair.finish === lastFinishedAt)
+    || history.some(run => run.startedAt === lastStartedAt && run.finishedAt === lastFinishedAt && run.durationSeconds != null);
+  const lastRunDurationSeconds = !latestRunInProgress && hasMatchingPair
+    ? elapsedSeconds(lastStartedAt, lastFinishedAt) : null;
   const activeNote = latestRunInProgress
     ? (noteStarts.includes(lastStartedAt) ? notes[2] :
         history.find(run => run.startedAt === lastStartedAt && !run.finishedAt)?.detail) ?? ""
@@ -167,9 +182,11 @@ export function taskDTO(row: QueryResultRow, history: Run[]) {
     cadenceHours,
     cadenceLabel: row.cadence_label as string | null,
     updatedAt: new Date(row.updated_at).toISOString(),
+    createdAt: row.task_created_at ? new Date(row.task_created_at).toISOString() : null,
     archived,
     lastStartedAt,
     lastFinishedAt,
+    lastRunDurationSeconds,
     latestRunInProgress,
     lastResult: latestRunInProgress ? activeResult :
       embeddedIsNewer ? notes[2] : lastRun?.detail || lastRun?.title || notes[2],

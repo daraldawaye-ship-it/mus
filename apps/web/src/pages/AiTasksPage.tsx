@@ -22,8 +22,10 @@ type Task = {
   cadenceHours: number | null;
   cadenceLabel: string | null;
   archived: boolean;
+  createdAt: string | null;
   lastStartedAt: string | null;
   lastFinishedAt: string | null;
+  lastRunDurationSeconds: number | null;
   latestRunInProgress: boolean;
   lastResult: string;
   resumeFrom: string | null;
@@ -85,6 +87,8 @@ export function AiTasksPage() {
     { id: "section", accessorFn: sectionLabel, header: "القسم" },
     { accessorKey: "description", header: "الشرح والآلية", cell: ({ row }) =>
       <Button type="button" onClick={() => setDetails(row.original)}>عرض</Button> },
+    { id: "createdAt", accessorFn: task => task.createdAt ? Date.parse(task.createdAt) : null,
+      header: "تاريخ الإنشاء", cell: ({ row }) => formatDate(row.original.createdAt) },
     { id: "lastStartedAt", accessorFn: task => task.lastStartedAt ? Date.parse(task.lastStartedAt) : null,
       header: "آخر بدء", cell: ({ row }) => {
         const task = row.original;
@@ -100,6 +104,14 @@ export function AiTasksPage() {
           {formatDate(task.lastFinishedAt)}{task.latestRunInProgress && task.lastFinishedAt && " · سابقة"}
         </span>;
       } },
+    { accessorKey: "lastRunDurationSeconds", header: "مدة الجولة", cell: ({ row }) => {
+      const seconds = row.original.lastRunDurationSeconds;
+      return seconds == null ? <span title={row.original.latestRunInProgress
+        ? "الجولة الحالية لم تنتهِ" : "وقت البداية والنهاية غير موثقين للجولة نفسها"}>—</span> :
+        <span dir="ltr" style={{ whiteSpace: "nowrap" }} title={`${Math.floor(seconds / 60)} دقيقة و${seconds % 60} ثانية`}>
+          {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+        </span>;
+    } },
     { id: "cadenceHours", accessorFn: task => task.cadenceHours ?? task.cadenceLabel, header: "تُنجز كل", cell: ({ row }) => {
       const task = row.original;
       return <span title={task.nextEligibleAt ? `الاستحقاق التالي ${formatDate(task.nextEligibleAt)}` : undefined}>
