@@ -1038,6 +1038,12 @@ legend {
 .company-overview-shortcuts {
   gap: 8px 10px;
 }
+.company-overview-quick-area { display: grid; min-width: 0; gap: 6px; }
+.company-overview-quick-area .company-overview-shortcut-card.card { padding: 5px 7px; }
+.company-overview-quick-area .company-overview-shortcut-card > .company-overview-shortcuts { gap: 4px 5px; }
+.company-overview-quick-area .company-overview-shortcut-card > .company-overview-shortcuts > .company-shortcut {
+  max-width: 100%; white-space: normal; text-align: center;
+}
 .company-overview-shortcuts .company-shortcut {
   font-weight: 650;
   border-radius: 7px;

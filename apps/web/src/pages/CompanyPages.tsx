@@ -258,7 +258,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   const directory = usePageDirectory(company.id);
   const shortcuts=companyOverviewShortcuts(directory.data,company.id);
   const shortcutCard=(group:CompanyShortcutGroup,title:string)=>shortcuts[group].length>0 && (
-    <Card title={title} className="company-overview-z19">
+    <Card className="company-overview-z19 company-overview-shortcut-card">
       <div className="form-actions company-overview-shortcuts" role="group" aria-label={title}>
         {shortcuts[group].map(shortcut=>(
           <Link key={shortcut.href} className={shortcut.action==="create"
@@ -274,6 +274,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   return (
     <>
       <PageHeader title={company.name} />
+      <div className="company-overview-quick-area">
       {shortcutCard("items","الأصناف")}
       {shortcutCard("accounts","الحسابات")}
       <Card className="company-overview-z19">
@@ -288,6 +289,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       </Card>
       {shortcutCard("operations","التشغيل والمتابعة")}
       {shortcutCard("administration","إدارة الشركة")}
+      </div>
       <div className="card-grid">
         <Card title="بيانات الشركة">
           <dl className="details-list">

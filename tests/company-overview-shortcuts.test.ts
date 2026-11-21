@@ -58,3 +58,13 @@ test("attendance/actions and fixed company directory remain between cards; toggl
   assert.match(catalog,/cell:\(\{row\}\)=>overviewControl\(row\.original\)/);
   assert.match(catalog,/Card title="الظهور في واجهة الشركة"[\s\S]*overviewControl\(entry\)/);
 });
+
+test("only four shortcut cards omit visible headings while retaining accessible grouping and compact wrap spacing",async()=>{
+  const source=await readFile(new URL("../apps/web/src/pages/CompanyPages.tsx",import.meta.url),"utf8");
+  assert.match(source,/<Card className="company-overview-z19 company-overview-shortcut-card">\s*<div className="form-actions company-overview-shortcuts" role="group" aria-label=\{title\}>/);
+  assert.match(source,/<PageHeader title=\{company\.name\} \/>\s*<div className="company-overview-quick-area">/);
+  assert.match(source,/<Card title="بيانات الشركة">/);
+  const css=await readFile(new URL("../apps/web/src/styles.css",import.meta.url),"utf8");
+  assert.match(css,/\.company-overview-shortcut-card\.card \{ padding: 5px 7px; \}/);
+  assert.match(css,/\.company-overview-shortcut-card > \.company-overview-shortcuts \{ gap: 4px 5px; \}/);
+});
