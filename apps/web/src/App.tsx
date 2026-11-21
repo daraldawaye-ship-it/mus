@@ -1267,6 +1267,8 @@ function Workspace() {
     : dockCompanyId&&new RegExp(`^/companies/${dockCompanyId}/legacy-sales-import/?$`).test(location.pathname)
       ? "ترحيل مبيعات النظام السابق" : "";
   const dockUser=ownerDock && !!user && canSearchDockUsers(user,dockPages);
+  const workPanelEnabled=!!user && !visitorOnly && !employeePreview;
+  const hasWorkPanelTools=ownerDock || accountDock || pageDock || notesDock;
 
   useCompanyIdleLogout(companyId, navigationContext?.employee?.id ?? null, inCompany && !!navigationContext);
   useEffect(() => {
@@ -1457,14 +1459,14 @@ function Workspace() {
           <DockTableContext scopeKey={`${user?.id??"guest"}:${dockCompanyId??0}:${!!employeePreview}`}
             scope={{companyId:dockCompanyId,companyRoute:inCompany && companyId===dockCompanyId,
               userRoute:currentDockPageKey==="public.users",item:ownerDock,account:accountDock,user:dockUser}}>
-          <WorkPanelLayout key={user?.id ?? "guest"} enabled={ownerDock || accountDock || pageDock || notesDock} userId={user?.id ?? null}
-            renderTools={() => user && (
+          <WorkPanelLayout key={user?.id ?? "guest"} enabled={workPanelEnabled} userId={user?.id ?? null} defaultOpen={hasWorkPanelTools}
+            renderTools={() => workPanelEnabled && user && (hasWorkPanelTools ? (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
                 user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock} showPrivateNotes={notesDock}
                 pageEntries={dockPageDirectory.data} pagesLoading={dockPageDirectory.isPending}
                 pagesError={dockPageDirectory.isError} currentPageLabel={dockPageLabel}
                 currentPageRoute={location.pathname+location.search} />
-            )}>
+            ) : <Notice>لا توجد حاويات متاحة لك في هذا النطاق.</Notice>)}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
               <strong>تصفح بصلاحيات: {employeePreview.employeeName}</strong>

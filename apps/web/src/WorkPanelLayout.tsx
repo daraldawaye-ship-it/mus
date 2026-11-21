@@ -11,30 +11,32 @@ const MOBILE_RAIL = 30;
 const STORAGE_PREFIX = "alraesy:work-panel:v1:";
 const MOBILE_QUERY = "(max-width: 680px)";
 
-function loadPanel(userId: number | null): StoredPanel {
-  if (userId == null) return DEFAULT;
+function loadPanel(userId: number | null, defaultOpen: boolean): StoredPanel {
+  const fallback = { ...DEFAULT, open: defaultOpen };
+  if (userId == null) return fallback;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_PREFIX + userId) || "null");
     return {
       desktop: Number.isFinite(saved?.desktop) ? saved.desktop : DEFAULT.desktop,
       mobile: Number.isFinite(saved?.mobile) ? saved.mobile : DEFAULT.mobile,
-      open: typeof saved?.open === "boolean" ? saved.open : DEFAULT.open,
+      open: typeof saved?.open === "boolean" ? saved.open : fallback.open,
     };
   } catch {
-    return DEFAULT;
+    return fallback;
   }
 }
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), Math.max(min, max));
 }
 
-export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
+export function WorkPanelLayout({ enabled, userId, defaultOpen = true, renderTools, children }: {
   enabled: boolean;
   userId: number | null;
+  defaultOpen?: boolean;
   renderTools?: (availableHeight: number) => ReactNode;
   children: ReactNode;
 }) {
-  const [settings, setSettings] = useState<StoredPanel>(() => loadPanel(userId));
+  const [settings, setSettings] = useState<StoredPanel>(() => loadPanel(userId, defaultOpen));
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
   const [headerHeight, setHeaderHeight] = useState(44);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -175,7 +177,7 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
       {enabled && (
         <aside
           className={`resizable-work-panel-frame${settings.open ? "" : " is-collapsed"}`}
-          aria-label="لوح العمل التجريبي"
+          aria-label="لوح العمل"
           data-panel-state={settings.open ? "open" : "closed"}
         >
           {settings.open && (
