@@ -1432,9 +1432,9 @@ function Workspace() {
             </div>
           </header>
           <WorkPanelLayout key={user?.id ?? "guest"} enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}
-            renderTools={availableHeight => user && (
+            renderTools={() => user && (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
-                user={user} companyId={navigationContext?.company.id ?? null} availableHeight={availableHeight} />
+                user={user} companyId={navigationContext?.company.id ?? null} />
             )}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
