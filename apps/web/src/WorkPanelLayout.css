@@ -121,7 +121,39 @@
 }
 .work-panel-movement-scroll { overflow-x: auto; }
 .work-panel-tools .work-panel-movement-table { min-width: 320px; }
-.work-panel-movement-table th:nth-child(1) { width: 19%; }
+.work-panel-movement-table th:nth-child(1) { width: 21%; }
+.work-panel-movement-kind {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+}
+.work-panel-movement-kind-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work-panel-movement-kind-dot {
+  display: none;
+  flex: 0 0 6px;
+  block-size: 6px;
+  border-radius: 50%;
+}
+.work-panel-movement-kind:is([data-movement-kind="sale"], [data-movement-kind="sales_return"]) .work-panel-movement-kind-dot {
+  display: block;
+  background: #378fe3;
+}
+.work-panel-movement-kind:is([data-movement-kind="purchase"], [data-movement-kind="purchase_return"]) .work-panel-movement-kind-dot {
+  display: block;
+  background: #26a765;
+}
+.work-panel-movement-kind:is([data-movement-kind="transfer_in"], [data-movement-kind="transfer_out"]) .work-panel-movement-kind-dot {
+  display: block;
+  background: #e47d22;
+}
+.work-panel-movement-kind:is([data-movement-kind="adjustment_surplus"], [data-movement-kind="adjustment_shortage"]) .work-panel-movement-kind-dot {
+  display: block;
+  background: #a267d4;
+}
 .work-panel-movement-table th:nth-child(4) { width: 22%; }
 .work-panel-movement-table [data-work-panel-quantity="positive"] {
   color: var(--success-text, #92e7bb);
