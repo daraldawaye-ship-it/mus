@@ -14,7 +14,7 @@ test("company composition accepts only explicit optional single choices and clea
   const patch={...base,revision:1};
   assert.equal(Object.hasOwn(itemCompositionPatchSchema.parse(patch),"classification"),false);
   assert.equal(itemCompositionPatchSchema.parse({...patch,classification:null}).classification,null);
-  assert.deepEqual(Object.values(compositionClassificationLabels),["مستلزمات طبية","مستلزمات صحية","دواء"]);
+  assert.deepEqual(Object.values(compositionClassificationLabels),["مستلزمات طبية","مستلزمات صحية","دواء","مستلزمات طبية / صحية"]);
   for(const classification of Object.keys(compositionClassificationLabels))
     assert.equal(itemCompositionPatchSchema.parse({...patch,classification}).classification,classification);
   for(const classification of ["","unknown",["medicine","medical_supplies"]])
@@ -32,6 +32,7 @@ test("company composition migration preserves old blank, supports explicit clear
       VALUES(1,1,'Composition','Composition',1),(1,2,'Other company','Other',1);`);
     const migration=new URL("../apps/api/migrations/20261121_zzzzz_company_composition_classification.sql",import.meta.url);
     await db.exec(await readFile(migration,"utf8"));
+    const combinedMigration=new URL("../apps/api/migrations/20261121_zzzzzz_company_composition_combined_classification.sql",import.meta.url);
     const routes=await readFile(new URL("../apps/api/src/routes-items.ts",import.meta.url),"utf8");
     const sql=routes.match(/UPDATE item_compositions\s+SET arabic_name=.*?WHERE company_id=\$11 AND id=\$12/s)?.[0];
     assert.ok(sql,"run actual composition PATCH SQL");
@@ -56,7 +57,9 @@ test("company composition migration preserves old blank, supports explicit clear
     }
     assert.equal((await read(1)).classification,null);
     assert.equal((await patch("medical_supplies")).classification,"medical_supplies");
+    await db.exec(await readFile(combinedMigration,"utf8"));
     assert.equal((await patch()).classification,"medical_supplies");
+    assert.equal((await patch("medical_and_health_supplies")).classification,"medical_and_health_supplies");
     assert.equal((await patch(null)).classification,null);
     assert.equal((await read(2)).classification,null);
     await assert.rejects(db.exec("UPDATE item_compositions SET classification='wrong' WHERE company_id=1"),{code:"23514"});

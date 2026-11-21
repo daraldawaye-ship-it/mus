@@ -2989,7 +2989,8 @@
               "enum": [
                 "medical_supplies",
                 "health_supplies",
-                "medicine"
+                "medicine",
+                "medical_and_health_supplies"
               ]
             },
             {
@@ -3057,7 +3058,8 @@
               "enum": [
                 "medical_supplies",
                 "health_supplies",
-                "medicine"
+                "medicine",
+                "medical_and_health_supplies"
               ]
             },
             {

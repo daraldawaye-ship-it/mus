@@ -78,12 +78,13 @@ export const compositionFormSchema = z.enum(compositionForms as [ProductForm, ..
 // Composition is a reusable company-scoped item classification. Its
 // substitution flags are descriptive; they never auto-replace stock lines.
 const compositionName = z.string().trim().min(1, "الاسم مطلوب").max(240);
-export const compositionClassifications = ["medical_supplies","health_supplies","medicine"] as const;
+export const compositionClassifications = ["medical_supplies","health_supplies","medicine","medical_and_health_supplies"] as const;
 export type CompositionClassification = typeof compositionClassifications[number];
 export const compositionClassificationLabels: Record<CompositionClassification, string> = {
   medical_supplies: "مستلزمات طبية",
   health_supplies: "مستلزمات صحية",
   medicine: "دواء",
+  medical_and_health_supplies: "مستلزمات طبية / صحية",
 };
 
 const compositionFields = z.object({
