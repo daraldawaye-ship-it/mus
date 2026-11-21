@@ -5,7 +5,8 @@ import "./WorkPanelLayout.css";
 
 type StoredPanel = { desktop: number; mobile: number; open: boolean };
 const DEFAULT: StoredPanel = { desktop: 320, mobile: 320, open: true };
-const MIN_DESKTOP = 220;
+const DESKTOP_RAIL = 24;
+const MOBILE_RAIL = 30;
 const STORAGE_PREFIX = "alraesy:work-panel:v1:";
 const MOBILE_QUERY = "(max-width: 680px)";
 
@@ -37,7 +38,15 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const [headerHeight, setHeaderHeight] = useState(44);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const layoutRef = useRef<HTMLDivElement>(null);
-  const dragStart = useRef<{ x: number; y: number; size: number } | null>(null);
+  const dragStart = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    size: number;
+    previousSize: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressGripClick = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -66,46 +75,65 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
 
   const contentWidth = layoutRef.current?.getBoundingClientRect().width
     || viewport.width - (viewport.width > 680 ? 64 : 0);
-  const maxDesktop = Math.max(MIN_DESKTOP, Math.min(660, contentWidth - 320));
-  const maxMobile = Math.max(64, Math.min(Math.round(viewport.height * 0.8), viewport.height - headerHeight - 130));
-  const size = mobile
-    ? clamp(settings.mobile, 64, maxMobile)
-    : clamp(settings.desktop, MIN_DESKTOP, maxDesktop);
-  const displayedSize = settings.open ? size : mobile ? 30 : 24;
+  const rail = mobile ? MOBILE_RAIL : DESKTOP_RAIL;
+  const maxSize = Math.max(rail + 1, mobile
+    ? Math.min(Math.round(viewport.height * 0.8), viewport.height - headerHeight - 130)
+    : Math.min(660, contentWidth - 320));
+  const sizeKey = mobile ? "mobile" : "desktop";
+  const size = clamp(settings[sizeKey], rail + 1, maxSize);
+  const displayedSize = settings.open ? size : rail;
 
-  function setSize(value: number) {
-    if (mobile) setSettings(s => ({ ...s, mobile: clamp(value, 64, maxMobile), open: true }));
-    else setSettings(s => ({ ...s, desktop: clamp(value, MIN_DESKTOP, maxDesktop), open: true }));
+  function setSize(value: number, previousSize?: number) {
+    setSettings(s => value <= rail
+      ? { ...s, ...(previousSize === undefined ? {} : { [sizeKey]: previousSize }), open: false }
+      : { ...s, [sizeKey]: clamp(value, rail + 1, maxSize), open: true });
   }
   function startDrag(event: PointerEvent<HTMLButtonElement>) {
-    if (!settings.open) {
-      setSettings(s => ({ ...s, open: true }));
-      return;
-    }
-    dragStart.current = { x: event.clientX, y: event.clientY, size };
+    if (event.button !== 0 || dragStart.current) return;
+    suppressGripClick.current = false;
+    dragStart.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      size: displayedSize,
+      previousSize: settings[sizeKey],
+      moved: false,
+    };
+    // The same grip stays mounted when the contents collapse so the drag can
+    // cross the rail and reverse without releasing the pointer.
     event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.focus({ preventScroll: true });
     event.preventDefault();
   }
   function moveDrag(event: PointerEvent<HTMLButtonElement>) {
-    if (!dragStart.current) return;
-    const delta = mobile
-      ? dragStart.current.y - event.clientY
-      : event.clientX - dragStart.current.x;
-    setSize(dragStart.current.size + delta);
+    const drag = dragStart.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = mobile ? drag.y - event.clientY : event.clientX - drag.x;
+    if (!drag.moved && Math.abs(delta) < 3) return;
+    drag.moved = true;
+    setSize(drag.size + delta, drag.previousSize);
   }
   function stopDrag(event: PointerEvent<HTMLButtonElement>) {
+    const drag = dragStart.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressGripClick.current = drag.moved || event.type === "pointercancel";
     dragStart.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }
   function handleKeys(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      setSize(event.key === "Home" ? rail : maxSize);
+      return;
+    }
     const increment = mobile
       ? event.key === "ArrowUp" ? 20 : event.key === "ArrowDown" ? -20 : 0
       : event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0;
     if (increment) {
       event.preventDefault();
-      setSize(size + increment);
+      setSize(displayedSize + increment);
     }
   }
 
@@ -160,16 +188,24 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
             className="resizable-work-panel-grip"
             aria-label={mobile ? "سحب خطاف اللوح لتغيير ارتفاعه" : "سحب خطاف اللوح لتغيير عرضه"}
             aria-orientation={mobile ? "horizontal" : "vertical"}
-            aria-valuemin={mobile ? 64 : MIN_DESKTOP}
-            aria-valuemax={mobile ? maxMobile : maxDesktop}
-            aria-valuenow={size}
+            aria-valuemin={rail}
+            aria-valuemax={maxSize}
+            aria-valuenow={displayedSize}
             role="separator"
             tabIndex={0}
-            title="اسحب لتغيير حجم اللوح، أو استخدم الأسهم"
+            title="اسحب لتغيير الحجم أو لطي اللوح، أو استخدم الأسهم"
             onPointerDown={startDrag}
             onPointerMove={moveDrag}
             onPointerUp={stopDrag}
             onPointerCancel={stopDrag}
+            onLostPointerCapture={stopDrag}
+            onClick={event => {
+              if (event.detail !== 0 && suppressGripClick.current) {
+                suppressGripClick.current = false;
+                return;
+              }
+              setSettings(s => s.open ? s : { ...s, open: true });
+            }}
             onKeyDown={handleKeys}
           >
             <GripHorizontal className="resizable-work-panel-icon-mobile" size={17} />
