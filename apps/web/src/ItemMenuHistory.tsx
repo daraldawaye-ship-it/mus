@@ -30,7 +30,7 @@ const actions: { key: ItemMenuView; label: string }[] = [
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -40,6 +40,7 @@ export function ItemMenuHistory({
   itemName: string | null;
   resetKey?: number;
   fixedView?: "movement" | "alternatives";
+  hideHeading?: boolean;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
@@ -157,10 +158,12 @@ export function ItemMenuHistory({
     isMovement ? movements.isFetching : history.isFetching;
   return (
     <div className="user-menu-item-history" aria-live="polite">
-      <div className="user-menu-item-history-heading">
-        <strong>{selectedLabel}</strong>
-        <span title={itemName ?? undefined}>{itemName}</span>
-      </div>
+      {!hideHeading && (
+        <div className="user-menu-item-history-heading">
+          <strong>{selectedLabel}</strong>
+          <span title={itemName ?? undefined}>{itemName}</span>
+        </div>
+      )}
       {!itemId ? <p className="user-menu-entity-hint">اختر صنفًا من البحث أولًا.</p> : (
         <>
           {waiting && <p className="user-menu-entity-hint">جارٍ تحميل الحركات…</p>}

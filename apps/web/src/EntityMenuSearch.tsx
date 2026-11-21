@@ -19,7 +19,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel,
 }: {
   user: User;
   companyId: number | null;
@@ -33,6 +33,7 @@ export function EntityMenuSearch({
   canCreateMemo?: boolean;
   canViewItemCompositions?: boolean;
   renderSelection?: (selected: RecentEntity | null) => ReactNode;
+  fieldLabel?: string;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -106,13 +107,14 @@ export function EntityMenuSearch({
   return (
     <div className="user-menu-entity-section">
       <label className="user-menu-entity-search">
-        <span className="user-menu-entity-input-wrap">
+        <span className={`user-menu-entity-input-wrap${fieldLabel ? " has-field-label" : ""}`}>
+          {fieldLabel && <span className="user-menu-entity-field-label">{fieldLabel}</span>}
           <Search size={17} aria-hidden="true" />
           <input
             ref={input}
             type="search"
             data-operator-search={kind === "item" ? "items.search" : undefined}
-            aria-label={`البحث عن ${label}`}
+            aria-label={fieldLabel ?? `البحث عن ${label}`}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={canSearch && focused}

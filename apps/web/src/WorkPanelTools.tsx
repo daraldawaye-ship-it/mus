@@ -5,24 +5,19 @@ import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
 
 type ItemView = "movement" | "alternatives";
-type ToolSettings = { height: number; views: ItemView[] };
 const itemViews: { key: ItemView; label: string }[] = [
   { key: "movement", label: "حركة الصنف" },
   { key: "alternatives", label: "بدائل الصنف" },
 ];
-const DEFAULT: ToolSettings = { height: 380, views: ["movement", "alternatives"] };
+const DEFAULT_HEIGHT = 380;
 const MIN_HEIGHT = 136;
 
-function loadSettings(key: string): ToolSettings {
+function loadHeight(key: string): number {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "null");
-    return {
-      height: Number.isFinite(saved?.height) ? Math.max(MIN_HEIGHT, saved.height) : DEFAULT.height,
-      views: Array.isArray(saved?.views)
-        ? itemViews.filter(view => saved.views.includes(view.key)).map(view => view.key)
-        : DEFAULT.views,
-    };
-  } catch { return DEFAULT; }
+    if (Number.isFinite(saved?.height)) return Math.max(MIN_HEIGHT, saved.height);
+  } catch { /* private mode or malformed saved height */ }
+  return DEFAULT_HEIGHT;
 }
 
 /** Company-scoped tools reuse the same recent selection and reports as the menu. */
@@ -32,19 +27,20 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
   availableHeight: number;
 }) {
   const storageKey = `alraesy:work-panel-tools:v1:${user.id}:${companyId ?? 0}`;
-  const [settings, setSettings] = useState(() => loadSettings(storageKey));
+  const [savedHeight, setSavedHeight] = useState(() => loadHeight(storageKey));
+  const [views, setViews] = useState<ItemView[]>([]);
   const dragStart = useRef<{ y: number; height: number } | null>(null);
   // Leave room for the board heading and the account search. The outer board
   // still scrolls when the user makes the mobile panel particularly short.
   const maxHeight = Math.max(MIN_HEIGHT, availableHeight - 120);
-  const height = Math.min(settings.height, maxHeight);
+  const height = Math.min(savedHeight, maxHeight);
 
   useEffect(() => {
-    try { localStorage.setItem(storageKey, JSON.stringify(settings)); } catch { /* private mode */ }
-  }, [settings, storageKey]);
+    try { localStorage.setItem(storageKey, JSON.stringify({ height: savedHeight })); } catch { /* private mode */ }
+  }, [savedHeight, storageKey]);
 
   function resize(value: number) {
-    setSettings(previous => ({ ...previous, height: Math.min(maxHeight, Math.max(MIN_HEIGHT, value)) }));
+    setSavedHeight(Math.min(maxHeight, Math.max(MIN_HEIGHT, value)));
   }
   function startResize(event: PointerEvent<HTMLButtonElement>) {
     dragStart.current = { y: event.clientY, height };
@@ -70,33 +66,30 @@ export function WorkPanelTools({ user, companyId, availableHeight }: {
   return (
     <div className="work-panel-tools">
       <section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف" style={{ height }}>
-        <h3 className="work-panel-tool-title">بحث عن صنف</h3>
         <div className="work-panel-item-body">
-          <EntityMenuSearch user={user} companyId={companyId} kind="item"
+          <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف"
             renderSelection={selected => (
               <>
                 <div className="work-panel-choice-chips" role="group" aria-label="عرض بيانات الصنف">
                   {itemViews.map(view => {
-                    const enabled = settings.views.includes(view.key);
+                    const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
                         className={enabled ? "selected" : ""}
-                        onClick={() => setSettings(previous => ({
-                          ...previous,
-                          views: previous.views.includes(view.key)
-                            ? previous.views.filter(value => value !== view.key)
-                            : [...previous.views, view.key],
-                        }))}>
+                        onClick={() => setViews(previous => previous.includes(view.key)
+                          ? previous.filter(value => value !== view.key)
+                          : [...previous, view.key])}>
                         {enabled && <Check size={12} aria-hidden="true" />}
                         {view.label}
                       </button>
                     );
                   })}
                 </div>
-                {!!companyId && itemViews.filter(view => settings.views.includes(view.key)).map(view => (
+                {!!companyId && itemViews.filter(view => views.includes(view.key)).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     <ItemMenuHistory userId={user.id} companyId={companyId}
-                      itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key} />
+                      itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key}
+                      hideHeading={view.key === "movement"} />
                   </div>
                 ))}
               </>
