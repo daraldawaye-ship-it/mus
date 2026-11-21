@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import DesignLibraryScrollableCell from "./DesignLibraryScrollableCell";
 import "./DesignLibraryPage.css";
+import "./GlossyButtons.css";
 const DesignLibraryExtras = lazy(() => import("./DesignLibraryExtras"));
 const DesignLibraryWorkspaces = lazy(() => import("./DesignLibraryWorkspaces"));
 const DesignLibrarySearch = lazy(() => import("./DesignLibrarySearch"));

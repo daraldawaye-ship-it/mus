@@ -31,6 +31,7 @@ import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
 import { adenInvoiceToday } from "../invoice-save-date";
+import "./GlossyButtons.css";
 import {
   Button,
   Card,
@@ -310,7 +311,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     <>
       <PageHeader title={company.name} />
       {commerceShortcuts.length > 0 && (
-        <Card>
+        <Card className="company-overview-z19">
           <div className="form-actions company-overview-shortcuts">
             {commerceShortcuts.map(shortcut => (
               <Link key={shortcut.href}
@@ -326,7 +327,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         </Card>
       )}
       {financialShortcuts.length > 0 && (
-        <Card>
+        <Card className="company-overview-z19">
           <div className="form-actions company-overview-shortcuts" role="group" aria-label="الاختصارات المالية">
             {financialShortcuts.map(shortcut => (
               <Link key={shortcut.key}
@@ -341,7 +342,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
           </div>
         </Card>
       )}
-      <Card>
+      <Card className="company-overview-z19">
         <AttendancePunchControls
           companyId={company.id}
           compact
@@ -351,7 +352,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
           )}
         />
       </Card>
-      <Card title="إدارة الشركة">
+      <Card title="إدارة الشركة" className="company-overview-z19">
         <div className="form-actions company-overview-shortcuts">
           {user?.owner && (
             <Link className="button button-secondary" to="/design-library">مكتبة التصاميم</Link>
