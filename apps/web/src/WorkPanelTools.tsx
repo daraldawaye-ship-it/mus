@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { CompanyContext, User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
+import { WorkPanelCompactCard } from "./WorkPanelCompactCard";
 import { ItemMenuHistory } from "./ItemMenuHistory";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "./InvoiceItemActionsDropdown";
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
@@ -14,9 +15,10 @@ import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 import "./pages/RaisedOptionKeys.css";
 
-type ItemView = "movement" | "alternatives";
+type ItemView = "movement" | "card" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
   { key: "movement", label: "الحركة" },
+  { key: "card", label: "كرت" },
   { key: "alternatives", label: "البدائل" },
 ];
 const AdjustItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemAdjustmentSheet })));
@@ -37,6 +39,11 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
   const client = useQueryClient();
   const directory = usePageDirectory(companyId ?? undefined);
   const access = workPanelItemActionAccess(context, directory.data);
+  const canViewCard = !!context && (context.general || context.permissions.includes("items.view")) &&
+    ["company.items", "company.item-card"].every(key => {
+      const page=directory.data?.find(entry=>entry.key===key);
+      return !!page?.enabled && page.actionAccess.view;
+    });
 
   function refreshInventory(itemId: number) {
     for (const key of [
@@ -101,6 +108,7 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
+                        disabled={view.key==="card" && (!selected||!canViewCard)}
                         className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
@@ -110,11 +118,14 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
                     );
                   })}
                 </div>
-                {!!companyId && itemViews.filter(view => views.includes(view.key)).map(view => (
+                {!!companyId && itemViews.filter(view => views.includes(view.key) && (view.key!=="card" || (!!selected&&canViewCard))).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
-                    <ItemMenuHistory userId={user.id} companyId={companyId}
+                    {view.key==="card" ? selected && canViewCard && (
+                      <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
+                        canEdit={access.edit} online={online} />
+                    ) : <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key}
-                      hideHeading={view.key === "movement"} workPanelMovement={view.key === "movement"} />
+                      hideHeading={view.key === "movement"} workPanelMovement={view.key === "movement"} />}
                   </div>
                 ))}
               </>
