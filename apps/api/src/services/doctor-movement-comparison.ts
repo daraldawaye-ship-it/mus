@@ -56,6 +56,8 @@ payout_events AS MATERIALIZED (
  LEFT JOIN doctors d ON d.company_id=t.company_id AND d.id=t.doctor_id
  WHERE $5::boolean AND t.company_id=$1
    AND t.expense_kind IN ('medical','slips') AND t.amount>0
+   AND NOT EXISTS (SELECT 1 FROM administrative_custody_medical_corrections c
+     WHERE c.company_id=t.company_id AND c.source_transfer_id=t.id AND c.created_at < cutoff.until_at)
    AND t.created_at >= cutoff.until_at - interval '336 hours'
    AND t.created_at < cutoff.until_at
  UNION ALL

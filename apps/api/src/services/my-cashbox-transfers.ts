@@ -89,8 +89,10 @@ export async function listMyCashboxTransfers(
       AND created_at >= $4::timestamptz AND created_at <= $5::timestamptz
     UNION ALL
     SELECT 'custodyTransfer'::text AS kind,id,amount,notes,created_at
-    FROM administrative_custody_transfers
+    FROM administrative_custody_transfers t
     WHERE company_id=$1 AND created_by=$3
+      AND NOT EXISTS (SELECT 1 FROM administrative_custody_medical_corrections c
+        WHERE c.company_id=t.company_id AND c.source_transfer_id=t.id)
       AND created_at >= $4::timestamptz AND created_at <= $5::timestamptz`;
   const custodyTotals = await client.query(
     `SELECT kind,count(*)::int AS count,COALESCE(sum(amount),0)::text AS total

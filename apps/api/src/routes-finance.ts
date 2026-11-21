@@ -754,7 +754,8 @@ export function financeRoutes(pool: Pool): Router {
           if (linkedCustodyFunding.rowCount)
             conflict("القيد مرتبط بتغذية العهدة من صندوق موظف؛ لا يمكن عكسه منفصلًا عن سجل التغذية");
           const linkedCustody = await client.query(
-            "SELECT 1 FROM administrative_custody_transfers WHERE company_id=$1 AND financial_document_id=$2",
+            `SELECT 1 FROM administrative_custody_transfers WHERE company_id=$1 AND financial_document_id=$2
+             UNION ALL SELECT 1 FROM administrative_custody_medical_corrections WHERE company_id=$1 AND financial_document_id=$2`,
             [companyId, documentId],
           );
           if (linkedCustody.rowCount)

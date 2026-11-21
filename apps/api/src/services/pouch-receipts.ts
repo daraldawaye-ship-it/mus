@@ -93,6 +93,8 @@ export async function listPouchReceipts(
     LEFT JOIN administrative_custody_receipts r ON r.company_id=t.company_id
       AND r.source_transfer_id=t.id
     WHERE t.company_id=$1
+      AND NOT EXISTS (SELECT 1 FROM administrative_custody_medical_corrections c
+        WHERE c.company_id=t.company_id AND c.source_transfer_id=t.id)
   ) movements${filter}`;
   const count = await client.query(`SELECT count(*)::int AS total ${base}`,
     [companyId]);
@@ -149,6 +151,10 @@ export async function receivePouchMovement(
   if (!origin || !["pouch","close","custody"].includes(origin.kind) ||
     origin.amount==="0.000000" || origin.amount==="0")
     conflict("pouch_movement_missing","حركة الحافظة غير موجودة أو لا تحتوي على مبلغ قابل للاستلام");
+  if (custodySource && (await client.query(
+    "SELECT 1 FROM administrative_custody_medical_corrections WHERE company_id=$1 AND source_transfer_id=$2",
+    [companyId, input.sourceOperationId],
+  )).rowCount) conflict("pouch_movement_corrected", "عُكس هذا الصرف المكرر؛ لم يعد قابلًا للاستلام");
   if(input.mode==="exact" && input.voucher && origin.kind==="close")
     throw new HttpError(400,"close_voucher_not_allowed",
       "إغلاق الصندوق يُستلم كما هو دون سند مرافق");

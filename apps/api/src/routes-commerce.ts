@@ -32,6 +32,7 @@ import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
 import { administrativeCustodyTransferSchema, postAdministrativeCustodyTransfer } from "./services/administrative-custody.ts";
+import { listCustodyMedicalCorrectionCandidates } from "./services/administrative-custody-correction.ts";
 import { administrativeCustodyFundingSchema, postAdministrativeCustodyFunding } from "./services/administrative-custody-funding.ts";
 import { centralResourcePolicies, centralResourceAllows } from "./services/central-access-authorization.ts";
 import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
@@ -868,6 +869,31 @@ export function commerceRoutes(pool: Pool): Router {
       res.json({ allowed });
     }),
   );
+  router.get(`${base}/sales/administrative-custody-transfers/correction-candidates`,
+    handler(async (req, res) => {
+      if (typeof req.query.doctorId !== "string") throw new HttpError(400, "invalid_query", "حدد المستفيد");
+      const doctorId = id(req.query.doctorId);
+      const items = await readCommerce(pool, req, async (client, companyId, user) => {
+        const context = await companyAccess(client, user, companyId, "finance.post");
+        if (!canOperateAdministrativeCustody(context))
+          throw new HttpError(403, "custody_permission_denied", "تصحيح العهدة غير متاح");
+        await companyAccess(client, user, companyId, "commerce.manage");
+        const policies = await centralResourcePolicies(client, companyId, ["button:sales.custody-transfer"]);
+        if (!centralResourceAllows(policies, "button:sales.custody-transfer",
+            "edit", user.owner, context.employee?.positions ?? []))
+          throw new HttpError(403, "custody_button_denied", "زر العهدة غير متاح لصفتك الوظيفية.");
+        const pages = await directoryEntries(client, user, companyId);
+        const sales = pages.find(page => page.key === "company.sales");
+        const medicalPage = pages.find(page => page.key === "company.doctor-sales-movements");
+        if (!sales || !medicalPage?.enabled || !medicalPage.actionAccess.edit)
+          throw new HttpError(403, "forbidden", "تصحيح العهدة غير متاح");
+        assertDirectoryAccess(sales, "view");
+        return listCustodyMedicalCorrectionCandidates(client, companyId, doctorId);
+      });
+      res.set("Cache-Control", "private, no-store");
+      res.json({ items });
+    }),
+  );
   // Administrative custody transfers never debit an employee's till.
   // The two company system links are resolved and validated on the server.
   router.post(
@@ -891,6 +917,7 @@ export function commerceRoutes(pool: Pool): Router {
           .find(page => page.key === "company.sales");
         if (!sales) throw new HttpError(403, "sales_page_missing", "صفحة المبيعات غير متاحة");
         assertDirectoryAccess(sales, "view");
+        if (input.correctionSourceId !== undefined) await companyAccess(client, user, companyId, "finance.post");
         if (input.expenseKind === "medical") {
           await companyAccess(client, user, companyId, "commerce.manage");
           const medicalPage = (await directoryEntries(client, user, companyId))

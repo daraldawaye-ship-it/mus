@@ -12,7 +12,9 @@ async function pendingCount(client: PoolClient, companyId: number, kind: Receipt
   const receiptTable = kind === "electronic" ? "employee_electronic_receipts" : "employee_pouch_receipts";
   const custodyCount = kind === "pouch" ? ` + (SELECT count(*) FROM administrative_custody_transfers t
     WHERE t.company_id=$1 AND NOT EXISTS (SELECT 1 FROM administrative_custody_receipts r
-      WHERE r.company_id=t.company_id AND r.source_transfer_id=t.id))` : "";
+      WHERE r.company_id=t.company_id AND r.source_transfer_id=t.id)
+    AND NOT EXISTS (SELECT 1 FROM administrative_custody_medical_corrections c
+      WHERE c.company_id=t.company_id AND c.source_transfer_id=t.id))` : "";
   const result = await client.query(
     `SELECT (SELECT count(*) FROM employee_cashbox_operations o
      WHERE o.company_id=$1 AND o.kind=$2 AND o.amount<>0 AND NOT EXISTS (

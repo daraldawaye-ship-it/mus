@@ -12,6 +12,8 @@ export { administrativeCustodyTransferSchema } from "../../../../packages/contra
 import type { AdministrativeCustodyTransferInput } from "../../../../packages/contracts/src/administrative-custody.ts";
 import { custodyMedicalBeneficiary, markCustodyMedicalSales } from "./custody-medical-expense.ts";
 
+import { postCustodyMedicalCorrection } from "./administrative-custody-correction.ts";
+
 function conflict(code: string, message: string): never {
   throw new HttpError(409, code, message);
 }
@@ -35,6 +37,19 @@ export async function postAdministrativeCustodyTransfer(
       conflict("custody_key_conflict", "مفتاح الترحيل مستخدم لعملية أخرى");
     return { operationId: row.id as number, documentId: row.financial_document_id as number };
   }
+
+  const correctionReplay = await client.query(
+    `SELECT source_transfer_id AS id,financial_document_id,created_by,request_payload=$3::jsonb AS same_payload
+     FROM administrative_custody_medical_corrections WHERE company_id=$1 AND idempotency_key=$2`,
+    [companyId, input.idempotencyKey, JSON.stringify(input)],
+  );
+  if (correctionReplay.rows[0]) {
+    const row = correctionReplay.rows[0];
+    if (row.created_by !== user.id || !row.same_payload)
+      conflict("custody_key_conflict", "مفتاح الترحيل مستخدم لعملية أخرى");
+    return { operationId: row.id as number, documentId: row.financial_document_id as number };
+  }
+  if (input.correctionSourceId !== undefined) return postCustodyMedicalCorrection(client, companyId, user, input);
 
   const amount = moneyUnits(input.amount);
   if (amount === 0n)

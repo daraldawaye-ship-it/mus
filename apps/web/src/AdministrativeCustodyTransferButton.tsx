@@ -5,7 +5,7 @@ import { normalizeDigits, type Doctor, type Page } from "../../../packages/contr
 import { api, ApiFailure, sessionRequiresLogin, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { errorMessage } from "./phase2";
-import { Button, Dialog, Field, Notice } from "./ui";
+import { Button, Dialog, Field, Notice, Select } from "./ui";
 
 type CustodyDraft = {
   amount: string;
@@ -15,7 +15,15 @@ type CustodyDraft = {
   doctor: Doctor | null;
   doctorQuery: string;
   slipCount: string;
+  correctionSourceId: number | null;
 };
+
+type CorrectionSource = { id: number; documentNumber: string; amount: string; notes: string; createdAt: string };
+
+function moneyKey(value: string) {
+  const [whole, fraction = ""] = value.replace(/^-/, "").split(".");
+  return `${whole}.${fraction.replace(/0+$/, "")}`;
+}
 
 export function AdministrativeCustodyTransferButton({
   companyId, disabled,
@@ -38,6 +46,20 @@ export function AdministrativeCustodyTransferButton({
     enabled: !!draft && draft.expenseKind !== "other" && !draft.doctor && !unknown,
   });
 
+  const normalizedAmount = normalizeDigits(draft?.amount.trim() ?? "");
+  const correcting = draft?.expenseKind === "medical" && normalizedAmount.startsWith("-");
+  const selectedDoctorId = draft?.doctor?.id;
+  const correctionSources = useQuery({
+    queryKey: ["custody-correction-sources", user?.id, companyId, selectedDoctorId],
+    queryFn: ({ signal }) => api<{ items: CorrectionSource[] }>(
+      `/companies/${companyId}/sales/administrative-custody-transfers/correction-candidates?doctorId=${selectedDoctorId}`, { signal }),
+    enabled: correcting && !!selectedDoctorId && !busy && !unknown,
+    staleTime: 5000,
+  });
+  const matchingCorrections = (correctionSources.data?.items ?? []).filter(source =>
+    moneyKey(source.amount) === moneyKey(normalizedAmount));
+  const selectedCorrection = matchingCorrections.find(source => source.id === draft?.correctionSourceId);
+
   function open() {
     setChoosing(true);
     setError("");
@@ -50,7 +72,7 @@ export function AdministrativeCustodyTransferButton({
     setNotice("");
     setUnknown(false);
     setDraft({ amount: "", notes: "", idempotencyKey: crypto.randomUUID(),
-      expenseKind, doctor: null, doctorQuery: "", slipCount: "" });
+      expenseKind, doctor: null, doctorQuery: "", slipCount: "", correctionSourceId: null });
   }
 
   async function submit(event: FormEvent) {
@@ -69,14 +91,22 @@ export function AdministrativeCustodyTransferButton({
       return;
     }
     const isMedical = draft.expenseKind !== "other";
-    if (isMedical && (!draft.doctor || amount.startsWith("-"))) {
-      setError("اختر المستفيد وأدخل مبلغ صرف موجبًا."); return;
+    if (isMedical && !draft.doctor) {
+      setError("اختر المستفيد أولًا."); return;
+    }
+    if (draft.expenseKind === "slips" && amount.startsWith("-")) {
+      setError("مبلغ صرف القصاصات يجب أن يكون موجبًا."); return;
+    }
+    if (correcting && (!draft.correctionSourceId || !draft.notes.trim())) {
+      setError("اختر قيد الصرف المراد تصحيحه وأدخل سبب التصحيح."); return;
     }
     const slipCount = normalizeDigits(draft.slipCount.trim());
     if (draft.expenseKind === "slips" && (!/^[1-9][0-9]*$/.test(slipCount) || Number(slipCount) > 2147483647)) {
       setError("أدخل عدد قصاصات موجبًا صحيحًا."); return;
     }
-    if (!window.confirm(draft.expenseKind === "medical"
+    if (!window.confirm(correcting
+      ? `تأكيد عكس قيد صرف ${draft.doctor!.name} رقم ${selectedCorrection?.documentNumber ?? draft.correctionSourceId} بمبلغ ${amount.slice(1)} ريال؟ لن يتغيّر تأشير المبيعات.`
+      : draft.expenseKind === "medical"
       ? `تأكيد صرف المبلغ إلى ${draft.doctor!.name} وتأشير جميع مبيعاته السابقة «محاسب حتى هنا»؟`
       : draft.expenseKind === "slips"
       ? `تأكيد صرف القصاصات للممرض ${draft.doctor!.name}، العدد ${slipCount}، دون تأشير المبيعات كمحاسبة؟`
@@ -92,15 +122,16 @@ export function AdministrativeCustodyTransferButton({
         { method: "POST", body: { amount, notes: draft.notes, idempotencyKey: draft.idempotencyKey,
           expenseKind: draft.expenseKind,
           ...(isMedical ? { doctorId: draft.doctor!.id } : {}),
+          ...(correcting ? { correctionSourceId: draft.correctionSourceId } : {}),
           ...(draft.expenseKind === "slips" ? { slipCount: Number(slipCount) } : {}),
         } },
       );
       setDraft(null);
       setUnknown(false);
-      setNotice("تم تسجيل ترحيل العهدة بالقيد #" + posted.documentId);
+      setNotice((correcting ? "تم تسجيل تصحيح الصرف بالقيد #" : "تم تسجيل ترحيل العهدة بالقيد #") + posted.documentId);
       await client.invalidateQueries({ predicate: query =>
         query.queryKey.includes(companyId) &&
-        ["finance", "account-ledger", "account-balances", "financial-documents", "doctor-sales-movements"].includes(
+        ["finance", "account-ledger", "account-balances", "financial-documents", "doctor-sales-movements", "custody-correction-sources", "pouch-receipts", "doctor-movement-comparison", "my-cashbox-transfers"].includes(
           String(query.queryKey[0]),
         ),
       });
@@ -109,6 +140,12 @@ export function AdministrativeCustodyTransferButton({
       // so retry can only confirm/replay the same journal, never duplicate it.
       const uncertain = !(cause instanceof ApiFailure) || cause.status >= 500;
       setUnknown(uncertain);
+      if (correcting && cause instanceof ApiFailure && cause.status === 409) {
+        setDraft(previous => previous ? {
+          ...previous, correctionSourceId: null, idempotencyKey: crypto.randomUUID(),
+        } : previous);
+        void correctionSources.refetch();
+      }
       setError((uncertain
         ? "نتيجة الاتصال غير مؤكدة. أعد تأكيد الطلب نفسه؛ لن ينشئ النظام قيدًا مكررًا. "
         : "") + errorMessage(cause));
@@ -140,13 +177,13 @@ export function AdministrativeCustodyTransferButton({
             {draft.expenseKind !== "other" && <>
               <Field label={draft.expenseKind === "slips" ? "البحث عن ممرض" : "البحث عن طبيب أو ممرض"}
                 type="search" autoFocus required value={draft.doctorQuery} disabled={busy || unknown}
-                onChange={event => setDraft(previous => previous ? { ...previous, doctorQuery: event.target.value, doctor: null } : previous)} />
+                onChange={event => setDraft(previous => previous ? { ...previous, doctorQuery: event.target.value, doctor: null, correctionSourceId: null } : previous)} />
               {!draft.doctor && <div className="form-stack" style={{ maxHeight: 180, overflowY: "auto" }}>
                 {doctors.isPending && <small role="status">جارٍ البحث…</small>}
                 {doctors.isError && <Notice tone="error">تعذر البحث عن المستفيد. <Button variant="secondary" size="compact" onClick={() => void doctors.refetch()}>إعادة المحاولة</Button></Notice>}
                 {doctors.data?.items.map(doctor => <Button key={doctor.id} variant="secondary" size="compact"
                   disabled={busy || unknown} onClick={() => setDraft(previous => previous
-                    ? { ...previous, doctor, doctorQuery: doctor.name } : previous)}>
+                    ? { ...previous, doctor, doctorQuery: doctor.name, correctionSourceId: null } : previous)}>
                   {doctor.name}{doctor.sharedName && doctor.sharedName !== doctor.name ? ` — ${doctor.sharedName}` : ""}
                 </Button>)}
                 {doctors.data?.items.length === 0 && <small>لا توجد نتائج مطابقة.</small>}
@@ -155,14 +192,30 @@ export function AdministrativeCustodyTransferButton({
                 pattern="[0-9]+" value={draft.slipCount} disabled={busy || unknown}
                 onChange={event => setDraft(previous => previous ? { ...previous, slipCount: normalizeDigits(event.target.value) } : previous)} />}
               <small className="muted">{draft.expenseKind === "medical"
-                ? "بعد حفظ الصرف تُؤشّر جميع المبيعات السابقة للاسم الرئيسي وكروته الفرعية بأنها محاسب."
+                ? correcting
+                  ? "المبلغ السالب يصحّح قيد صرف مطابقًا، ولا يغيّر تأشير المبيعات."
+                  : "بعد حفظ الصرف تُؤشّر جميع المبيعات السابقة للاسم الرئيسي وكروته الفرعية بأنها محاسب."
                 : "يحفظ العدد للممرض دون تأشير مبيعاته كمحاسبة."}</small>
             </>}
             <Field label="المبلغ" money inputMode="decimal" autoFocus={draft.expenseKind === "other"} required
               value={draft.amount} disabled={busy || unknown}
               onChange={event => setDraft(previous => previous
-                ? { ...previous, amount: normalizeDigits(event.target.value) } : previous)} />
-            <Field label="ملاحظات" maxLength={1000}
+                ? { ...previous, amount: normalizeDigits(event.target.value), correctionSourceId: null } : previous)} />
+            {correcting && draft.doctor && <div className="form-stack">
+              <Select label="قيد الصرف المراد تصحيحه" required value={draft.correctionSourceId ?? ""} disabled={busy || unknown}
+                  onChange={event => setDraft(previous => previous
+                    ? { ...previous, correctionSourceId: Number(event.target.value) || null } : previous)}>
+                  <option value="">اختر القيد المكرر</option>
+                  {matchingCorrections.map(source => <option key={source.id} value={source.id}>
+                    {source.documentNumber}{source.notes ? " · " + source.notes.slice(0, 100) : ""}
+                  </option>)}
+              </Select>
+              {!unknown && correctionSources.isPending && <small role="status">جارٍ البحث عن قيود صرف مطابقة…</small>}
+              {!unknown && correctionSources.isError && <Notice tone="error">تعذّر جلب القيود المتاحة. أعد المحاولة.</Notice>}
+              {!unknown && correctionSources.isSuccess && matchingCorrections.length === 0 &&
+                <small>لا يوجد قيد غير مستلم بهذا المبلغ يمكن تصحيحه.</small>}
+            </div>}
+            <Field label={correcting ? "سبب التصحيح" : "ملاحظات"} required={correcting} maxLength={1000}
               value={draft.notes} disabled={busy || unknown}
               onChange={event => setDraft(previous => previous
                 ? { ...previous, notes: event.target.value } : previous)} />
@@ -172,8 +225,8 @@ export function AdministrativeCustodyTransferButton({
             </small>}
             {error && <Notice tone="error">{error}</Notice>}
             <div className="form-actions">
-              <Button type="submit" disabled={busy}>
-                {busy ? "جارٍ الترحيل…" : unknown ? "إعادة تأكيد الطلب نفسه" : "حفظ وترحيل"}
+              <Button type="submit" disabled={busy || (correcting && !unknown && !selectedCorrection)}>
+                {busy ? "جارٍ الترحيل…" : unknown ? "إعادة تأكيد الطلب نفسه" : correcting ? "حفظ التصحيح" : "حفظ وترحيل"}
               </Button>
               <Button variant="secondary" type="button" disabled={busy || unknown}
                 onClick={() => setDraft(null)}>إلغاء</Button>

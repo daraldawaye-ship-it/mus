@@ -18,6 +18,7 @@ test("168-hour medical movement comparison groups shared names and signed net am
         id integer,company_id integer,expense_kind text,amount numeric,
         doctor_id integer,doctor_main_name text,created_at timestamptz,financial_document_id integer
       );
+      CREATE TABLE administrative_custody_medical_corrections(company_id integer,source_transfer_id integer,created_at timestamptz);
       CREATE TABLE direct_medical_payments(
         id integer,company_id integer,expense_kind text,amount numeric,
         doctor_id integer,doctor_main_name text,created_at timestamptz,financial_document_id integer
@@ -48,7 +49,9 @@ test("168-hour medical movement comparison groups shared names and signed net am
         (2,2,'medical',15,11,'الدكتور أحمد',now()-interval '200 hours',202),
         (3,2,'slips',7,20,'المستشفى',now()-interval '3 hours',203),
         (4,2,'other',888,10,'الدكتور أحمد',now()-interval '1 hour',204),
-        (5,2,'medical',999,10,'الدكتور أحمد',now()-interval '340 hours',205);
+        (5,2,'medical',999,10,'الدكتور أحمد',now()-interval '340 hours',205),
+        (6,2,'medical',3000,10,'الدكتور أحمد',now()-interval '2 hours',201);
+      INSERT INTO administrative_custody_medical_corrections VALUES (2,6,now()-interval '1 hour'),(3,1,now());
       INSERT INTO direct_medical_payments VALUES
         (1,2,'medical',60,11,'الدكتور أحمد',now()-interval '1 hour',206),
         (2,2,'medical',20,10,'الدكتور أحمد',now()-interval '260 hours',207),

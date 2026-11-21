@@ -102,6 +102,7 @@ test('migration preserves old transfers and independently stores beneficiary, co
 
     `);
     const client={query:async(sql:string,params?:unknown[])=>{const r=await db.query(sql,params);return {...r,rowCount:r.rows.length};}} as unknown as PoolClient;
+    await db.exec(await readFile(new URL('../apps/api/migrations/20261121_zz_custody_medical_corrections.sql',import.meta.url),'utf8'));
     const listed=await listPouchReceipts(client,2,'pending',50,0);
     assert.equal(listed.total,2);
     const slip=listed.items.find(row=>row.sourceDocumentId===2)!;
