@@ -1,3 +1,4 @@
+import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema } from "./market-medawee-items.ts";
 import { stagingAppendSchema, appendStagingRows } from "./staging-append.ts";
 import { applyStagingSalePrices, stagingPricesSchema } from "./market-staging-prices.ts";
 import { Router } from "express";
@@ -347,6 +348,17 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     if(!isolated)throw new HttpError(503,"market_isolation_required","الاستقبال متاح في قاعدة السوق المنفصلة فقط");
     return u;
   };
+
+  router.get("/medicine-market/staging/medawee-items", handler(async (req, res) => {
+    await authorize(req);
+    res.json(await listMedaweeItems(pool, parse(medaweeItemListSchema, req.query)));
+  }));
+
+  router.post("/medicine-market/staging/medawee-items", handler(async (req, res) => {
+    const user = await authorize(req);
+    const result = await intakeMedaweeItems(pool, user.id, parse(medaweeItemBatchSchema, req.body));
+    res.status(result.replayed ? 200 : 201).json(result);
+  }));
 
   router.get("/medicine-market/staging/medawee-agents",handler(async(req,res)=>{
     await authorize(req);
