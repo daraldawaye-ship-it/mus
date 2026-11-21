@@ -256,7 +256,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const { company, employee, general, permissions } = context;
   const directory = usePageDirectory(company.id);
-  const shortcuts=companyOverviewShortcuts(directory.data,company.id,!!user?.owner);
+  const shortcuts=companyOverviewShortcuts(directory.data,company.id);
   const shortcutCard=(group:CompanyShortcutGroup,title:string)=>shortcuts[group].length>0 && (
     <Card title={title} className="company-overview-z19">
       <div className="form-actions company-overview-shortcuts" role="group" aria-label={title}>

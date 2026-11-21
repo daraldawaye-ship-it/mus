@@ -11,22 +11,20 @@ function entry(page:PageDefinition,overrides:Partial<PageEntry>={}):PageEntry{
     configuredEnabled:true,showOnCompanyOverview:true,globalEnabled:true,globalVisible:page.visible,revision:null,canConfigure:false,actionAccess:actions,...overrides};
 }
 const fromKey=(key:string)=>pageDefinitions.find(page=>page.key===key)!;
-test("directory contributes every independently linkable and allowed page exactly once across four groups",()=>{
+test("directory contributes every independently linkable and allowed company page exactly once across four groups",()=>{
   const entries=pageDefinitions.map(page=>entry(page)).reverse();
-  const grouped=companyOverviewShortcuts(entries,companyId,true);
+  const grouped=companyOverviewShortcuts(entries,companyId);
   const all=Object.values(grouped).flat();
-  const expected=entries.filter(page=>page.visible&&page.href&&page.key!=="company.pages").map(page=>page.href!);
+  const expected=entries.filter(page=>page.scope==="company"&&page.visible&&page.href&&page.key!=="company.pages").map(page=>page.href!);
   for(const href of expected)assert.equal(all.filter(shortcut=>shortcut.href===href).length,1,href);
-  assert.equal(all.length, new Set(expected).size+2,"retain the two pre-existing non-catalogue shortcuts");
+  assert.equal(all.length, new Set(expected).size+1,"retain only the company draft shortcut");
   assert.equal(all.some(link=>link.key==="company.pages"),false);
   assert.ok(grouped.items.some(link=>link.key==="company.sales"));
-  assert.ok(grouped.items.some(link=>link.key==="public.medicine-market"));
+  assert.ok(all.every(link=>link.href==="/companies/2"||link.href.startsWith("/companies/2/")));
   assert.ok(grouped.accounts.some(link=>link.key==="company.account-statistics"));
   assert.ok(grouped.operations.some(link=>link.key==="company.attendance"));
-  assert.ok(grouped.operations.some(link=>link.key==="public.pages"&&link.label==="قائمة صفحات الموقع العام"));
   assert.ok(grouped.administration.some(link=>link.key==="company.central-access"));
-  assert.ok(grouped.administration.some(link=>link.href==="/design-library"));
-  assert.equal(grouped.administration.find(link=>link.href==="/owner-sql")?.action,"view");
+  assert.equal(all.some(link=>link.href==="/design-library"),false);
   assert.ok(grouped.items.some(link=>link.href==="/companies/2/item-order-drafts"));
   for(const group of Object.values(grouped))assert.deepEqual(group.map(link=>link.order),group.map(link=>link.order).sort((a,b)=>a-b));
 });
@@ -42,7 +40,7 @@ test("scope, disabled, record href, explicit override and create permission are 
     entry(fromKey("public.pages"),{showOnCompanyOverview:false}),
     entry(fromKey("company.pages")),
     entry(fromKey("company.purchase-new"),{navigation:false}),
-  ],companyId,false);
+  ],companyId);
   assert.deepEqual(Object.values(groups).flat().map(link=>[link.key,link.action]),[["company.purchase-new","create"]]);
 });
 

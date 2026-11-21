@@ -6,7 +6,7 @@ import {errorMessage} from "./phase2";
 import {Button} from "./ui";
 
 export function canConfigureCompanyShortcut(entry:PageEntry,companyId:number) {
-  return Number.isSafeInteger(companyId)&&companyId>0&&entry.key!=="company.pages"&&!entry.record&&
+  return Number.isSafeInteger(companyId)&&companyId>0&&entry.scope==="company"&&entry.key!=="company.pages"&&!entry.record&&
     !!entry.href&&entry.href===pageHref(entry,companyId);
 }
 
@@ -40,6 +40,7 @@ export function useCompanyOverviewVisibility(companyId:number|undefined) {
     }
   };
   const overviewControl=(entry:PageEntry)=>!userOwner||!companyId ? null : entry.key==="company.pages" ? <span className="muted">رابط ثابت</span>
+    : entry.scope==="public" ? <span className="muted">ليست من صفحات الشركة</span>
     : !canConfigureCompanyShortcut(entry,companyId) ? <span aria-label="لا يوجد رابط مباشر">—</span>
     : <Button type="button" variant="secondary" size="compact"
         disabled={overviewSaving!==null}

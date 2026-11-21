@@ -5,6 +5,8 @@ const file=(name:string)=>readFile(new URL("../apps/web/src/"+name,import.meta.u
 test("dock, directory table and details share only the owner company shortcut mutation",async()=>{
  const hook=await file("company-overview-visibility.tsx"),panel=await file("DockPageCardBody.tsx"),directory=await file("pages/PageDirectoryPage.tsx");
  assert.match(hook,/userOwner=!!pageUser\?\.owner&&!employeePreview/);
+ assert.match(hook,/entry\.scope==="company"/);
+ assert.match(hook,/entry\.scope==="public" \? <span[^>]*>ليست من صفحات الشركة/);
  assert.match(hook,/entry\.key!=="company\.pages"&&!entry\.record/);
  assert.match(hook,/entry\.href===pageHref\(entry,companyId\)/);
  assert.match(hook,/overview-visibility`,\s*\{method:"PATCH",body:\{showOnCompanyOverview\},signal:overviewGuard\.signal\}/);

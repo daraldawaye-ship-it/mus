@@ -20,7 +20,7 @@ const existingAccounts=new Set([
 const administration = new Set([
   "company.control","company.configuration","company.central-access","company.approved-devices",
   "company.notification-templates","company.letterhead","company.branches","company.locations","company.employees",
-  "company.settings","company.audit","company.memo-feature-rules","public.design-library","public.notification-templates",
+  "company.settings","company.audit","company.memo-feature-rules",
 ]);
 const createShortcutKeys=new Set(["company.item-new","company.sale-new","company.purchase-new","company.financial-new"]);
 const legacyLabels:Record<string,string>={
@@ -29,16 +29,13 @@ const legacyLabels:Record<string,string>={
   "company.notification-templates":"أنواع التنبيهات",
   "company.letterhead":"ترويسة الشركة للطباعة",
   "company.locations":"المعارض والمخازن",
-  // Keep the company directory link in the original action strip and
-  // distinguish this independent global directory from it.
-  "public.pages":"قائمة صفحات الموقع العام",
 };
 
 function groupFor(entry:DirectoryPage,byKey:ReadonlyMap<string,DirectoryPage>,seen=new Set<string>()):CompanyShortcutGroup{
   if(existingItems.has(entry.key))return "items";
   if(existingAccounts.has(entry.key))return "accounts";
   if(administration.has(entry.key)||["إدارة المنصة","الإدارة والصلاحيات","التدقيق"].includes(entry.section))return "administration";
-  if(["الأصناف والمخزون","سوق الأدوية","الفواتير","المبيعات"].includes(entry.section))return "items";
+  if(["الأصناف والمخزون","الفواتير","المبيعات"].includes(entry.section))return "items";
   if(["المحاسبة","الحسابات"].includes(entry.section))return "accounts";
   if(entry.parentKey && !seen.has(entry.key)){
     const parent=byKey.get(entry.parentKey);
@@ -47,9 +44,9 @@ function groupFor(entry:DirectoryPage,byKey:ReadonlyMap<string,DirectoryPage>,se
   return "operations";
 }
 
-export function companyOverviewShortcuts(directory:readonly DirectoryPage[]|undefined,companyId:number,owner:boolean) {
+export function companyOverviewShortcuts(directory:readonly DirectoryPage[]|undefined,companyId:number) {
   const groups:Record<CompanyShortcutGroup,Shortcut[]>={items:[],accounts:[],operations:[],administration:[]};
-  const entries=directory??[];
+  const entries=(directory??[]).filter(entry=>entry.scope==="company");
   const byKey=new Map(entries.map(entry=>[entry.key,entry]));
   const used=new Set<string>();
   for(const entry of [...entries].sort((a,b)=>a.order-b.order||a.key.localeCompare(b.key))) {
@@ -59,7 +56,7 @@ export function companyOverviewShortcuts(directory:readonly DirectoryPage[]|unde
     if(action==="create"&&!entry.actionAccess.create)continue;
     const href=pageHref(entry,companyId);
     if(!href||entry.href!==href||!/^\/(?![\/\\])[^\\\s]*$/.test(href)||
-       (entry.scope==="company"&&href!==`/companies/${companyId}`&&!href.startsWith(`/companies/${companyId}/`)))continue;
+       (href!==`/companies/${companyId}`&&!href.startsWith(`/companies/${companyId}/`)))continue;
     if(used.has(href))continue;
     used.add(href);
     const group=groupFor(entry,byKey);
@@ -73,9 +70,6 @@ export function companyOverviewShortcuts(directory:readonly DirectoryPage[]|unde
         used.add(drafts);
       }
     }
-  }
-  if(owner&&!entries.some(entry=>entry.key==="public.design-library"||entry.href==="/design-library")){
-    groups.administration.unshift({key:"design-library-shortcut",label:"مكتبة التصاميم",href:"/design-library",action:"view",order:-1});
   }
   return groups;
 }
