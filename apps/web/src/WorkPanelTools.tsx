@@ -1,3 +1,5 @@
+import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
+import type { PageEntry } from "../../../packages/contracts/src/index";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -28,7 +30,10 @@ const TransferItem = lazy(() => import("./InvoiceItemActionSheets").then(module 
 const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemReportSheet })));
 
 /** Company-scoped tools reuse the same recent selection and reports as the menu. */
-export function WorkPanelTools({ user, context }: { user: User; context?: CompanyContext }) {
+export function WorkPanelTools({user,context,showItemTools,showAccountSearch,showPageSearch,pageEntries,pagesLoading,pagesError}:{
+  user:User; context?:CompanyContext; showItemTools:boolean; showAccountSearch:boolean; showPageSearch:boolean;
+  pageEntries?:PageEntry[]; pagesLoading:boolean; pagesError:boolean;
+}) {
   const companyId = context?.company.id ?? null;
   const [views, setViews] = useState<ItemView[]>([]);
   const [editingComposition,setEditingComposition]=useState<number|null>(null);
@@ -96,7 +101,7 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
 
   return (
     <div className="work-panel-tools">
-      <section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
+      {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
           <EntityMenuSearch user={user} companyId={companyId} kind="item" fieldLabel="بحث عن صنف"
             renderSelection={selected => (
@@ -153,11 +158,11 @@ export function WorkPanelTools({ user, context }: { user: User; context?: Compan
             setActive(null);
             setNotice({ tone: "success", message: "تم إرسال التقرير المرتبط بالصنف.", memoId });
           }} />}
-      </Suspense>}
-      <section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        <h3 className="work-panel-tool-title">بحث عن حساب</h3>
-        <EntityMenuSearch user={user} companyId={companyId} kind="account" renderSelection={() => null} />
-      </section>
+      </Suspense>}</>}
+      {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
+        <EntityMenuSearch user={user} companyId={companyId} kind="account" fieldLabel="بحث عن حساب" renderSelection={() => null} />
+      </section>}
+      {showPageSearch&&<WorkPanelPageSearch user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} />}
     </div>
   );
 }

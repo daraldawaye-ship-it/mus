@@ -68,6 +68,7 @@ import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { WorkPanelLayout } from "./WorkPanelLayout";
 import { WorkPanelTools } from "./WorkPanelTools";
+import { isVisibleNavigationPage,showWorkPanelAccountSearch,showWorkPanelPageSearch } from "./work-panel-search-access";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
@@ -572,13 +573,7 @@ function Navigation({
       .filter(
         (entry) =>
           entry.scope === scope &&
-          (user?.owner || user?.kind === "admin" ||
-            !["public.users", "public.chat"].includes(entry.key)) &&
-          entry.navigation &&
-          entry.href &&
-          entry.visible &&
-          entry.enabled &&
-          entry.actionAccess.view,
+          isVisibleNavigationPage(entry,user),
       )
       .map((entry) => (
         <NavLink
@@ -1245,6 +1240,11 @@ function Workspace() {
     : lastCompany.isError
       ? undefined
       : (lastCompany.data ?? undefined);
+  const dockPageDirectory = usePageDirectory(navigationContext?.company.id);
+  const ownerDock=!!user?.owner && !employeePreview;
+  const accountDock=showWorkPanelAccountSearch(user,navigationContext,
+    dockPageDirectory.isError?undefined:dockPageDirectory.data,!!employeePreview);
+  const pageDock=showWorkPanelPageSearch(user,navigationContext,!!employeePreview);
   useCompanyIdleLogout(companyId, navigationContext?.employee?.id ?? null, inCompany && !!navigationContext);
   useEffect(() => {
     setDrawer(false);
@@ -1431,10 +1431,12 @@ function Workspace() {
               )}
             </div>
           </header>
-          <WorkPanelLayout key={user?.id ?? "guest"} enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}
+          <WorkPanelLayout key={user?.id ?? "guest"} enabled={ownerDock || accountDock || pageDock} userId={user?.id ?? null}
             renderTools={() => user && (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
-                user={user} context={navigationContext} />
+                user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock}
+                pageEntries={dockPageDirectory.data} pagesLoading={dockPageDirectory.isPending}
+                pagesError={dockPageDirectory.isError} />
             )}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>

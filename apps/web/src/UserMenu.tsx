@@ -244,6 +244,7 @@ export function UserMenu({
                 user={user} companyId={companyId} employeeId={employeeId}
                 employeeName={employeeName}
                 kind={displayedTab === "item" ? "item" : displayedTab === "financialAccount" ? "account" : "employee"}
+                fieldLabel={displayedTab === "employee" ? "بحث عن مستخدم" : undefined}
                 itemMenuReset={itemMenuReset}
                  onEditItem={itemId => {
                    if (!companyId) return;
