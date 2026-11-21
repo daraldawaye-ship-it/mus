@@ -26,7 +26,7 @@ import {
   quantum,
 } from "./services/finance.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
-import { directoryEntries } from "./services/pages.ts";
+import { assertDirectoryAccess,directoryEntries } from "./services/pages.ts";
 import { permissionRuleEffects } from "./services/permission-rules.ts";
 import { stockMovementNotesAccess, stockMovementNotesSql } from "./services/stock-movement-notes.ts";
 import { addItemCoverageToPage, canReadItemCoverage, itemCoverageJoin, itemCoverageSelect, itemCoverageRedactedSelect } from "./services/item-coverage.ts";
@@ -436,13 +436,25 @@ export function inventoryRoutes(pool: Pool): Router {
             movementColumns,
             "documentDate:desc,createdAt:desc,id:desc",
           );
+          const purchaseOnly = req.query.purchaseOnly === "1";
+          if (req.query.purchaseOnly !== undefined &&
+              (!purchaseOnly || typeof req.query.itemId !== "string" || req.query.kind !== undefined))
+            throw new HttpError(400,"invalid_query","فلتر المشتريات يتطلب صنفًا ولا يجتمع مع نوع حركة منفرد.");
+          const entries = purchaseOnly || req.query.includeNotes === "1"
+            ? await directoryEntries(client,user,companyId) : [];
+          if (purchaseOnly) {
+            for (const key of ["company.stock-movements","company.purchases"]) {
+              const entry=entries.find(page=>page.key===key);
+              if (!entry) throw new HttpError(403,"forbidden","عرض حركة المشتريات غير متاح.");
+              assertDirectoryAccess(entry,"view");
+            }
+          }
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
           let fromSql = stockMovementFrom, selectSql = stockMovementSelect;
           let notePredicate = "";
           if (req.query.includeNotes === "1") {
             // Notes can hold information not available to inventory-only viewers.
             // Both the returned table and matching rows use the same redacted value.
-            const entries = await directoryEntries(client, user, companyId);
             const effects = !context.general && context.employee
               ? await permissionRuleEffects(client, companyId, context.employee.id)
               : new Map();
@@ -455,6 +467,7 @@ export function inventoryRoutes(pool: Pool): Router {
           }
           let where =
             `m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) ILIKE $2 OR COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) ILIKE $2 OR COALESCE(doctor_invoice.doctor_name,'') ILIKE $2${notePredicate})`;
+          if (purchaseOnly) where += " AND m.kind IN ('purchase','purchase_return')";
           if (req.query.doctorId !== undefined) {
             if (typeof req.query.doctorId !== "string")
               throw new HttpError(400, "invalid_query", "معرف الطبيب أو الجهة غير صالح");

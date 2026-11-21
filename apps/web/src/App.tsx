@@ -68,6 +68,7 @@ import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { WorkPanelLayout } from "./WorkPanelLayout";
 import { WorkPanelTools } from "./WorkPanelTools";
+import { showWorkPanelPrivateNotes } from "./dock-private-notes-access";
 import { DockTableContext } from "./DockTableContext";
 import { canSearchDockUsers } from "./dock-user-search";
 import { isVisibleNavigationPage,showWorkPanelAccountSearch,showWorkPanelPageSearch } from "./work-panel-search-access";
@@ -1247,6 +1248,7 @@ function Workspace() {
   const accountDock=showWorkPanelAccountSearch(user,navigationContext,
     dockPageDirectory.isError?undefined:dockPageDirectory.data,!!employeePreview);
   const pageDock=showWorkPanelPageSearch(user,navigationContext,!!employeePreview);
+  const notesDock=showWorkPanelPrivateNotes(user,navigationContext,!!employeePreview);
   const currentDockPageKey=/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname)
     ? "company.item-options-list" : pageKeyForLocation(location.pathname,location.search);
   const dockPages=dockPageDirectory.isError?undefined:dockPageDirectory.data;
@@ -1451,10 +1453,10 @@ function Workspace() {
           <DockTableContext scopeKey={`${user?.id??"guest"}:${dockCompanyId??0}:${!!employeePreview}`}
             scope={{companyId:dockCompanyId,companyRoute:inCompany && companyId===dockCompanyId,
               userRoute:currentDockPageKey==="public.users",item:ownerDock,account:accountDock,user:dockUser}}>
-          <WorkPanelLayout key={user?.id ?? "guest"} enabled={ownerDock || accountDock || pageDock} userId={user?.id ?? null}
+          <WorkPanelLayout key={user?.id ?? "guest"} enabled={ownerDock || accountDock || pageDock || notesDock} userId={user?.id ?? null}
             renderTools={() => user && (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
-                user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock}
+                user={user} context={navigationContext} showItemTools={ownerDock} showAccountSearch={accountDock} showPageSearch={pageDock} showPrivateNotes={notesDock}
                 pageEntries={dockPageDirectory.data} pagesLoading={dockPageDirectory.isPending}
                 pagesError={dockPageDirectory.isError} currentPageLabel={dockPageLabel}
                 currentPageRoute={location.pathname+location.search} />

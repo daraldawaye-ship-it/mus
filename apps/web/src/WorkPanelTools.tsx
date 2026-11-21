@@ -3,6 +3,7 @@ import {dockAccountAccess} from "./dock-card-access";
 import {useDockTableSelection} from "./DockTableContext";
 import { WorkPanelUserSearch } from "./WorkPanelUserSearch";
 import { WorkPanelPageSearch } from "./WorkPanelPageSearch";
+import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
 import type { PageEntry } from "../../../packages/contracts/src/index";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,9 +24,10 @@ import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 import "./pages/RaisedOptionKeys.css";
 
-type ItemView = "movement" | "card" | "alternatives";
+type ItemView = "movement" | "purchases" | "card" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
   { key: "movement", label: "الحركة" },
+  { key: "purchases", label: "المشتريات" },
   { key: "card", label: "كرت" },
   { key: "alternatives", label: "البدائل" },
 ];
@@ -34,8 +36,8 @@ const TransferItem = lazy(() => import("./InvoiceItemActionSheets").then(module 
 const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemReportSheet })));
 
 /** Company-scoped tools reuse the same recent selection and reports as the menu. */
-export function WorkPanelTools({user,context,showItemTools,showAccountSearch,showPageSearch,pageEntries,pagesLoading,pagesError,currentPageLabel,currentPageRoute}:{
-  user:User; context?:CompanyContext; showItemTools:boolean; showAccountSearch:boolean; showPageSearch:boolean;
+export function WorkPanelTools({user,context,showItemTools,showAccountSearch,showPageSearch,showPrivateNotes,pageEntries,pagesLoading,pagesError,currentPageLabel,currentPageRoute}:{
+  user:User; context?:CompanyContext; showItemTools:boolean; showAccountSearch:boolean; showPageSearch:boolean; showPrivateNotes:boolean;
   pageEntries?:PageEntry[]; pagesLoading:boolean; pagesError:boolean; currentPageLabel:string; currentPageRoute:string;
 }) {
   const companyId = context?.company.id ?? null;
@@ -54,6 +56,9 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const accountAccess=dockAccountAccess(context,pagesError?undefined:pageEntries);
   const access = workPanelItemActionAccess(context, directory.data);
   const canEditComposition=canEditInvoiceItemComposition(context,directory.data);
+  const canViewPurchases=!!context&&!directory.isError&&
+    ["company.stock-movements","company.purchases"].every(key=>directory.data?.some(entry=>
+      entry.key===key&&entry.enabled&&entry.actionAccess.view));
   const canViewCard = !!context && (context.general || context.permissions.includes("items.view")) &&
     ["company.items", "company.item-card"].every(key => {
       const page=directory.data?.find(entry=>entry.key===key);
@@ -125,7 +130,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     const enabled = views.includes(view.key);
                     return (
                       <button key={view.key} type="button" aria-pressed={enabled}
-                        disabled={view.key==="card" && (!selected||!canViewCard)}
+                        disabled={view.key==="card" ? (!selected||!canViewCard) : view.key==="purchases" ? (!selected||!canViewPurchases) : false}
                         className="design-press-key design-press-key-sm"
                         onClick={() => setViews(previous => previous.includes(view.key)
                           ? previous.filter(value => value !== view.key)
@@ -135,14 +140,17 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     );
                   })}
                 </div>
-                {!!companyId && itemViews.filter(view => views.includes(view.key) && (view.key!=="card" || (!!selected&&canViewCard))).map(view => (
+                {!!companyId && itemViews.filter(view => views.includes(view.key) && (view.key!=="card" || (!!selected&&canViewCard)) &&
+                  (view.key!=="purchases" || (!!selected&&canViewPurchases))).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && canViewCard && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
                         canEdit={access.edit} online={online} />
                     ) : <ItemMenuHistory userId={user.id} companyId={companyId}
-                      itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key}
-                      hideHeading={view.key === "movement"} workPanelMovement={view.key === "movement"} />}
+                      itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
+                      hideHeading={view.key === "movement" || view.key === "purchases"}
+                      workPanelMovement={view.key === "movement" || view.key === "purchases"}
+                      purchaseOnly={view.key === "purchases"} />}
                   </div>
                 ))}
               </>
@@ -173,6 +181,13 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
       {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} context={context} />}
+      {showPrivateNotes && <section className="work-panel-tool-card work-panel-private-notes-container"
+        aria-labelledby="work-panel-private-notes-title">
+        <details open>
+          <summary id="work-panel-private-notes-title">ملاحظاتي الخاصة</summary>
+          <InvoiceSidePrivateNotes key={user.id} />
+        </details>
+      </section>}
     </div>
   );
 }

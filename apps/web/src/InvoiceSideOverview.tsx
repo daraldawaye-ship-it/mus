@@ -6,11 +6,10 @@ import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
 import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
 import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
-import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
 import { InvoiceSideItemMovements } from "./InvoiceSideItemMovements";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
+type View = "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
 type PledgeActivity = {items:{kind:"add"|"pay"|"receive";customerName:string;details:string;amount:string|null;createdAt:string;accountId:number;documentId:number|null}[];hasMore:boolean};
 type Transfer = { id: number; kind: "pouch" | "electronic" | "custodyFunding" | "custodyTransfer"; amount: string; notes: string; createdAt: string };
 type Transfers = {
@@ -33,7 +32,6 @@ type PresentEmployee = {
   lastCheckedInAt: string | null;
 };
 const views: { value: View; label: string }[] = [
-  { value: "privateNotes", label: "ملاحظاتي الخاصة" },
   { value: "pouch", label: "ترحيلاتي إلى الحافظة" },
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
   { value: "pledges", label: "حركات الرهونات — إضافة وقبض وصرف" },
@@ -56,7 +54,7 @@ function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
 export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
-  const [view, setView] = useState<View>("privateNotes");
+  const [view, setView] = useState<View>("pouch");
   const [clockNow, setClockNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = window.setInterval(() => setClockNow(Date.now()), 60_000);
@@ -118,10 +116,8 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
         </div>
       </details>
       <div className="invoice-side-overview-content">
-        {offline && view !== "privateNotes" && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
-        {view === "privateNotes" ? (
-          <InvoiceSidePrivateNotes />
-        ) : (view === "pouch" || view === "electronic") ? (
+        {offline && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
+        {(view === "pouch" || view === "electronic") ? (
           <>
             {!offline && transfers.isLoading && <small>جارٍ تحميل ترحيلاتك…</small>}
             {transfers.isError && !offline && <small role="alert">تعذر قراءة ترحيلات الصندوق. راجع صلاحيات حسابك أو الاتصال.</small>}

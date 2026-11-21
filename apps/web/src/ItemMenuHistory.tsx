@@ -114,7 +114,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -126,6 +126,7 @@ export function ItemMenuHistory({
   fixedView?: "movement" | "alternatives";
   hideHeading?: boolean;
   workPanelMovement?: boolean;
+  purchaseOnly?: boolean;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
@@ -167,12 +168,13 @@ export function ItemMenuHistory({
   const movementDateTo = workPanelMovement ? movementTo : "";
   const invalidMovementDates = !!movementDateFrom && !!movementDateTo && movementDateFrom > movementDateTo;
   const movements = useQuery<Page<StockMovement>>({
-    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page, includeMovementNotes, movementDateFrom, movementDateTo],
+    queryKey: ["avatar-item-stock-movements", userId, companyId, itemId, page, includeMovementNotes, movementDateFrom, movementDateTo, purchaseOnly],
     queryFn: ({signal})=>api<Page<StockMovement>>(
       `/companies/${companyId}/stock-movements?${new URLSearchParams({
         itemId: String(itemId), page: String(page), pageSize: "10",
         sort: "documentDate:desc,id:desc",
         ...(includeMovementNotes ? { includeNotes: "1" } : {}),
+        ...(purchaseOnly ? { purchaseOnly: "1" } : {}),
         ...(movementDateFrom ? { dateFrom: movementDateFrom } : {}),
         ...(movementDateTo ? { dateTo: movementDateTo } : {}),
       })}`, {signal}),
@@ -267,7 +269,7 @@ export function ItemMenuHistory({
     isMovement ? movements.isFetching : history.isFetching;
   const inlineMovement = isMovement && workPanelMovement;
   const controls = (<>
-    {isMovement && itemId && !waiting && !failed && (
+    {isMovement && !purchaseOnly && itemId && !waiting && !failed && (
       <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
         className="user-menu-item-history-more">عرض جميع حركات الصنف</Link>
     )}
