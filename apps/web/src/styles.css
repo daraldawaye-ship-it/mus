@@ -2459,49 +2459,10 @@ ul {
 @media print {
   .invoice-point-tabs { display: none !important; }
 }
-.invoice-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(170px, 18vw, 225px);
-  grid-template-areas: "invoice side";
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
-}
 .invoice-workspace-main {
-  grid-area: invoice;
+  width: 100%;
   min-width: 0;
   container: invoice-main / inline-size;
-}
-.invoice-side-space {
-  grid-area: side;
-  position: sticky;
-  top: 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: calc(100dvh - 114px);
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--card-radius);
-  background: var(--surface);
-}
-.invoice-empty-panel {
-  flex: 0 0 calc(50% - 5px);
-  min-height: 200px;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--card-radius) - 2px);
-  background: var(--surface);
-}
-.invoice-workspace:not(.invoice-workspace-no-options) {
-  grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 350px);
-}
-.invoice-workspace-no-options {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "invoice";
 }
 .invoice-item-options {
   display: flex;
@@ -2716,14 +2677,6 @@ ul {
   overflow: visible;
   text-overflow: clip;
   overflow-wrap: anywhere;
-}
-@media (max-width: 680px) {
-  .invoice-workspace:not(.invoice-workspace-no-options) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .invoice-workspace-no-options {
-    display: block;
-  }
 }
 /* Reusable lower sidebar area: cashier transfer timeline and live attendance. */
 .invoice-side-overview {
@@ -3493,40 +3446,10 @@ ul {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@media (max-width: 680px) {
-  .invoice-workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) 25dvh;
-    grid-template-areas: "invoice" "side";
-    gap: 10px;
-    /* Reserve the 44px topbar, shell footer and existing content padding. */
-    height: calc(100dvh - 110px);
-    align-items: stretch;
-  }
-  .invoice-workspace-main {
-    min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-  .invoice-side-space {
-    position: static;
-    height: 100%;
-  }
-  .invoice-empty-panel {
-    min-height: 80px;
-  }
-}
 @media print {
-  .invoice-workspace {
-    display: block;
-    height: auto;
-  }
   .invoice-workspace-main {
     container-type: normal;
     overflow: visible;
-  }
-  .invoice-side-space {
-    display: none !important;
   }
   .commerce-no-print,
   .commerce-save-footer {
@@ -4639,8 +4562,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .commerce-matrix-actions { margin-top: 3px; }
   .commerce-save-footer { padding: 5px 7px; }
   .commerce-footer-grid { gap: 5px; }
-  .invoice-workspace { gap: 8px; }
-  .invoice-side-space { gap: 7px; }
 
   /* Both receipt registers share the same table: horizontal scrolling keeps
      full values available while text no longer stretches each row vertically. */
@@ -4731,11 +4652,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .commerce-save-footer { padding: 5px; }
   .table-filters.invoice-kind-sale,
   .table-filters.invoice-kind-purchase { padding: 5px; margin-block-end: 6px; }
-  .invoice-workspace {
-    grid-template-rows: minmax(0, 1fr) 20dvh;
-    gap: 6px;
-  }
-  .invoice-side-space { gap: 5px; }
   .pouch-receipts-page { gap: 6px; }
   .pouch-receipts-page > .form-actions {
     display: grid;

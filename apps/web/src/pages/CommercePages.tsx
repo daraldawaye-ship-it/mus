@@ -1,8 +1,6 @@
 import {PurchaseCorrection} from "../PurchaseCorrection";
 import {PurchaseReceiptDuplicateWarning} from "../PurchaseReceiptDuplicateWarning";
 import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice-item-search.ts";
-import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
-import { signedStockMovementQuantity } from "../stock-movement-display";
 import {
   lazy,
   Suspense,
@@ -55,7 +53,6 @@ import {
   type InvoiceKind,
   type InvoiceLine,
   type Item,
-  type ItemCompositionPeers,
   type Location,
   type Page,
 } from "../../../../packages/contracts/src/index";
@@ -1220,354 +1217,8 @@ function isNegativeInvoiceQuantity(quantity: string): boolean {
   const normalized = normalizeDigits(quantity.trim());
   return /^-\d+$/.test(normalized) && BigInt(normalized) < 0n;
 }
-type ItemInfoView = "movement" | "purchase" | "sale" | "sale-return" | "adjustment" | "transfer" | "alternatives";
-type ItemInfoHistoryRow = {
-  lineId: string | number;
-  documentId: string | number;
-  documentDate: string;
-  partyName?: string;
-  description?: string;
-  quantityFirstUnit: string;
-  unitPriceFirstUnit?: string;
-  currencyCode?: string;
-  isStaged?: boolean;
-  invoiceNet?: string | null;
-  invoiceDiscount?: string | null;
-  byName?: string | null;
-  doctorName?: string | null;
-  notes?: string | null;
-};
-/** Format stock to exactly one displayed decimal, without losing conversion precision. */
-function alternativeFirstUnitText(
-  row: ItemCompositionPeers["peers"][number],
-): string {
-  if (row.stockSmallest === null) return "—";
-  const quantity = saleStockQuantity(row.stockSmallest, row, 1, 1);
-  return quantity.includes(".") ? quantity : quantity + ".0";
-}
-const itemInfoViews: { value: ItemInfoView; label: string }[] = [
-  { value: "movement", label: "حركة الصنف" },
-  { value: "purchase", label: "مشتريات الصنف" },
-  { value: "sale", label: "مبيعات الصنف" },
-  { value: "sale-return", label: "مرتجعات مبيعات الصنف" },
-  { value: "adjustment", label: "تسويات الصنف" },
-  { value: "transfer", label: "مناقلات الصنف" },
-  { value: "alternatives", label: "بدائل الصنف" },
-];
-function isItemInfoView(value: string | null): value is ItemInfoView {
-  return itemInfoViews.some(view => view.value === value);
-}
-function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, selectedItemIsReturn, userId }: {
-  context: CompanyContext;
-  kind: InvoiceKind;
-  selectedItemId: number | null;
-  selectedItemName: string | null;
-  selectedItemIsReturn: boolean;
-  userId: number | undefined;
-}) {
-  const companyId = context.company.id;
-  const storageKey = `tijara:item-options:${userId ?? 0}:${companyId}:${kind}`;
-  const [view, setView] = useState<ItemInfoView>(() => {
-    try {
-      const saved = window.localStorage.getItem(storageKey);
-      return isItemInfoView(saved) ? saved : kind === "purchase" ? "purchase" : "sale";
-    } catch {
-      return kind === "purchase" ? "purchase" : "sale";
-    }
-  });
-  const menu = useRef<HTMLDetailsElement>(null);
-  // A negative quantity in the active sales row opens ordinary sales history.
-  // Sales returns remain available as an explicit sidebar choice.
-  useEffect(() => {
-    if (kind === "sale" && selectedItemId && selectedItemIsReturn)
-      setView("sale");
-  }, [kind, selectedItemId, selectedItemIsReturn]);
-  const client = useQueryClient();
-  const [alternateItemId, setAlternateItemId] = useState<number | null>(null);
-  const [accountFullName, setAccountFullName] = useState<string | null>(null);
-  const [alternateSaving, setAlternateSaving] = useState(false);
-  const history = useQuery<{ items: ItemInfoHistoryRow[] }>({
-    queryKey: ["invoice-item-options", userId, companyId, selectedItemId, view],
-    queryFn: ({ signal }) => api<{ items: ItemInfoHistoryRow[] }>(
-      `/companies/${companyId}/item-history/${selectedItemId}?type=${view}`,
-      { signal },
-    ),
-    enabled: !!userId && !!selectedItemId && view !== "alternatives" && view !== "movement",
-    staleTime: 10000,
-  });
-  const movements = useQuery<Page<StockMovement>>({
-    queryKey: ["invoice-item-stock-movements", userId, companyId, selectedItemId],
-    queryFn: ({signal}) => api<Page<StockMovement>>(
-      `/companies/${companyId}/stock-movements?${new URLSearchParams({
-        itemId: String(selectedItemId), page: "1", pageSize: "20",
-        sort: "documentDate:desc,id:desc",
-      })}`, {signal}),
-    enabled: !!userId && !!selectedItemId && view === "movement",
-    staleTime: 10000,
-  });
-  const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
-    queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
-    queryFn: ({ signal }) => api<{ peers: ItemCompositionPeers }>(
-      `/companies/${companyId}/items/${selectedItemId}/composition-peers?page=1`,
-      { signal },
-    ),
-    enabled: !!userId && !!selectedItemId && view === "alternatives",
-    staleTime: 10000,
-  });
-  const selectedLabel = itemInfoViews.find(option => option.value === view)?.label;
-  function selectView(value: ItemInfoView) {
-    setView(value);
-    if (menu.current) menu.current.open = false;
-    try { window.localStorage.setItem(storageKey, value); } catch { /* Storage may be disabled. */ }
-  }
-  const isInvoiceView = view === "purchase" || view === "sale" || view === "sale-return";
-  const isSalesHistoryView = view === "sale" || view === "sale-return";
-  const peers = alternatives.data?.peers;
-  return (
-    <>
-    <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
-      <details ref={menu} className="invoice-item-options-menu">
-        <summary aria-label="اختر خيارات الصنف">
-          <span className="invoice-item-options-heading"
-            title={selectedItemName ? `${selectedLabel} (${selectedItemName})` : selectedLabel}>
-            <span className="invoice-item-options-view">{selectedLabel}</span>
-            {selectedItemName && <span className="invoice-item-options-selected-name"> ({selectedItemName})</span>}
-          </span><span aria-hidden="true">▾</span>
-        </summary>
-        <div className="invoice-item-options-choices">
-          {itemInfoViews.map(option => (
-            <button type="button" key={option.value}
-              className={option.value === view ? "is-selected" : ""}
-              aria-current={option.value === view ? "true" : undefined}
-              onClick={() => selectView(option.value)}>{option.label}</button>
-          ))}
-        </div>
-      </details>
-      <div className="invoice-item-options-content">
-        {!selectedItemId ? <small>اختر صنفًا في الفاتورة لعرض {selectedLabel}.</small> :
-          view === "alternatives" ? (
-            <>
-              {alternatives.isLoading && <small>جارٍ تحميل الأصناف المرتبطة…</small>}
-              {alternatives.isError && <small>تعذر عرض البدائل. تحقق من صلاحية عرض الأصناف.</small>}
-              {peers && !peers.composition && <small>لا يوجد تركيب معرّف لهذا الصنف.</small>}
-              {peers?.composition && (
-                <>
-                  <small className="invoice-item-options-relation">
-                    {peers.relation === "identicalAlternative" ? "بدائل مطابقة بحسب كرت التركيب" :
-                      peers.relation === "nonInterchangeable" ? "تنبيه: هذه الأصناف غير قابلة للتبديل" :
-                      "أصناف تشترك في التركيب؛ ليست بدائل معتمدة"}
-                  </small>
-                  {peers.peers.length === 0 ? <small>لا توجد أصناف أخرى بنفس التركيب.</small> : (
-                    <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
-                      <table className="invoice-item-options-table">
-                        <colgroup><col style={{width:"30%"}}/><col style={{width:"70%"}}/></colgroup>
-                        <thead><tr><th className="invoice-item-options-number">الكمية (و1)</th><th>الصنف</th></tr></thead>
-                        <tbody>{peers.peers.map(row => (
-                          <tr key={row.id}>
-                            <td className="invoice-item-options-number" title={alternativeFirstUnitText(row)}>
-                              <bdi>{alternativeFirstUnitText(row)}</bdi>
-                            </td>
-                            <td title={row.name}>
-                              <button type="button" className="invoice-item-options-link"
-                                onClick={() => setAlternateItemId(row.id)}
-                                aria-label={`فتح كرت الصنف ${row.name}`}>
-                                {row.name}{row.active ? "": " (مؤرشف)"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  )}
-                  {peers.total > peers.pageSize &&
-                    <small>تظهر أول {peers.pageSize} أصناف من أصل {peers.total}. استعرض البقية من كرت الصنف.</small>}
-                </>
-              )}
-            </>
-          ) : view === "movement" ? (
-            <>
-              {movements.isLoading && <small>جارٍ تحميل حركة الصنف…</small>}
-              {movements.isError && <small>تعذر عرض حركة الصنف؛ تحتاج صلاحية عرض حركات المخزون.</small>}
-              {movements.data?.items.length === 0 && <small>لا توجد حركات مخزون مرحلة لهذا الصنف.</small>}
-              {!!movements.data?.items.length && (
-                <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول حركة الصنف">
-                  <table className="invoice-item-options-table">
-                    <colgroup><col style={{width:"29%"}}/><col style={{width:"43%"}}/><col style={{width:"28%"}}/></colgroup>
-                    <thead><tr><th>التاريخ</th><th>نوع الحركة والموقع</th>
-                      <th className="invoice-item-options-number">الكمية (+ دخول / − خروج)</th>
-                    </tr></thead>
-                    <tbody>{movements.data.items.map(row => (
-                      <tr key={row.id}>
-                        <td dir="ltr">{row.documentDate}</td>
-                        <td title={row.locationName}>{stockMovementKindLabels[row.kind]} — {row.locationName}</td>
-                        <td className="invoice-item-options-number">
-                          <bdi dir="ltr">{signedStockMovementQuantity(row.quantitySmallest)}</bdi>
-                        </td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              )}
-              {movements.data && movements.data.total > movements.data.pageSize && (
-                <small>تظهر آخر {movements.data.pageSize} حركة من أصل {movements.data.total}.</small>
-              )}
-              {!!selectedItemId && <Link to={`/companies/${companyId}/stock-movements?itemId=${selectedItemId}`}
-                className="invoice-item-options-link">عرض جميع الحركات وتحديد الفترة</Link>}
-            </>
-          ) : (
-            <>
-              {history.isLoading && <small>جارٍ تحميل الحركات…</small>}
-              {history.isError && <small>تعذر تحميل الحركات؛ تحقق من صلاحية عرض {isInvoiceView ? "الفواتير" : "المخزون"}.</small>}
-              {history.data?.items.length === 0 && <small>لا توجد حركات سابقة للصنف في هذا القسم.</small>}
-              {history.data && history.data.items.length > 0 && (
-                <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label={`جدول ${selectedLabel}`}>
-                  {isSalesHistoryView ? (
-                    <table className="invoice-item-options-table invoice-item-history-sales-table">
-                      <colgroup>
-                        <col style={{width:"15%"}}/><col style={{width:"17%"}}/>
-                        <col style={{width:"28%"}}/><col style={{width:"23%"}}/>
-                        <col style={{width:"17%"}}/>
-                      </colgroup>
-                      <thead><tr>
-                        <th className="invoice-item-options-number">الكمية</th>
-                        <th className="invoice-item-options-number">السعر</th>
-                        <th>التاريخ</th>
-                        <th className="invoice-item-options-number" title="صافي الفاتورة">الصافي</th>
-                        <th className="invoice-item-options-number" title="خصم الفاتورة">الخصم</th>
-                      </tr></thead>
-                      <tbody>{history.data.items.map(row => (
-                        <Fragment key={row.lineId}>
-                          <tr>
-                            <td className="invoice-item-options-number" title={row.quantityFirstUnit}>
-                              <bdi>{row.quantityFirstUnit}</bdi>
-                            </td>
-                            <td className="invoice-item-options-number" title={row.unitPriceFirstUnit ?? "—"}>
-                              <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
-                            </td>
-                            <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
-                            <td className="invoice-item-options-number" title={row.invoiceNet ?? "—"}>
-                              <bdi>{formatWholeMoney(row.invoiceNet)}</bdi>
-                            </td>
-                            <td className="invoice-item-options-number" title={row.invoiceDiscount ?? "—"}>
-                              <bdi>{formatWholeMoney(row.invoiceDiscount)}</bdi>
-                            </td>
-                          </tr>
-                          <tr className="invoice-item-history-details-row">
-                            <td colSpan={5}>
-                              <div className="invoice-item-history-details">
-                                <span dir="auto" title="بواسطة">{`(${row.byName?.trim() || "—"})`}</span>
-                                <button type="button" className="invoice-item-options-link"
-                                  title={`الحساب: ${row.partyName ?? "غير محدد"}`}
-                                  onClick={() => setAccountFullName(row.partyName ?? "غير محدد")}>
-                                  ({row.partyName || "—"})
-                                </button>
-                                <span dir="auto" title="الطبيب">{`(${row.doctorName?.trim() || "—"})`}</span>
-                                <span dir="auto" title="الملاحظات">{`(${row.notes?.trim() || "—"})`}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        </Fragment>
-                      ))}</tbody>
-                    </table>
-                  ) : (
-                  <table className="invoice-item-options-table">
-                    <colgroup>{isInvoiceView ? (
-                      <><col style={{width:"25%"}}/><col style={{width:"35%"}}/>
-                        <col style={{width:"20%"}}/><col style={{width:"20%"}}/></>
-                    ) : (
-                      <><col style={{width:"27%"}}/><col style={{width:"46%"}}/>
-                        <col style={{width:"27%"}}/></>
-                    )}</colgroup>
-                    <thead><tr>
-                      <th>التاريخ</th>
-                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th className="invoice-item-options-number">{view === "purchase" ? "سعر الشراء الصافي" : "السعر"}</th></> : <th>البيان</th>}
-                      <th className="invoice-item-options-number">{view === "purchase" ? "صافي الكمية (و1)" : "الكمية (و1)"}</th>
-                    </tr></thead>
-                    <tbody>{history.data.items.map(row => (
-                      <tr key={row.lineId}>
-                        <td dir="ltr" title={row.isStaged ? "فاتورة محفوظة أوليًا، دون ترحيل محاسبي أو مخزني" : undefined}>
-                          {row.documentDate}
-                          {row.isStaged && <small className="muted" style={{display:"block"}}>أوليًا</small>}
-                        </td>
-                        {isInvoiceView ? <>
-                          <td title={row.partyName ?? "—"}><button type="button"
-                            className="invoice-item-options-link"
-                            onClick={() => setAccountFullName(row.partyName ?? "غير محدد")}
-                            aria-label={`عرض اسم الحساب كاملًا: ${row.partyName ?? "غير محدد"}`}>
-                            {row.partyName ?? "—"}
-                          </button></td>
-                          <td className="invoice-item-options-number" title={row.unitPriceFirstUnit == null ? "—" : formatWholeMoney(row.unitPriceFirstUnit)}>
-                            <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
-                          </td>
-                        </> : <td title={row.description || "—"}>{row.description || "—"}</td>}
-                        <td className="invoice-item-options-number"><bdi>{row.quantityFirstUnit}</bdi></td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-      </div>
-    </section>
-    <Dialog open={accountFullName !== null} title="اسم الحساب بالكامل"
-      onClose={() => setAccountFullName(null)}>
-      <p className="invoice-item-full-account" dir="auto">{accountFullName}</p>
-      <div className="form-actions">
-        <Button variant="secondary" onClick={() => setAccountFullName(null)}>إغلاق</Button>
-      </div>
-    </Dialog>
-    <Dialog open={alternateItemId !== null} title="كرت الصنف"
-      className="invoice-item-sheet" onClose={() => {
-        if (!alternateSaving) setAlternateItemId(null);
-      }}>
-      {alternateItemId !== null && (
-        <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
-          <InvoiceItemEditor
-            key={`${userId}:${companyId}:${alternateItemId}`}
-            context={context} itemId={alternateItemId}
-            onSaved={() => {
-              void client.invalidateQueries({
-                queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
-              });
-              setAlternateItemId(null);
-            }}
-            onClose={() => { if (!alternateSaving) setAlternateItemId(null); }}
-            onSavingChange={setAlternateSaving}
-          />
-        </Suspense>
-      )}
-    </Dialog>
-    </>
-  );
-}
-function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName, selectedItemIsReturn = false }: {
-  children: ReactNode;
-  context: CompanyContext;
-  kind: InvoiceKind;
-  selectedItemId: number | null;
-  selectedItemName: string | null;
-  selectedItemIsReturn?: boolean;
-}) {
-  const companyId = context.company.id;
-  const { user } = useSession();
-  const controls = useControls(companyId, context.employee?.id ?? null);
-  const showOptions = controls.value(
-    kind === "purchase" ? "show_recent_item_purchases" : "show_item_options_sales",
-  ) !== false;
-  return (
-    <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
-      <div className="invoice-workspace-main">{children}</div>
-      {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
-        <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
-          context={context} kind={kind} selectedItemId={selectedItemId}
-          selectedItemName={selectedItemName} selectedItemIsReturn={selectedItemIsReturn}
-          userId={user?.id} />
-        {kind !== "sale" && <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
-      </aside>}
-    </div>
-  );
+function InvoiceWorkspace({ children }: { children: ReactNode }) {
+  return <div className="invoice-workspace-main">{children}</div>;
 }
 
 export function InvoicePage({ context }: { context: CompanyContext }) {
@@ -1593,7 +1244,7 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
       </Notice>
     );
   return (
-    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null} selectedItemName={null}>
+    <InvoiceWorkspace>
       <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
     </InvoiceWorkspace>
   );
@@ -1612,7 +1263,7 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   const [restoredPoints, setRestoredPoints] = useState<Record<string, SalesPointForm>>({});
   const [ready, setReady] = useState(kind !== "sale");
   const [deviceError, setDeviceError] = useState("");
-  const [pointItems, setPointItems] = useState<Record<string, InvoiceFocusedItem | null>>({});
+  const [, setPointItems] = useState<Record<string, InvoiceFocusedItem | null>>({});
   // Wait for the correct signed-in employee's local records before mounting editors.
   // Otherwise a blank first render would overwrite the saved invoice.
   useEffect(() => {
@@ -1766,11 +1417,8 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
       return next;
     });
   };
-  const selected = pointItems[activePoint] ?? null;
   return (
-    <InvoiceWorkspace context={context} kind={kind}
-      selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}
-      selectedItemIsReturn={kind === "sale" && !!selected?.isSalesReturn}>
+    <InvoiceWorkspace>
       {kind === "sale" && !ready && <Notice>جارٍ استعادة فواتير المبيعات المحفوظة على الجهاز…</Notice>}
       {deviceError && <Notice tone="error">{deviceError}</Notice>}
       {ready && <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير"
