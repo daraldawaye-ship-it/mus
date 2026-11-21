@@ -921,9 +921,9 @@ legend {
 }
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--card-radius);
-  padding: var(--card-padding);
+  padding: calc(var(--card-padding) - 1px);
   box-shadow: var(--card-shadow);
   min-width: 0;
 }
