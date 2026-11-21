@@ -24,12 +24,13 @@ const fmt = (value: string | number) => Number(value).toLocaleString("en-US",{
   minimumFractionDigits: 0,maximumFractionDigits: 4,
 });
 const sortValues: readonly SortKey[] = ["expiry", "name", "quantity"];
-const defaultColumns: readonly ColumnKey[] = ["name", "quantity", "expiry", "details"];
+const expiringColumns: readonly ColumnKey[] = ["name", "quantity", "expiry"];
+const expiredColumns: readonly ColumnKey[] = [...expiringColumns, "details"];
 const rowKey = (row: ExpiryItem) => row.itemId;
 const dockRowSource = (row: ExpiryItem) => ({ itemId: row.itemId, itemName: row.name });
 const emptyMessage = "لا توجد أصناف مطابقة لهذه الفئة وفق أقرب تاريخ انتهاء في كرت الصنف.";
 
-function readVisibleColumns(storageKey: string): ColumnKey[] {
+function readVisibleColumns(storageKey: string, defaultColumns: readonly ColumnKey[]): ColumnKey[] {
   try {
     const saved: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
     if (Array.isArray(saved)) {
@@ -40,27 +41,35 @@ function readVisibleColumns(storageKey: string): ColumnKey[] {
   return [...defaultColumns];
 }
 
-function ExpiryTable({ companyId, scope, rows, title, sortBy, sortDir, onSort }: {
-  companyId: number; scope: string; rows: ExpiryItem[]; title: string;
+function ExpiryTable({ companyId, kind, scope, rows, title, sortBy, sortDir, onSort }: {
+  companyId: number; kind: Kind; scope: string; rows: ExpiryItem[]; title: string;
   sortBy: SortKey; sortDir: "asc" | "desc"; onSort: (key: SortKey) => void;
 }) {
   const visibilityKey = `alraesy:expiry-follow-up-visible:v1:${scope}`;
-  const [visible, setVisible] = useState(() => readVisibleColumns(visibilityKey));
+  const showDetails = kind === "expired";
+  const defaultColumns = showDetails ? expiredColumns : expiringColumns;
+  const [visible, setVisible] = useState(() => readVisibleColumns(visibilityKey, defaultColumns));
   const columns = useMemo<InteractiveTableColumn<ExpiryItem, ColumnKey>[]>(() => [
     { key: "name", label: "الصنف", width: 250, sortable: true, cell: item =>
       <span className="expiry-alert-item-name">
-        <Link to={`/companies/${companyId}/items/${item.itemId}`}>{item.name}</Link>
+        {showDetails ? <Link to={`/companies/${companyId}/items/${item.itemId}`}>{item.name}</Link> : item.name}
         <small className="muted"><bdi>{item.code}</bdi></small>
       </span> },
     { key: "quantity", label: "صافي المتوفر دون المرتجعات (و1)", width: 194, sortable: true,
       cell: item => <span><bdi>{fmt(item.quantityUnit1)}</bdi> {item.unit1Name}</span> },
     { key: "expiry", label: "أقرب تاريخ انتهاء (من كرت الصنف)", width: 194, sortable: true,
       cell: item => <bdi dir="ltr">{item.expiryDate}</bdi> },
-    { key: "details", label: "التفاصيل", width: 146,
+  ], [companyId, showDetails]);
+  const allColumns = useMemo(() => {
+    if (!showDetails) return columns;
+    const details: InteractiveTableColumn<ExpiryItem, ColumnKey> = {
+      key: "details", label: "التفاصيل", width: 146,
       cell: item => <Link to={`/companies/${companyId}/stock-balances?view=lots&itemId=${item.itemId}`}>
         تفاصيل الدفعات
-      </Link> },
-  ], [companyId]);
+      </Link>,
+    };
+    return [...columns, details];
+  }, [columns, companyId, showDetails]);
   function saveVisible(next: ColumnKey[]) {
     if (!next.length) return;
     setVisible(next);
@@ -69,9 +78,9 @@ function ExpiryTable({ companyId, scope, rows, title, sortBy, sortDir, onSort }:
   }
   return <>
     <details className="expiry-alert-follow-up-columns">
-      <summary>الأعمدة ({visible.length}/{columns.length})</summary>
+      <summary>الأعمدة ({visible.length}/{allColumns.length})</summary>
       <div role="group" aria-label="إظهار وإخفاء أعمدة الصلاحية">
-        {columns.map(column => <label key={column.key}>
+        {allColumns.map(column => <label key={column.key}>
           <input type="checkbox" checked={visible.includes(column.key)}
             disabled={visible.length === 1 && visible.includes(column.key)}
             onChange={event => saveVisible(event.currentTarget.checked
@@ -80,12 +89,12 @@ function ExpiryTable({ companyId, scope, rows, title, sortBy, sortDir, onSort }:
           {column.label}
         </label>)}
         <Button type="button" size="compact" variant="secondary"
-          disabled={visible.length === columns.length}
+          disabled={visible.length === allColumns.length}
           onClick={() => saveVisible([...defaultColumns])}>إظهار الكل</Button>
       </div>
     </details>
     <InteractiveColumnsTable<ExpiryItem, ColumnKey>
-      columns={columns} rows={rows} rowKey={rowKey}
+      columns={allColumns} rows={rows} rowKey={rowKey}
       storageKey={`alraesy:expiry-follow-up-layout:v1:${scope}`} visibleColumns={visible}
       sortKey={sortBy} sortDirection={sortDir} onSort={key => { if (key !== "details") onSort(key); }}
       dockRowSource={dockRowSource} ariaLabel={title} emptyMessage={emptyMessage} />
@@ -164,7 +173,7 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
       {report.isError&&<Notice tone="error">تعذر قراءة أصناف الصلاحية: {errorMessage(report.error)}</Notice>}
       {data&&<>
         <div className="expiry-alert-follow-up-count">الأصناف المطابقة: {fmt(data.total)}</div>
-        <ExpiryTable key={layoutScope} companyId={companyId} scope={layoutScope} rows={data.items}
+        <ExpiryTable key={layoutScope} companyId={companyId} kind={kind} scope={layoutScope} rows={data.items}
           title={title} sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
         <div className="expiry-alert-follow-up-pages">
           <Button variant="secondary" disabled={page<=1}
@@ -179,7 +188,7 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
           </label>
         </div>
       </>}
-      <small className="muted">التاريخ مأخوذ من حقل «أقرب تاريخ انتهاء» بكرت الصنف، وهو للمتابعة المختصرة ولا يوزّع الكمية على دفعات الصلاحية. يمكن فتح «تفاصيل الدفعات» لمراجعة تواريخ المخزون الفعلية. يضبط تكرار التنبيه من كرت نوعه.</small>
+      <small className="muted">التاريخ مأخوذ من حقل «أقرب تاريخ انتهاء» بكرت الصنف، وهو للمتابعة المختصرة ولا يوزّع الكمية على دفعات الصلاحية.{kind==="expired"&&" يمكن فتح «تفاصيل الدفعات» لمراجعة تواريخ المخزون الفعلية."} يضبط تكرار التنبيه من كرت نوعه.</small>
     </Card>
   </div>;
 }
