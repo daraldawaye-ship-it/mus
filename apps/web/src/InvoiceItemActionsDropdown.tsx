@@ -51,7 +51,11 @@ export function InvoiceItemActionsDropdown({
     const keydown=(event:KeyboardEvent)=>{
       if(event.key==="Escape"){event.preventDefault();close();button.current?.focus();}
     };
-    const scroll=()=>close();
+    const scroll=(event:Event)=>{
+      // If this menu itself needs to scroll on a short screen, keep it open.
+      if(event.target instanceof Node && menu.current?.contains(event.target))return;
+      close();
+    };
     document.addEventListener("pointerdown",outside);
     document.addEventListener("keydown",keydown);
     window.addEventListener("resize",scroll);
@@ -73,7 +77,8 @@ export function InvoiceItemActionsDropdown({
     </button>
     {position && createPortal(
       <div ref={menu} role="menu" aria-label={`خيارات الصنف ${itemName}`}
-        className="invoice-item-actions-dropdown" style={{top:position.top,left:position.left}}>
+        className="invoice-item-actions-dropdown" style={{top:position.top,left:position.left,
+          ...(onEditComposition?{maxHeight:`calc(100dvh - ${position.top+8}px)`,overflowY:"auto"}:{})}}>
         {(["public-request","edit","adjust","transfer","report"] as const).map(action=>
           <Fragment key={action}><button type="button" role="menuitem"
             disabled={action==="public-request"?!canPublicRequest:action==="edit"?!canEdit:action==="adjust"?!canAdjust:action==="transfer"?!canTransfer:!canReport}
