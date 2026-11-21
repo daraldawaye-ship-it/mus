@@ -58,7 +58,7 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // It is accepted for decoding only and is ignored in new computations.
   useReserve: z.boolean().optional(),
   coverageFilterVersion: z.literal(2).optional(),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "compositionSaleMonth", "compositionStock", "compositionCoverage", "marketOrder30Days", "marketOrderAfterPurchase30Days"]),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "compositionSaleMonth", "compositionStock", "compositionCoverage", "marketOrder30Days", "marketOrderAfterPurchase30Days", "adjustmentQtySinceDisplay", "adjustmentValueSinceDisplay", "adjustmentQtySinceApproval", "adjustmentValueSinceApproval"]),
   sortDir: z.enum(["asc", "desc"]),
   // Optional for backwards compatibility with presets saved before column preferences existed.
   // Shared presets preserve exactly which columns the user chose on any device.
@@ -74,7 +74,9 @@ export const itemOptionsPresetFiltersSchema = z.object({
     "requiredPurchaseQuantity", "purchasePrice", "requiredPurchaseValue",
     "coverage", "coverageWithReserve", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
     "compositionSaleMonth", "compositionStock", "compositionCoverage",
-    ])).min(1).max(28).refine(columns => new Set(columns).size === columns.length,
+    "adjustmentQtySinceDisplay", "adjustmentValueSinceDisplay",
+    "adjustmentQtySinceApproval", "adjustmentValueSinceApproval",
+    ])).min(1).max(32).refine(columns => new Set(columns).size === columns.length,
     "لا يمكن تكرار العمود في مجموعة الحفظ").optional(),
 }).strict().transform(({ excludeZero, ...filters }) => filters);
 export const itemOptionsPresetCreateSchema = z.object({
