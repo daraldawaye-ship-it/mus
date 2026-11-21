@@ -112,6 +112,7 @@
   gap: 4px 6px;
   width: 100%;
 }
+.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger { flex: 0 0 auto; }
 .work-panel-tools .work-panel-item-options > .design-press-key {
   min-width: 0;
   max-width: 100%;

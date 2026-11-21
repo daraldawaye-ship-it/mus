@@ -1,7 +1,17 @@
-import { useState } from "react";
-import type { User } from "../../../packages/contracts/src/index";
+import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import type { CompanyContext, User } from "../../../packages/contracts/src/index";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { ItemMenuHistory } from "./ItemMenuHistory";
+import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "./InvoiceItemActionsDropdown";
+import { openItemCardSheet } from "./ItemCardBottomSheetHost";
+import { api, sessionRequiresLogin, useScopeGuard } from "./api";
+import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
+import { usePageDirectory } from "./page-directory";
+import { errorMessage } from "./phase2";
+import { Notice } from "./ui";
+import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 import "./pages/RaisedOptionKeys.css";
 
 type ItemView = "movement" | "alternatives";
@@ -9,12 +19,69 @@ const itemViews: { key: ItemView; label: string }[] = [
   { key: "movement", label: "الحركة" },
   { key: "alternatives", label: "البدائل" },
 ];
+const AdjustItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemAdjustmentSheet })));
+const TransferItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemTransferSheet })));
+const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemReportSheet })));
+
 /** Company-scoped tools reuse the same recent selection and reports as the menu. */
-export function WorkPanelTools({ user, companyId }: {
-  user: User;
-  companyId: number | null;
-}) {
+export function WorkPanelTools({ user, context }: { user: User; context?: CompanyContext }) {
+  const companyId = context?.company.id ?? null;
   const [views, setViews] = useState<ItemView[]>([]);
+  const [active, setActive] = useState<{ action: "adjust" | "transfer" | "report"; id: number; name: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string; memoId?: number } | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const initiatingRequest = useRef(false);
+  const guard = useScopeGuard(`work-panel-actions:${user.id}:${companyId ?? "none"}`);
+  const online = useSyncExternalStore(subscribeConnection, connectionSnapshot) === "online" &&
+    !sessionRequiresLogin();
+  const client = useQueryClient();
+  const directory = usePageDirectory(companyId ?? undefined);
+  const access = workPanelItemActionAccess(context, directory.data);
+
+  function refreshInventory(itemId: number) {
+    for (const key of [
+      ["avatar-item-stock-movements", user.id, companyId, itemId],
+      ["work-panel-movement-invoices", user.id, companyId, itemId],
+      ["avatar-item-alternatives", user.id, companyId, itemId],
+      ["inventory", user.id, companyId],
+      ["sale-stock-preview", user.id, companyId],
+    ]) void client.invalidateQueries({ queryKey: key });
+  }
+
+  async function publicRequest(item: { id: number; name: string }, scopedCompanyId: number) {
+    if (initiatingRequest.current) return;
+    initiatingRequest.current = true;
+    setRequesting(true);
+    try {
+      const result = await api<{ added: boolean; pointsAwarded: string }>(
+        `/companies/${scopedCompanyId}/public-requests`,
+        { method: "POST", body: { itemId: item.id }, signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      setNotice({
+        tone: "success", message: result.added
+          ? `تم تسجيل طلب الجمهور: ${item.name}${BigInt(result.pointsAwarded)>0n ? ` (+${result.pointsAwarded} نقطة)` : ""}.`
+          : "طلب الجمهور لهذا الصنف مسجل مسبقًا اليوم بواسطتك؛ لم يُكرر ولم تُحتسب نقاط.",
+      });
+      if (result.added) {
+        void client.invalidateQueries({ queryKey: ["public-requests", user.id, scopedCompanyId] });
+        void client.invalidateQueries({ queryKey: ["wallet-summary", user.id, scopedCompanyId] });
+      }
+    } catch (cause) {
+      if (guard.isCurrent()) setNotice({ tone: "error", message: errorMessage(cause) });
+    } finally {
+      initiatingRequest.current = false;
+      if (guard.isCurrent()) setRequesting(false);
+    }
+  }
+
+  function openAction(action: InvoiceItemAction, item: { id: number; name: string }) {
+    if (!companyId || !access[action] || !guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()) return;
+    setNotice(null);
+    if (action === "edit") openItemCardSheet(companyId, item.id);
+    else if (action === "public-request") void publicRequest(item, companyId);
+    else setActive({ action, id: item.id, name: item.name });
+  }
 
   return (
     <div className="work-panel-tools">
@@ -24,6 +91,12 @@ export function WorkPanelTools({ user, companyId }: {
             renderSelection={selected => (
               <>
                 <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
+                  <InvoiceItemActionsDropdown key={selected?.id ?? "none"}
+                    itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
+                    canPublicRequest={access["public-request"] && !requesting}
+                    canEdit={access.edit} canAdjust={access.adjust}
+                    canTransfer={access.transfer} canReport={access.report}
+                    onAction={action => { if (selected) openAction(action, selected); }} />
                   {itemViews.map(view => {
                     const enabled = views.includes(view.key);
                     return (
@@ -48,6 +121,19 @@ export function WorkPanelTools({ user, companyId }: {
             )} />
         </div>
       </section>
+      {notice && <Notice tone={notice.tone}>{notice.message} {notice.memoId && companyId &&
+        <Link to={`/companies/${companyId}/memos/${notice.memoId}`}>فتح التقرير</Link>}</Notice>}
+      {active && context && <Suspense fallback={<Notice>جارٍ فتح العملية…</Notice>}>
+        {active.action === "adjust" && <AdjustItem context={context} itemId={active.id}
+          onClose={() => setActive(null)} onSaved={refreshInventory} />}
+        {active.action === "transfer" && <TransferItem context={context} itemId={active.id}
+          onClose={() => setActive(null)} onPosted={() => refreshInventory(active.id)} />}
+        {active.action === "report" && <ReportItem context={context} itemId={active.id} itemName={active.name}
+          onClose={() => setActive(null)} onCreated={memoId => {
+            setActive(null);
+            setNotice({ tone: "success", message: "تم إرسال التقرير المرتبط بالصنف.", memoId });
+          }} />}
+      </Suspense>}
       <section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
         <h3 className="work-panel-tool-title">بحث عن حساب</h3>
         <EntityMenuSearch user={user} companyId={companyId} kind="account" renderSelection={() => null} />

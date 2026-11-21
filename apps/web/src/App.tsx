@@ -1434,7 +1434,7 @@ function Workspace() {
           <WorkPanelLayout key={user?.id ?? "guest"} enabled={!!user?.owner && !employeePreview} userId={user?.id ?? null}
             renderTools={() => user && (
               <WorkPanelTools key={`${user.id}:${navigationContext?.company.id ?? 0}`}
-                user={user} companyId={navigationContext?.company.id ?? null} />
+                user={user} context={navigationContext} />
             )}>
           {employeePreview&&<div className="employee-preview-banner" role="status">
             <div>
