@@ -14,19 +14,23 @@ import { api,useSession } from "./api";
 import { errorMessage } from "./phase2";
 import { PageDetails } from "./pages/PageDirectoryPage";
 import { CentralResourceEditor,type CentralAccessResponse } from "./pages/CentralAccessPage";
+import {useCompanyOverviewVisibility} from "./company-overview-visibility";
 import { dockPageControls } from "./dock-page-control-access";
 
 const pageTypes: Record<PageEntry["type"], string> = {
   page: "صفحة", report: "تقرير", form: "إدخال",
 };
 
-export function DockPageCardBody({entry,context,centralPage}:{
-  entry:PageEntry;context?:CompanyContext;centralPage?:PageEntry;
+export function DockPageCardBody({entry,context,centralPage,overviewCompanyId}:{
+  entry:PageEntry;context?:CompanyContext;centralPage?:PageEntry;overviewCompanyId?:number;
 }) {
   const {user,employeePreview}=useSession();
   const client=useQueryClient();
   const controls=dockPageControls({entry,context,centralPage,owner:!!user?.owner,preview:!!employeePreview});
   const companyId=controls.companyId;
+  const shortcutCompanyId=user?.owner&&!employeePreview&&
+    context?.company.id===overviewCompanyId?overviewCompanyId:undefined;
+  const {overviewControl,overviewFailure}=useCompanyOverviewVisibility(shortcutCompanyId);
   if (entry.scope === "company" && !companyId)
     return <Notice>اختر شركة لعرض هذه الصفحة.</Notice>;
   if (!entry.enabled || !entry.actionAccess.view)
@@ -57,12 +61,17 @@ export function DockPageCardBody({entry,context,centralPage}:{
           to={pageReferenceHref({ pageKey: entry.key, companyId: companyId ?? null, recordId: null })}>
           فتح الصفحة
         </Link>}
-    {entry.critical&&<Notice>هذه صفحة أساسية محمية؛ لا يمكن تغيير إظهارها أو تفعيلها أو ترتيبها.</Notice>}
+    {entry.critical&&<Notice>هذه صفحة أساسية محمية؛ لا يمكن تغيير إظهارها في التنقل أو تفعيلها أو ترتيبها.</Notice>}
     {user&&controls.settings&&<>
       <PageDetails entry={entry} companyId={companyId} canManagePermissions={false}
         settingsOnly onUpdated={()=>{void client.invalidateQueries({queryKey:["list",user.id,"page-directory"]});}} />
       <small className="muted">إذا عطّلت الصفحة، أعد تفعيلها من «قائمة الصفحات»؛ لا تظهر الصفحات المعطلة في بحث لوح العمل.</small>
     </>}
+    {shortcutCompanyId&&<Card title="الظهور في واجهة الشركة">
+      <div className="form-actions">{overviewControl(entry)}</div>
+      <small className="muted">يغيّر اختصار الصفحة في واجهة {context?.company.name ?? "الشركة الحالية"} فقط، ولا يغيّر صلاحياتها أو ظهورها في التنقل.</small>
+      {overviewFailure&&<Notice tone="error">تعذّر تحديث ظهور الصفحة في واجهة الشركة: {overviewFailure}</Notice>}
+    </Card>}
     {companyId&&user&&controls.centralRead&&<DockCentralPagePositions entry={entry}
       companyId={companyId} actorId={user.id} canEdit={controls.centralEdit} />}
   </section>;

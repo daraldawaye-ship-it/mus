@@ -54,8 +54,9 @@ test("attendance/actions and fixed company directory remain between cards; toggl
   assert.match(source.slice(attendance,newGroup),/extraActions=\{<QuickArchiveUpload \/>\}/);
   assert.match(source.slice(attendance,newGroup),/showPageDirectoryLink=.*directory\.data\?\.some/s);
   const catalog=await readFile(new URL("../apps/web/src/pages/PageDirectoryPage.tsx",import.meta.url),"utf8");
-  assert.match(catalog,/overview-visibility/);
-  assert.match(catalog,/entry\.key==="company\.pages" \? <span[^>]*>رابط ثابت/);
+  const shared=await readFile(new URL("../apps/web/src/company-overview-visibility.tsx",import.meta.url),"utf8");
+  assert.match(shared,/overview-visibility/);
+  assert.match(shared,/entry\.key==="company\.pages" \? <span[^>]*>رابط ثابت/);
   assert.match(catalog,/cell:\(\{row\}\)=>overviewControl\(row\.original\)/);
   assert.match(catalog,/Card title="الظهور في واجهة الشركة"[\s\S]*overviewControl\(entry\)/);
 });

@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {test} from "node:test";
+const file=(name:string)=>readFile(new URL("../apps/web/src/"+name,import.meta.url),"utf8");
+test("dock, directory table and details share only the owner company shortcut mutation",async()=>{
+ const hook=await file("company-overview-visibility.tsx"),panel=await file("DockPageCardBody.tsx"),directory=await file("pages/PageDirectoryPage.tsx");
+ assert.match(hook,/userOwner=!!pageUser\?\.owner&&!employeePreview/);
+ assert.match(hook,/entry\.key!=="company\.pages"&&!entry\.record/);
+ assert.match(hook,/entry\.href===pageHref\(entry,companyId\)/);
+ assert.match(hook,/overview-visibility`,\s*\{method:"PATCH",body:\{showOnCompanyOverview\},signal:overviewGuard\.signal\}/);
+ assert.match(hook,/const showOnCompanyOverview=entry\.showOnCompanyOverview===false/);
+ assert.match(hook,/\["page-directory",pageUser\?\.id,companyId\]/);
+ assert.match(hook,/\["list",pageUser\?\.id,"page-directory"\]/);
+ assert.doesNotMatch(hook,/method:"PUT"|body:\{[^}]*visible:/);
+ assert.match(panel,/context\?\.company\.id===overviewCompanyId/);
+ assert.match(panel,/shortcutCompanyId&&<Card title="الظهور في واجهة الشركة"/);
+ assert.match(directory,/const \{overviewControl,overviewFailure\}=useCompanyOverviewVisibility\(companyId\)/);
+ assert.match(directory,/overviewControl\(row\.original\)/);
+ assert.match(directory,/overviewControl\(entry\)/);
+ const search=await file("WorkPanelPageSearch.tsx");
+ assert.match(search,/overviewCompanyId=companyMatches&&context\?\.company\.id===companyId\?companyId:undefined/);
+ assert.match(search,/entry\.key,currentRoute/);
+});

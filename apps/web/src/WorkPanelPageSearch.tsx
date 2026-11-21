@@ -23,6 +23,7 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
   const activeKey=companyMatches && pathname?.replace(/\/$/,"").endsWith("/item-order-drafts")
     ? "company.item-options-list" : pageKeyForLocation(pathname??"",search??"");
   const entry=!error&&!searching&&currentLabel ? dockPageCardEntry(pages,activeKey,companyMatches?companyId:undefined):undefined;
+  const overviewCompanyId=companyMatches&&context?.company.id===companyId?companyId:undefined;
   const cardKey=entry?JSON.stringify([user.id,companyMatches?companyId:null,entry.key,currentRoute]):null;
   const cardOpen=!!cardKey&&cardKey===openCardKey;
   useEffect(()=>{
@@ -56,6 +57,7 @@ export function WorkPanelPageSearch({user,companyId,pages,loading,error,currentL
     <Dialog open={!!entry&&cardOpen} title="كرت الصفحة" className="invoice-item-sheet" onClose={()=>setOpenCardKey(null)}>
       {entry&&cardOpen&&<Suspense fallback={<Notice>جارٍ فتح كرت الصفحة…</Notice>}>
         <PageCard key={cardKey} entry={entry} context={companyMatches?context:undefined}
+          overviewCompanyId={overviewCompanyId}
           centralPage={pages?.find(page=>page.key==="company.central-access")} />
       </Suspense>}
     </Dialog>
