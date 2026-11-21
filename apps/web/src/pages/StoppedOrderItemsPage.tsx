@@ -120,7 +120,7 @@ export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
             </tr></thead>
             <tbody>
               {data.items.map(row=><tr key={row.itemId}>
-                <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link></td>
+                <td><span className="company-item-label">{row.name}</span></td>
                 <td><bdi>{row.code}</bdi></td>
                 <td><bdi>{row.orderStoppedUntil??"—"}</bdi></td>
                 <td><bdi>{row.orderAlertQuantity??"فارغ"}</bdi></td>

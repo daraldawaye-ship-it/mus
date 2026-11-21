@@ -878,7 +878,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </label></>,
     stock: row => <><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></>,
     saleQuantityMonth: row => <><bdi>{row.saleQuantityMonth}</bdi></>,
-    name: row => <><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</>,
+    name: row => <><span className="company-item-label">{row.name}</span>{!row.active && " (مؤرشف)"}</>,
     reserve: row => <><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
                 reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></>,
@@ -1324,7 +1324,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`}
             role="listitem" onClick={() => rememberItem(row)}>
             <div className="item-options-mobile-heading">
-              <Link style={hiddenColumnStyle("name")} to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
+              <span className="company-item-label" style={hiddenColumnStyle("name")}>{row.name}</span>
               {!row.active && <span style={hiddenColumnStyle("name")} className="item-options-mobile-inactive"> (مؤرشف)</span>}
               <label className="item-options-mobile-select" style={hiddenColumnStyle("choice")}>
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
@@ -1478,4 +1478,3 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     </section>
   </div>;
 }
-

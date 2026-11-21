@@ -73,7 +73,7 @@ function TaskRow({task,employees,onSaved}:{task:Task;employees:Employee[];onSave
     {candidates.error&&<Notice tone="error">{(candidates.error as Error).message}</Notice>}
     {candidates.data?.items.length===0&&<p>لا توجد أصناف مستحقة للجرد حاليًا.</p>}
     {candidates.data?.items.map(item=><p key={item.id}>
-     <Link to={`/companies/${task.companyId}/items/${item.id}`}>{item.code} — {item.name}</Link>
+     <span className="company-item-label">{item.code} — {item.name}</span>
      {" · "}مرات البيع: {number(item.sales)} · فاصل الجرد: {number(item.intervalDays)} يوم
     </p>)}
     {candidates.data?.items.length===50&&<p>تظهر أول 50 صنفًا؛ يمكن متابعة بقية الأصناف بعد الجرد.</p>}

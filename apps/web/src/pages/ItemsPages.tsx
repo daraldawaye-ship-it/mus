@@ -68,7 +68,6 @@ import { firstUnitStockText } from "../sale-stock-quantity";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
 import { useSharedItemSelection } from "../shared-item-selection";
-import { openItemCardSheet } from "../ItemCardBottomSheetHost";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -257,11 +256,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         accessorKey: "name",
         header: "اسم الصنف",
         size: 210,
-        cell: ({ row }) => <button type="button" className="table-value"
-          aria-label={`فتح كرت الصنف ${row.original.name}`}
-          onClick={() => setSheetItemId(row.original.id)}>
-          <span className="truncate">{row.original.name}</span>
-        </button>,
+        cell: ({ row }) => <span className="company-item-label truncate" title={row.original.name}>
+          {row.original.name}
+        </span>,
       },
       {
         accessorKey: "englishName",
@@ -727,10 +724,9 @@ function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:nu
           </dl>
           {peers.peers.map(peer=>(
             <div key={peer.id} className="form-actions">
-              <Button variant="ghost" size="compact" onClick={()=>
-                openItemCardSheet(companyId, peer.id)}>
+              <span className="company-item-label">
                 {peer.code} — {peer.name}
-              </Button>
+              </span>
               {peer.stockSmallest!==null&&(
                 <small className="muted">
                   رصيد الصنف: <bdi>{BigInt(peer.stockSmallest).toLocaleString("en-US")}</bdi> {peer.smallestUnitName}

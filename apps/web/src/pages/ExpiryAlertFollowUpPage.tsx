@@ -52,14 +52,14 @@ function ExpiryTable({ companyId, kind, scope, rows, title, sortBy, sortDir, onS
   const columns = useMemo<InteractiveTableColumn<ExpiryItem, ColumnKey>[]>(() => [
     { key: "name", label: "الصنف", width: 250, sortable: true, cell: item =>
       <span className="expiry-alert-item-name">
-        {showDetails ? <Link to={`/companies/${companyId}/items/${item.itemId}`}>{item.name}</Link> : item.name}
+        {item.name}
         <small className="muted"><bdi>{item.code}</bdi></small>
       </span> },
     { key: "quantity", label: "صافي المتوفر دون المرتجعات (و1)", width: 194, sortable: true,
       cell: item => <span><bdi>{fmt(item.quantityUnit1)}</bdi> {item.unit1Name}</span> },
     { key: "expiry", label: "أقرب تاريخ انتهاء (من كرت الصنف)", width: 194, sortable: true,
       cell: item => <bdi dir="ltr">{item.expiryDate}</bdi> },
-  ], [companyId, showDetails]);
+  ], []);
   const allColumns = useMemo(() => {
     if (!showDetails) return columns;
     const details: InteractiveTableColumn<ExpiryItem, ColumnKey> = {

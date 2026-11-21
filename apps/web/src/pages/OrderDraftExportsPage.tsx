@@ -268,7 +268,7 @@ export function AvailableAlternatives({ companyId, userId, itemId }: {
       : !available.length ? <p>لا توجد أصناف أخرى متوفرة بنفس التركيب.</p>
       : <>{first.relation === "sameComposition" && <p>أصناف من نفس التركيب، لم تُعتمد للتبديل.</p>}
         <ul>{available.map(peer => <li key={peer.id}>
-          <Link to={`/companies/${companyId}/items/${peer.id}`}>{peer.name}</Link>
+          <span className="company-item-label">{peer.name}</span>
           {" — "}<bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}
         </li>)}</ul></>)}
     {result.hasNextPage && <Button size="compact" variant="secondary" disabled={result.isFetchingNextPage}
@@ -391,7 +391,7 @@ function ExportHistory({ context }: { context: CompanyContext }) {
     else { setSort(column); setDescending(column === "date"); }
   };
   const exportColumns:InteractiveTableColumn<ExportRow,typeof sort>[]=[
-    {key:"name",label:"الصنف",width:228,sortable:true,cell:row=><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link>},
+    {key:"name",label:"الصنف",width:228,sortable:true,cell:row=><span className="company-item-label">{row.itemName}</span>},
     {key:"required",label:"الكمية المطلوبة",width:108,sortable:true,cell:row=><bdi>{quantityText(row.requiredQuantity,true)}</bdi>},
     {key:"available",label:"المتوفر وقت الترحيل دون المرتجعات",width:155,sortable:true,cell:row=><bdi>{quantityText(row.availableQuantity)}</bdi>},
     {key:"date",label:"تاريخ ووقت الترحيل",width:168,sortable:true,cell:row=><bdi title={row.exportedAt}>{dateTimeText(row.exportedAt)}</bdi>},

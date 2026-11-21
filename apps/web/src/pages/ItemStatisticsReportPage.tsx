@@ -182,11 +182,11 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
            <tbody>
              {result.rows.map(row=><tr key={row.itemId}>
                <td><bdi>{row.code}</bdi></td>
-               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
+               <td><button type="button" className="button button-ghost button-compact"
                  onClick={() => {
                    if (user) rememberRecentEntity(user.id, companyId, "item",
                      {id:row.itemId,name:row.name});
-                 }}>{row.name}</Link>
+                 }}>{row.name}</button>
                  {!row.active&&" (مؤرشف)"}</td>
                <td>{metric==="saleTimes"?"مرة":row.unitName}</td>
                {periods.map(p=><td key={p.key} dir="ltr" style={{textAlign:"end"}}>

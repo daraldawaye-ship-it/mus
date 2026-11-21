@@ -572,7 +572,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       case "quantity": return <><DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
                   onInspect={() => showItemDetails(row.item.id, row.item.name)}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} /></>;
-      case "name": return <><Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
+      case "name": return <><span className="company-item-label">{row.item.deleted?<s>{row.item.name}</s>:row.item.name}</span>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}</>;
       case "details": return <>{moreButton(row)}</>;
       case "stock": return <><span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span></>;
@@ -865,7 +865,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
               </div>
               <span className="item-order-drafts-mobile-name" style={columnStyle("name")}>
-                <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
+                <span className="company-item-label">{row.item.deleted?<s>{row.item.name}</s>:row.item.name}</span>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </span>
               <span className="item-order-drafts-mobile-action" style={columnStyle("action")}>{action(row)}</span>

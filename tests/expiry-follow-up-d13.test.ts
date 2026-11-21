@@ -17,7 +17,7 @@ test("both expiry report modes share D13 with separately scoped visibility and l
   assert.doesNotMatch(page, /<table\b/);
 });
 
-test("keeps server pagination, sort, quantities, and item/lot links", async () => {
+test("keeps server pagination, sort, quantities, plain item labels and explicit lot links", async () => {
   const page = await source();
   assert.match(page, /q,sortBy,sortDir,page:String\(page\),pageSize:String\(pageSize\)/);
   assert.match(page, /"\/companies\/"\+companyId\+"\/expiry-alert-follow-up\/"\+kind/);
@@ -25,7 +25,8 @@ test("keeps server pagination, sort, quantities, and item/lot links", async () =
   assert.match(page, /if \(key !== "details"\) onSort\(key\)/);
   assert.match(page, /rowKey = \(row: ExpiryItem\) => row\.itemId/);
   assert.match(page, /itemId: row\.itemId, itemName: row\.name/);
-  assert.match(page, /\/items\/\$\{item\.itemId\}/);
+  assert.doesNotMatch(page, /\/items\/\$\{item\.itemId\}/);
+  assert.match(page, /className="expiry-alert-item-name">\s*\{item\.name\}/);
   assert.match(page, /\/stock-balances\?view=lots&itemId=\$\{item\.itemId\}/);
   assert.match(page, /fmt\(item\.quantityUnit1\)/);
   assert.match(page, /<option value="20">20<\/option><option value="50">50<\/option><option value="100">100<\/option>/);

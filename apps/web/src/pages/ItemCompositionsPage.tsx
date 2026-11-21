@@ -238,10 +238,9 @@ type CompositionStatisticsResult={
   groups:CompositionStatGroup[];
 };
 function CompositionStatisticsTable({
-  companyId,compositionId,userId,version,onOpenItem,
+  companyId,compositionId,userId,version,
 }:{
   companyId:number;compositionId:number;userId:number|undefined;version:number;
-  onOpenItem:(id:number)=>void;
 }){
   const stats=useQuery({
     queryKey:["composition-statistics",userId,companyId,compositionId,version],
@@ -303,12 +302,11 @@ function CompositionStatisticsTable({
           <tr><th scope="row">الأكثر مبيعًا خلال سنة (مرات)</th>
             {columns.map(group=><td key={group.key}>
               {group.topSellingItem?
-                <button className="composition-stats-top-item" type="button"
-                  onClick={()=>onOpenItem(group.topSellingItem!.id)}
+                <span className="composition-stats-top-item"
                   title={group.topSellingItem.name}>
                   {group.topSellingItem.name}
                   {" — "}{numeric(group.topSellingItem.times,0)}
-                </button>:"—"}
+                </span>:"—"}
             </td>)}
           </tr>
         </tbody>
@@ -555,8 +553,7 @@ function CompositionEditor({
           غير قابل للتبديل</label>
         {record&&<div className="form-full">
           <CompositionStatisticsTable companyId={companyId}
-            compositionId={record.id} userId={user?.id} version={linkedVersion}
-            onOpenItem={setLinkedItemId}/>
+            compositionId={record.id} userId={user?.id} version={linkedVersion}/>
         </div>}
         {record&&<div className="form-full">
           <h4>الأصناف المرتبطة بهذا التركيب</h4>

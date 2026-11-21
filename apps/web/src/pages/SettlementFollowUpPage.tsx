@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CompanyContext, Item } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery } from "../api";
@@ -66,9 +66,9 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
         header: "اسم الصنف",
         size: 280,
         cell: ({ row }) => (
-          <Link to={`/companies/${companyId}/items/${row.original.id}`} title={row.original.name}>
+          <span className="company-item-label" title={row.original.name}>
             {row.original.name}
-          </Link>
+          </span>
         ),
       },
       {

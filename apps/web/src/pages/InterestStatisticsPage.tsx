@@ -18,9 +18,7 @@ const cell={border:"1px solid var(--border-color, #8b98a7)",padding:"5px 8px",te
 const formatDate=(s:string)=>new Date(s).toLocaleString("ar-YE",{timeZone:"Asia/Aden"});
 const actorLabel=(key:string,name:string)=>key.startsWith("v:")?`زائر غير مسجل (${key.slice(-6)})`:name;
 const marketLink=(card:CardCount)=>card.target_type.startsWith("market:")?
-  "/medicine-market?card="+card.target_id:
-  card.target_type.startsWith("company-item:")?
-    "/companies/"+card.target_type.split(":")[1]+"/items/"+card.target_id:null;
+  "/medicine-market?card="+card.target_id:null;
 
 function SectionTable({headers,rows}:{headers:string[];rows:React.ReactNode[][]}){
  const [expanded,setExpanded]=useState(false);

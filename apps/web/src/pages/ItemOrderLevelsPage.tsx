@@ -157,7 +157,7 @@ export function ItemOrderLevelsPage({ context }: { context: CompanyContext }) {
               {data.items.map(item => <tr key={item.itemId}
                 className={!item.active ? "item-order-levels-archived" :
                   item.belowLimit ? "item-order-levels-warning" : undefined}>
-                <td><Link to={"/companies/" + companyId + "/items/" + item.itemId}>{item.name}</Link>
+                <td><span className="company-item-label">{item.name}</span>
                   <small>{item.code}</small></td>
                 <td><bdi>{numberText(item.availableUnit1)}</bdi></td>
                 <td><bdi>{numberText(item.saleQuantityMonth)}</bdi></td>
