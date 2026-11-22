@@ -10,7 +10,8 @@ import {
   DEFAULT_APPEARANCE,
   documentDateSchema,
 } from "../../../packages/contracts/src/index.ts";
-import { transaction } from "./db.ts";
+import { userSiteTraits, userSiteTraitsPatchSchema, type UserSiteTrait } from "../../../packages/contracts/src/user-site-traits.ts";
+import { transaction, type Database } from "./db.ts";
 import { assertRequestPagesEnabled, directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
@@ -223,6 +224,57 @@ export function publicRoutes(pool: Pool): Router {
     });
     if (!user) missing("المستخدم غير موجود");
     res.json({ user });
+  }));
+  // These labels are private metadata, not permission grants or part of userDTO.
+  async function assertSiteTraitsAccess(
+    db: Database, sessionUser: ReturnType<typeof actor>, action: "view" | "edit",
+  ) {
+    const current = await currentActor(db, sessionUser, action === "edit");
+    ownerOnly(current);
+    const entry = (await directoryEntries(db, current, null))
+      .find(page => page.key === "public.users");
+    if (!entry) deny("الصفحة غير مسجلة في دليل الصفحات");
+    assertDirectoryAccess(entry, "view");
+    if (action === "edit") assertDirectoryAccess(entry, "edit");
+    return current;
+  }
+  router.get("/users/:userId/site-traits", handler(async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    if (req.get("X-Alraesy-Employee-Preview")) deny("الصفات غير متاحة في معاينة الموظف.");
+    const result = await transaction(pool, async client => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      await assertSiteTraitsAccess(client, actor(req), "view");
+      const value = await client.query<{ traits: UserSiteTrait[]; revision: number }>(
+        "SELECT traits, revision FROM user_site_traits WHERE user_id=$1", [id(req.params.userId)],
+      );
+      if (!value.rows[0]) missing("المستخدم غير موجود");
+      return value.rows[0];
+    });
+    res.json(result);
+  }));
+  router.patch("/users/:userId/site-traits", handler(async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    if (req.get("X-Alraesy-Employee-Preview")) deny("الصفات غير متاحة في معاينة الموظف.");
+    const result = await transaction(pool, async client => {
+      const current = await assertSiteTraitsAccess(client, actor(req), "edit");
+      const userId = id(req.params.userId);
+      const input = parse(userSiteTraitsPatchSchema, req.body);
+      const selected = new Set(input.traits);
+      const traits = userSiteTraits.filter(trait => selected.has(trait));
+      const value = await client.query<{ traits: UserSiteTrait[]; revision: number }>(
+        `UPDATE user_site_traits
+         SET traits=$1, revision=revision+1, updated_at=now(), updated_by=$2
+         WHERE user_id=$3 AND revision=$4
+         RETURNING traits, revision`,
+        [traits, current.id, userId, input.expectedRevision],
+      );
+      if (value.rows[0]) return value.rows[0];
+      const exists = await client.query("SELECT 1 FROM user_site_traits WHERE user_id=$1", [userId]);
+      if (!exists.rowCount) missing("المستخدم غير موجود");
+      // No values, target audit payload, or private traits are published in audit feeds.
+      throw new HttpError(409, "conflict", "تغيرت صفات المستخدم. أعد تحميلها قبل الحفظ.");
+    });
+    res.json(result);
   }));
   // Owner-issued one-hour access links are bearer credentials, not account
   // passwords. Generate only on demand; store only SHA-256 and rotate any

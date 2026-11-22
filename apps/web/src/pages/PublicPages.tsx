@@ -39,6 +39,7 @@ import {
 import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import { ProfileImageUrlField } from "../ProfileImageUrlField";
 import { OperatorActivityCard } from "../OperatorActivityCard";
+import { UserSiteTraitsEditor } from "./UserSiteTraitsEditor";
 import {
   Button,
   Card,
@@ -798,7 +799,7 @@ export function UsersPage() {
 }
 
 function UserList() {
-  const { user, reloadSession } = useSession();
+  const { user, reloadSession, employeePreview } = useSession();
   const guard = useScopeGuard("public");
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -1356,6 +1357,7 @@ function UserList() {
           {(["editor","monitor","suspended","archived"] as const).map(flag=><Select key={flag} label={flagLabels[flag]} value={String(editDraft[flag])} onChange={event=>setEditDraft({...editDraft,[flag]:event.target.value==="true"})}>
             <option value="false">لا</option><option value="true">نعم</option>
           </Select>)}
+          {user?.owner && !employeePreview && !editTarget.owner && <UserSiteTraitsEditor key={`${user.id}:${editTarget.id}`} userId={editTarget.id} />}
           <p className="form-full">ستُسجَّل تغييرات بيانات الحساب في سجل التدقيق. أرشفة الحساب تسحب جلساته النشطة.</p>
           {editError&&<Notice tone="error">{editError}</Notice>}
         </div>}
