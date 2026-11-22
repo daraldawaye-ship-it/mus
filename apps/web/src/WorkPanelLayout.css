@@ -201,12 +201,13 @@
 }
 .work-panel-movement-kind:is([data-movement-kind="sale"], [data-movement-kind="sales_return"]) .work-panel-movement-kind-dot {
   display: block;
-  /* Match the active invoice-tab label, not the invoice editor frame. */
-  background: var(--on-nav-active);
+  background: #1766bf;
+  background: light-dark(#1766bf, #6daaff);
 }
 .work-panel-movement-kind:is([data-movement-kind="purchase"], [data-movement-kind="purchase_return"]) .work-panel-movement-kind-dot {
   display: block;
-  background: var(--on-nav-active);
+  background: #147549;
+  background: light-dark(#147549, #58da9a);
 }
 .work-panel-movement-kind:is([data-movement-kind="transfer_in"], [data-movement-kind="transfer_out"]) .work-panel-movement-kind-dot {
   display: block;
