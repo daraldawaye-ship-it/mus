@@ -7,7 +7,7 @@ import type { Pool } from "pg";
 import type { User } from "../packages/contracts/src/index.ts";
 import { expectedCardCreateSchema, expectedMovementPatchSchema, expectedEndDateLimit } from "../packages/contracts/src/expected.ts";
 import { transaction } from "../apps/api/src/db.ts";
-import { createExpectedCard, readExpectedCard, readExpectedMovement, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts,
+import { createExpectedCard, readExpectedCard, readExpectedMovement, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, expectedCashboxes,
   updateExpectedMovement, completeExpectedMovement, processExpectedMidnight,
   expectedOccurrenceDates, expectedAdenDate, expectedNextMidnight } from "../apps/api/src/services/expected.ts";
 
@@ -22,11 +22,11 @@ const owner={id:1,displayName:"Owner"} as User;
 const baseInput={accountId:4,section:"الموردون",amount:"3000",description:"دفعة أسبوعية",recurrence:"weekly",weekday:0,endDate:"2026-12-08",expiryMode:"carry"};
 const input=(changes:Record<string,unknown>={})=>expectedCardCreateSchema.parse({...baseInput,idempotencyKey:randomUUID(),...changes});
 
-async function fixture(t:{after:(fn:()=>Promise<void>)=>void}) {
+async function fixture(t:{after:(fn:()=>Promise<void>)=>void},cashboxUpgrade=true) {
   const db=new PGlite();t.after(()=>db.close());
   await db.exec(`CREATE TABLE users(id integer PRIMARY KEY); INSERT INTO users VALUES(1);
     CREATE TABLE companies(id integer PRIMARY KEY); INSERT INTO companies VALUES(1),(2);
-    CREATE TABLE accounts(id integer PRIMARY KEY,company_id integer NOT NULL,name text,code text,active boolean DEFAULT true,kind text DEFAULT 'posting',balance numeric(28,6) DEFAULT 0,UNIQUE(company_id,id));
+    CREATE TABLE accounts(id integer PRIMARY KEY,company_id integer NOT NULL,name text,code text,active boolean DEFAULT true,kind text DEFAULT 'posting',category text DEFAULT 'asset',cash_or_bank boolean DEFAULT false,account_choice text DEFAULT '',balance numeric(28,6) DEFAULT 0,UNIQUE(company_id,id));
     INSERT INTO accounts(id,company_id,name,code,balance) VALUES(4,1,'حساب ٤','1000000004',500),(5,1,'حساب آخر','1000000005',100),(6,2,'حساب الشركة الأخرى','1000000006',700);
     CREATE TABLE company_currencies(id integer PRIMARY KEY,company_id integer NOT NULL,code text); INSERT INTO company_currencies VALUES(1,1,'YER'),(2,2,'YER');
     CREATE TABLE finance_settings(company_id integer PRIMARY KEY,base_currency_id integer); INSERT INTO finance_settings VALUES(1,1),(2,2);
@@ -35,6 +35,7 @@ async function fixture(t:{after:(fn:()=>Promise<void>)=>void}) {
     CREATE TABLE financial_documents(id integer PRIMARY KEY,company_id integer,amount numeric(28,6)); INSERT INTO financial_documents VALUES(1,1,123);
     CREATE TABLE account_statistics(company_id integer,account_id integer,balance numeric(28,6)); INSERT INTO account_statistics VALUES(1,4,500);`);
   await db.exec(await readFile(new URL("../apps/api/migrations/20261122_expected_forecasts.sql",import.meta.url),"utf8"));
+  if(cashboxUpgrade) await db.exec(await readFile(new URL("../apps/api/migrations/20261122_expected_forecasts_cashbox.sql",import.meta.url),"utf8"));
   const pool=poolAdapter(db);
   const create=(changes:Record<string,unknown>={},companyId=1,today="2026-11-22")=>transaction(pool,client=>createExpectedCard(client,owner,companyId,input(changes),today));
   const snapshot=async()=>{
@@ -84,6 +85,7 @@ test("saving materializes every occurrence and idempotency prevents duplicate ca
   const card=results[0].card;
   assert.equal(card.movementCount,3);assert.equal(card.pendingCount,3);assert.equal(card.completedCount,0);
   assert.equal(card.accountName,"حساب ٤");assert.equal(card.section,"الموردون");
+  assert.equal(card.cashAccountId,null);assert.equal(card.cashAccountName,null);assert.equal(card.cashAccountCode,null);
   assert.equal(card.createdById,owner.id);assert.equal(card.createdByName,"Owner");assert.ok(card.createdAt);
   const first=(await listExpectedMovements(pool,1,{})).items[0];
   assert.equal(first.postedById,owner.id);assert.equal(first.postedByName,"Owner");assert.ok(first.postedAt);
@@ -95,6 +97,71 @@ test("saving materializes every occurrence and idempotency prevents duplicate ca
   assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n,1);
   await assert.rejects(db.query("UPDATE expected_cards SET end_date='2027-05-23' WHERE id=$1",[card.id]),/check constraint/i);
   assert.deepEqual(await snapshot(),before,"planning writes must leave accounting and balances exactly intact");
+});
+
+test("optional card cashbox uses technical eligibility, company isolation and exact identity without accounting effects",async t=>{
+  const {db,pool,create,snapshot}=await fixture(t);
+  await db.exec(`INSERT INTO accounts(id,company_id,name,code,active,kind,category,cash_or_bank,account_choice,balance) VALUES
+    (7,1,'صندوق رئيسي','1000000007',true,'posting','asset',true,'',321),
+    (8,1,'بنك محفوظ','1000000008',true,'posting','asset',true,'',1000),
+    (9,1,'صندوق متوقف','1000000009',false,'posting','asset',true,'cashbox',123),
+    (10,1,'مجموعة صناديق','1000000010',true,'group','asset',true,'cashbox',123),
+    (11,1,'حساب التزام','1000000011',true,'posting','liability',true,'cashbox',123),
+    (12,1,'صندوق بالاسم فقط','1000000012',true,'posting','asset',false,'cashbox',123),
+    (13,2,'صندوق شركة أخرى','1000000013',true,'posting','asset',true,'cashbox',999);`);
+  const before=await snapshot();
+  const lookup=await expectedCashboxes(pool,1,{sort:"code:asc",pageSize:"1"});
+  assert.equal(lookup.total,2);assert.deepEqual(lookup.items,[{id:7,name:"صندوق رئيسي",code:"1000000007"}]);
+  assert.deepEqual((await expectedCashboxes(pool,1,{sort:"code:asc",pageSize:"1",page:"2"})).items,[{id:8,name:"بنك محفوظ",code:"1000000008"}]);
+  assert.equal((await expectedCashboxes(pool,1,{q:"1000000013"})).total,0);
+  assert.equal((await expectedCashboxes(pool,1,{q:"بالاسم"})).total,0,"account_choice and names never turn an account into a cashbox");
+  assert.deepEqual((await expectedCashboxes(pool,2,{})).items.map(row=>row.id),[13]);
+  const original=await create({cashAccountId:7,amount:"-1250.123456"});
+  assert.equal(original.card.accountId,4);assert.equal(original.card.cashAccountId,7);
+  assert.equal(original.card.cashAccountName,"صندوق رئيسي");assert.equal(original.card.cashAccountCode,"1000000007");
+  assert.equal(original.card.currencyCode,"YER");assert.equal(original.card.amount,"-1250.123456");
+  const blank=await create({cashAccountId:null});
+  await create({cashAccountId:8});
+  assert.equal(blank.card.cashAccountId,null);
+  assert.equal((await listExpectedCards(pool,1,{q:"1000000007"})).items[0].id,original.card.id);
+  assert.equal((await listExpectedCards(pool,1,{q:"صندوق رئيسي"})).total,1);
+  assert.deepEqual((await listExpectedCards(pool,1,{sort:"cashAccountCode:desc",pageSize:"2"})).items.map(card=>card.cashAccountId),[8,7]);
+  const rows=(await listExpectedMovements(pool,1,{cardId:String(original.card.id)})).items;
+  assert.equal(rows.length,3);assert.equal(rows[0].accountId,4);assert.equal(Object.hasOwn(rows[0],"cashAccountId"),false);
+  assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM expected_cards")).rows[0].n,3);
+  for(const cashAccountId of [4,9,10,11,12,13]) await assert.rejects(create({cashAccountId}),/اختر صندوقًا/);
+  await assert.rejects(db.query("UPDATE expected_cards SET cash_account_id=13 WHERE id=$1",[original.card.id]),/foreign key/i);
+  assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM expected_cards")).rows[0].n,3);
+  assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n,3);
+  await transaction(pool,client=>completeExpectedMovement(client,owner,1,rows[0].id,rows[0].revision));
+  assert.equal((await readExpectedCard(pool,1,original.card.id)).cashAccountId,7);
+  assert.deepEqual(await snapshot(),before,"cashbox metadata never changes its balance, target account or ledger");
+});
+
+test("cashbox upgrade preserves old cards and missing-field idempotency without altering historical payloads",async t=>{
+  const {db,pool,snapshot}=await fixture(t,false);
+  const {cashAccountId:_cashAccountId,...legacyInput}=input();
+  const legacy=(await db.query<{id:number}>(`INSERT INTO expected_cards(company_id,account_id,section,currency_code,amount,description,recurrence,weekday,start_date,end_date,expiry_mode,created_by,created_by_name,idempotency_key,creation_payload)
+    VALUES(1,4,$1,'YER',$2,$3,'weekly',0,'2026-11-22',$4,'carry',1,'Owner',$5,$6::jsonb) RETURNING id`,
+    [legacyInput.section,legacyInput.amount,legacyInput.description,legacyInput.endDate,legacyInput.idempotencyKey,JSON.stringify(legacyInput)])).rows[0];
+  await db.query(`INSERT INTO expected_movements(company_id,card_id,original_date,movement_date,amount,description,posted_by,posted_by_name)
+    SELECT 1,$1,day,day,3000,'دفعة أسبوعية',1,'Owner' FROM unnest(ARRAY['2026-11-22','2026-11-29','2026-12-06']::date[]) day`,[legacy.id]);
+  const before=(await db.query("SELECT to_jsonb(c) AS card FROM expected_cards c WHERE id=$1",[legacy.id])).rows[0];
+  const movementsBefore=(await db.query("SELECT to_jsonb(m) AS movement FROM expected_movements m ORDER BY id")).rows;
+  const financialBefore=await snapshot();
+  await db.exec(await readFile(new URL("../apps/api/migrations/20261122_expected_forecasts_cashbox.sql",import.meta.url),"utf8"));
+  const card=await readExpectedCard(pool,1,legacy.id);
+  assert.equal(card.cashAccountId,null);assert.equal(card.cashAccountName,null);assert.equal(card.movementCount,3);
+  assert.deepEqual((await db.query("SELECT to_jsonb(c)-'cash_account_id' AS card FROM expected_cards c WHERE id=$1",[legacy.id])).rows[0],before);
+  const replay=await transaction(pool,client=>createExpectedCard(client,owner,1,expectedCardCreateSchema.parse(legacyInput),"2026-11-23"));
+  assert.equal(replay.created,false);assert.equal(replay.card.id,legacy.id);
+  const explicitNull=await transaction(pool,client=>createExpectedCard(client,owner,1,expectedCardCreateSchema.parse({...legacyInput,cashAccountId:null}),"2026-11-23"));
+  assert.equal(explicitNull.created,false);
+  await assert.rejects(transaction(pool,client=>createExpectedCard(client,owner,1,expectedCardCreateSchema.parse({...legacyInput,cashAccountId:4}),"2026-11-23")),/مفتاح الحفظ/);
+  assert.deepEqual((await db.query("SELECT to_jsonb(m) AS movement FROM expected_movements m ORDER BY id")).rows,movementsBefore);
+  assert.deepEqual((await db.query("SELECT to_jsonb(c)-'cash_account_id' AS card FROM expected_cards c WHERE id=$1",[legacy.id])).rows[0],before);
+  assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n,0);
+  assert.deepEqual(await snapshot(),financialBefore);
 });
 
 test("editing an occurrence stays pending; completion captures its current exact amount and never rewrites originals",async t=>{

@@ -61,10 +61,12 @@ export function expectedOccurrenceDates(input: ExpectedCardCreate, fallbackStart
 
 const timestamp = (value: Date | string | null): string | null => value === null ? null : new Date(value).toISOString();
 const cardSelect = `SELECT c.*,a.name AS account_name,a.code AS account_code,
+  cashbox.name AS cash_account_name,cashbox.code AS cash_account_code,
   c.start_date::text AS start_day,c.end_date::text AS end_day,c.once_date::text AS once_day,
   c.amount::text AS exact_amount,
   stats.movement_count,stats.pending_count,stats.completed_count
   FROM expected_cards c JOIN accounts a ON (a.company_id,a.id)=(c.company_id,c.account_id)
+  LEFT JOIN accounts cashbox ON (cashbox.company_id,cashbox.id)=(c.company_id,c.cash_account_id)
   CROSS JOIN LATERAL (SELECT count(*)::integer AS movement_count,
     count(*) FILTER (WHERE m.status='pending')::integer AS pending_count,
     count(*) FILTER (WHERE m.status='completed')::integer AS completed_count
@@ -77,6 +79,7 @@ const movementSelect = `SELECT m.*,c.account_id,a.name AS account_name,a.code AS
   JOIN accounts a ON (a.company_id,a.id)=(c.company_id,c.account_id)`;
 function cardDTO(row: QueryResultRow): ExpectedCard {
   return {id:row.id,companyId:row.company_id,accountId:row.account_id,accountName:row.account_name,accountCode:row.account_code,
+    cashAccountId:row.cash_account_id,cashAccountName:row.cash_account_name,cashAccountCode:row.cash_account_code,
     section:row.section,currencyCode:row.currency_code,amount:row.exact_amount,description:row.description,
     recurrence:row.recurrence,weekday:row.weekday,monthDay:row.month_day,onceDate:row.once_day,startDate:row.start_day,endDate:row.end_day,
     expiryMode:row.expiry_mode,movementCount:row.movement_count,pendingCount:row.pending_count,completedCount:row.completed_count,
@@ -103,7 +106,11 @@ export async function readExpectedMovement(db: Database, companyId: number, move
 export async function createExpectedCard(client: PoolClient, user: User, companyId: number, input: ExpectedCardCreate, today?: string): Promise<{card:ExpectedCard;created:boolean}> {
   await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[`expected-card:${companyId}:${input.idempotencyKey}`]);
   const payload = JSON.stringify(input);
-  const existing = (await client.query("SELECT id,creation_payload=$3::jsonb AS same FROM expected_cards WHERE company_id=$1 AND idempotency_key=$2",[companyId,input.idempotencyKey,payload])).rows[0];
+  // The first deployed version had no cashAccountId property. Missing and null
+  // are the same optional choice, without rewriting any historical payload.
+  const existing = (await client.query(`SELECT id,
+    ('{"cashAccountId":null}'::jsonb || creation_payload)=('{"cashAccountId":null}'::jsonb || $3::jsonb) AS same
+    FROM expected_cards WHERE company_id=$1 AND idempotency_key=$2`,[companyId,input.idempotencyKey,payload])).rows[0];
   if (existing) {
     if (!existing.same) conflict("استُخدم مفتاح الحفظ لبيانات مختلفة؛ راجع الكرت السابق");
     return {card:await readExpectedCard(client,companyId,existing.id),created:false};
@@ -115,9 +122,13 @@ export async function createExpectedCard(client: PoolClient, user: User, company
     WHERE f.company_id=a.company_id),'') AS currency_code
     FROM accounts a WHERE a.company_id=$1 AND a.id=$2 AND a.active AND a.kind='posting' FOR SHARE OF a`,[companyId,input.accountId])).rows[0];
   if (!account) invalid("اختر حسابًا حركيًا فعالًا من دليل حسابات الشركة");
-  const row = (await client.query(`INSERT INTO expected_cards(company_id,account_id,section,currency_code,amount,description,recurrence,weekday,month_day,once_date,start_date,end_date,expiry_mode,created_by,idempotency_key,creation_payload,created_by_name)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
-    [companyId,input.accountId,input.section,account.currency_code,input.amount,input.description,input.recurrence,input.weekday??null,input.monthDay??null,input.onceDate??null,startDate,input.endDate,input.expiryMode,user.id,input.idempotencyKey,payload,user.displayName])).rows[0];
+  if(input.cashAccountId!==null && !(await client.query(`SELECT id FROM accounts
+    WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND category='asset' AND cash_or_bank
+    FOR SHARE`,[companyId,input.cashAccountId])).rows.length)
+    invalid("اختر صندوقًا أو بنكًا حركيًا فعالًا من الشركة");
+  const row = (await client.query(`INSERT INTO expected_cards(company_id,account_id,section,currency_code,amount,description,recurrence,weekday,month_day,once_date,start_date,end_date,expiry_mode,created_by,idempotency_key,creation_payload,created_by_name,cash_account_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+    [companyId,input.accountId,input.section,account.currency_code,input.amount,input.description,input.recurrence,input.weekday??null,input.monthDay??null,input.onceDate??null,startDate,input.endDate,input.expiryMode,user.id,input.idempotencyKey,payload,user.displayName,input.cashAccountId])).rows[0];
   await client.query(`INSERT INTO expected_movements(company_id,card_id,original_date,movement_date,amount,description,posted_by,posted_by_name)
     SELECT $1,$2,day,day,$3,$4,$6,$7 FROM unnest($5::date[]) AS day`,[companyId,row.id,input.amount,input.description,dates,user.id,user.displayName]);
   const card = await readExpectedCard(client,companyId,row.id);
@@ -126,6 +137,7 @@ export async function createExpectedCard(client: PoolClient, user: User, company
 }
 
 const cardColumns: Record<string,string> = {id:"c.id",accountId:"c.account_id",accountName:"a.name",accountCode:"a.code",section:"c.section",currencyCode:"c.currency_code",
+  cashAccountId:"c.cash_account_id",cashAccountName:"cashbox.name",cashAccountCode:"cashbox.code",
   amount:"c.amount",description:"c.description",recurrence:"c.recurrence",weekday:"c.weekday",monthDay:"c.month_day",onceDate:"c.once_date",startDate:"c.start_date",endDate:"c.end_date",
   expiryMode:"c.expiry_mode",movementCount:"stats.movement_count",pendingCount:"stats.pending_count",completedCount:"stats.completed_count",createdAt:"c.created_at",createdByName:"c.created_by_name"};
 const movementColumns: Record<string,string> = {id:"m.id",cardId:"m.card_id",accountId:"c.account_id",accountName:"a.name",accountCode:"a.code",section:"c.section",currencyCode:"c.currency_code",
@@ -143,12 +155,13 @@ function addCommonFilters(query: Record<string,unknown>, clauses: string[], valu
   }
 }
 export async function listExpectedCards(db: Database, companyId: number, input: Record<string,unknown>) {
-  const query = listQuery(input,cardColumns,"id:desc");
+  const query = listQuery(input,cardColumns,"id:desc",new Set(["cashAccountId","cashAccountName","cashAccountCode"]));
   const values: unknown[]=[companyId];const clauses=["c.company_id=$1"];
   addCommonFilters(input,clauses,values);
-  if (query.q) {values.push(searchPattern(query.q));const p=`$${values.length}`;clauses.push(`(a.name ILIKE ${p} OR a.code ILIKE ${p} OR c.description ILIKE ${p} OR c.section ILIKE ${p} OR c.id::text ILIKE ${p})`);}
+  if (query.q) {values.push(searchPattern(query.q));const p=`$${values.length}`;clauses.push(`(a.name ILIKE ${p} OR a.code ILIKE ${p} OR cashbox.name ILIKE ${p} OR cashbox.code ILIKE ${p} OR c.description ILIKE ${p} OR c.section ILIKE ${p} OR c.id::text ILIKE ${p})`);}
   const where=clauses.join(" AND ");
-  const count=await db.query<{total:number}>(`SELECT count(*)::integer AS total FROM expected_cards c JOIN accounts a ON (a.company_id,a.id)=(c.company_id,c.account_id) WHERE ${where}`,values);
+  const count=await db.query<{total:number}>(`SELECT count(*)::integer AS total FROM expected_cards c JOIN accounts a ON (a.company_id,a.id)=(c.company_id,c.account_id)
+    LEFT JOIN accounts cashbox ON (cashbox.company_id,cashbox.id)=(c.company_id,c.cash_account_id) WHERE ${where}`,values);
   const rows=await db.query(`${cardSelect} WHERE ${where} ORDER BY ${query.order} LIMIT $${values.length+1} OFFSET $${values.length+2}`,[...values,query.pageSize,query.offset]);
   return {items:rows.rows.map(cardDTO),total:count.rows[0].total,page:query.page,pageSize:query.pageSize};
 }
@@ -188,6 +201,15 @@ export async function expectedAccounts(db:Database,companyId:number,input:Record
   const query=listQuery(input,{id:"a.id",name:"a.name",code:"a.code"},"name:asc");
   const values=[companyId,searchPattern(query.q)];
   const where="a.company_id=$1 AND a.active AND a.kind='posting' AND (a.name ILIKE $2 OR a.code ILIKE $2)";
+  const count=await db.query<{total:number}>(`SELECT count(*)::integer AS total FROM accounts a WHERE ${where}`,values);
+  const rows=await db.query<{id:number;name:string;code:string}>(`SELECT a.id,a.name,a.code FROM accounts a WHERE ${where} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,[...values,query.pageSize,query.offset]);
+  return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};
+}
+/** Same technical cash/bank eligibility as vouchers, with only identity fields exposed. */
+export async function expectedCashboxes(db:Database,companyId:number,input:Record<string,unknown>) {
+  const query=listQuery(input,{id:"a.id",name:"a.name",code:"a.code"},"name:asc");
+  const values=[companyId,searchPattern(query.q)];
+  const where="a.company_id=$1 AND a.active AND a.kind='posting' AND a.category='asset' AND a.cash_or_bank AND (a.name ILIKE $2 OR a.code ILIKE $2)";
   const count=await db.query<{total:number}>(`SELECT count(*)::integer AS total FROM accounts a WHERE ${where}`,values);
   const rows=await db.query<{id:number;name:string;code:string}>(`SELECT a.id,a.name,a.code FROM accounts a WHERE ${where} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,[...values,query.pageSize,query.offset]);
   return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};

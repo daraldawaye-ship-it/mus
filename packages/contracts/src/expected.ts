@@ -37,6 +37,7 @@ export const expectedAmountSchema = z.string().trim()
   });
 export const expectedCardCreateSchema = z.object({
   accountId: identifier,
+  cashAccountId: identifier.nullable().default(null),
   section: z.string().trim().max(120).default(""),
   amount: expectedAmountSchema,
   description: z.string().trim().max(2000).default(""),
@@ -79,6 +80,7 @@ export type ExpectedMovementPatchInput = z.input<typeof expectedMovementPatchSch
 export type ExpectedMovementPatch = z.output<typeof expectedMovementPatchSchema>;
 export interface ExpectedCard {
   id: number; companyId: number; accountId: number; accountName: string; accountCode: string;
+  cashAccountId: number | null; cashAccountName: string | null; cashAccountCode: string | null;
   section: string; currencyCode: string; amount: string; description: string; recurrence: ExpectedRecurrence;
   weekday: number | null; monthDay: number | null; onceDate: string | null;
   startDate: string; endDate: string; expiryMode: ExpectedExpiryMode;

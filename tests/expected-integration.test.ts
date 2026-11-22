@@ -21,6 +21,7 @@ test("expected routes publish complete contracts on the shared browser and OAuth
     "GET /companies/:companyId/expected-cards/:id",
     "GET /companies/:companyId/expected-sections",
     "GET /companies/:companyId/expected-accounts",
+    "GET /companies/:companyId/expected-cashboxes",
     "GET /companies/:companyId/expected-movements",
     "PATCH /companies/:companyId/expected-movements/:id",
     "POST /companies/:companyId/expected-movements/:id/complete",
@@ -42,6 +43,8 @@ test("expected routes publish complete contracts on the shared browser and OAuth
   assert.equal(creation.bodySchema.properties.amount.type, "string");
   assert.equal(creation.bodySchema.properties.section.type, "string");
   assert.equal(creation.bodySchema.properties.startDate.format, "date");
+  assert.equal(creation.bodySchema.properties.cashAccountId.default, null);
+  assert(!creation.bodySchema.required.includes("cashAccountId"));
   assert(creation.bodySchema.required.includes("idempotencyKey"));
 });
 
@@ -62,6 +65,7 @@ test("expected authorization keeps completion as editing and lookups under card 
     ["GET", "expected-cards", "company.expected-cards", "view"],
     ["POST", "expected-cards", "company.expected-cards", "create"],
     ["GET", "expected-accounts", "company.expected-cards", "view"],
+    ["GET", "expected-cashboxes", "company.expected-cards", "view"],
     ["GET", "expected-sections", "company.expected-cards", "view"],
     ["GET", "expected-movements", "company.expected-movements", "view"],
     ["GET", "expected-movements/sections", "company.expected-movements", "view"],

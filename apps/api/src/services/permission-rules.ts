@@ -147,6 +147,7 @@ export async function requestPermissionTargets(
     "expected-movements": "company.expected-movements",
     "expected-sections": "company.expected-cards",
     "expected-accounts": "company.expected-cards",
+    "expected-cashboxes": "company.expected-cards",
     "purchase-history": "company.purchases",
     "commerce-options": "company.sales",
     "inventory-options": "company.stock-operations",

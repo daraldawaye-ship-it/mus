@@ -548,6 +548,7 @@ export async function requestPageKeys(
     "expected-movements": "expected-movements",
     "expected-sections": "expected-cards",
     "expected-accounts": "expected-cards",
+    "expected-cashboxes": "expected-cards",
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];

@@ -120,6 +120,9 @@ function CardDetails({ card, companyId, canViewMovements }: { card: ExpectedCard
   return <>
     <dl className="expected-card-details">
       <div><dt>الحساب</dt><dd>{card.accountName} <small><bdi>{card.accountCode}</bdi></small></dd></div>
+      <div><dt>الصندوق</dt><dd>{card.cashAccountName
+        ? <>{card.cashAccountName} <small><bdi>{card.cashAccountCode}</bdi></small></>
+        : "غير محدد"}</dd></div>
       <div><dt>القسم</dt><dd>{card.section || "—"}</dd></div>
       <div><dt>المبلغ الأصلي لكل موعد</dt><dd>{money(card.amount)} {card.currencyCode}</dd></div>
       <div className="expected-full"><dt>البيان الأصلي</dt><dd>{card.description || "—"}</dd></div>
@@ -143,6 +146,7 @@ function CreateExpectedCard({ companyId, open, onClose, onCreated }: {
 }) {
   const guard = useScopeGuard(`company:${companyId}:expected-cards:create`);
   const [account, setAccount] = useState<ExpectedAccountOption | null>(null);
+  const [cashAccount, setCashAccount] = useState<ExpectedAccountOption | null>(null);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [section, setSection] = useState("");
@@ -170,7 +174,8 @@ function CreateExpectedCard({ companyId, open, onClose, onCreated }: {
     setError("");
     if (!request.current) {
       const result = expectedCardCreateSchema.safeParse({
-        accountId: account?.id, amount, description, section, recurrence, startDate, endDate, expiryMode,
+        accountId: account?.id, cashAccountId: cashAccount?.id ?? null,
+        amount, description, section, recurrence, startDate, endDate, expiryMode,
         ...(recurrence === "weekly" ? { weekday } : {}),
         ...(recurrence === "monthly" ? { monthDay } : {}),
         ...(recurrence === "once" ? { onceDate } : {}),
@@ -192,7 +197,7 @@ function CreateExpectedCard({ companyId, open, onClose, onCreated }: {
       setUncertain(false);
       request.current = null;
       onCreated(result.card);
-      setAccount(null); setAmount(""); setDescription(""); setSection(""); setEndDate(""); setStartDate(nowInAden()); setOnceDate(nowInAden());
+      setAccount(null); setCashAccount(null); setAmount(""); setDescription(""); setSection(""); setEndDate(""); setStartDate(nowInAden()); setOnceDate(nowInAden());
     } catch (cause) {
       if (!guard.isCurrent()) return;
       setError(errorMessage(cause));
@@ -209,12 +214,22 @@ function CreateExpectedCard({ companyId, open, onClose, onCreated }: {
   return <Dialog open={open} onClose={() => { if (!saving) onClose(); }} title="كرت المتوقع — جديد" className="expected-dialog">
     <form onSubmit={save}>
       <div className="expected-form-grid">
-        <div className="expected-full">
+        <div>
           <ServerLookup<ExpectedAccountOption> companyId={companyId}
             resource={`/companies/${companyId}/expected-accounts`}
             label="الحساب من دليل الحسابات" value={account} onChange={setAccount}
             display={value => `${value.code} — ${value.name}`} singleInput pageSize={50} sort="name:asc"
             required disabled={locked} />
+        </div>
+        <div>
+          <ServerLookup<ExpectedAccountOption> companyId={companyId}
+            resource={`/companies/${companyId}/expected-cashboxes`}
+            label="الصندوق — اختياري" value={cashAccount} onChange={setCashAccount}
+            display={value => `${value.code} — ${value.name}`} singleInput pageSize={50} sort="name:asc"
+            searchPlaceholder="ابحث باسم الصندوق أو رقمه" noResultsLabel="لا توجد صناديق مطابقة."
+            disabled={locked} />
+          {cashAccount && <Button type="button" size="compact" variant="ghost" disabled={locked}
+            onClick={() => setCashAccount(null)}>بدون صندوق</Button>}
         </div>
         <SectionField companyId={companyId} value={section} onChange={setSection} disabled={locked} />
         <NumericPadField label="المبلغ الأصلي لكل موعد" value={amount} onChange={setAmount}
@@ -290,6 +305,7 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
   const columns: InteractiveTableColumn<ExpectedCard>[] = [
     { key: "id", label: "الكرت", width: 70, cell: row => row.id },
     { key: "accountName", label: "الحساب", width: 230, cell: row => row.accountName },
+    { key: "cashAccountName", label: "الصندوق", width: 190, cell: row => row.cashAccountName || "غير محدد" },
     { key: "section", label: "القسم", width: 155, cell: row => row.section || "—" },
     { key: "amount", label: "المبلغ الأصلي", width: 120, cell: row => money(row.amount) },
     { key: "description", label: "البيان الأصلي", width: 240, cell: row => row.description || "—" },

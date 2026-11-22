@@ -41,6 +41,9 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "GET /companies/:companyId/expected-accounts": {
     source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["page", "pageSize", "q", "sort"],
   },
+  "GET /companies/:companyId/expected-cashboxes": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["page", "pageSize", "q", "sort"],
+  },
   "GET /companies/:companyId/expected-movements": {
     source: "routes-expected.ts", pathParams: ["companyId"],
     queryFields: ["page", "pageSize", "q", "sort", "cardId", "accountId", "section", "status", "dateFrom", "dateTo"],

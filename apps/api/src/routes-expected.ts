@@ -8,7 +8,7 @@ import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, companyAccess } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { directoryEntries, assertDirectoryAccess, assertRequestPagesEnabled } from "./services/pages.ts";
-import { createExpectedCard, readExpectedCard, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, updateExpectedMovement, completeExpectedMovement } from "./services/expected.ts";
+import { createExpectedCard, readExpectedCard, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, expectedCashboxes, updateExpectedMovement, completeExpectedMovement } from "./services/expected.ts";
 
 export function expectedRoutes(pool:Pool):Router {
   const router=Router();
@@ -49,6 +49,10 @@ export function expectedRoutes(pool:Pool):Router {
   router.get(`${base}/expected-accounts`,handler(async(req,res)=>{
     res.set("Cache-Control","private, no-store");
     res.json(await authorized(req,"company.expected-cards","view",(client,_user,companyId)=>expectedAccounts(client,companyId,req.query)));
+  }));
+  router.get(`${base}/expected-cashboxes`,handler(async(req,res)=>{
+    res.set("Cache-Control","private, no-store");
+    res.json(await authorized(req,"company.expected-cards","view",(client,_user,companyId)=>expectedCashboxes(client,companyId,req.query)));
   }));
   router.get(`${base}/expected-movements`,handler(async(req,res)=>{
     res.set("Cache-Control","private, no-store");
