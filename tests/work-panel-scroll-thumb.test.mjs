@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { transform } from "esbuild";
+
+test("mobile work panel shows a keyboard/drag scroll thumb with exact clamped endpoints", async () => {
+  const read = rel => readFile(new URL(`../apps/web/src/${rel}`,import.meta.url),"utf8");
+  const component = await read("WorkPanelScrollThumb.tsx");
+  const layout = await read("WorkPanelLayout.tsx");
+  const css = await read("WorkPanelLayout.css");
+  const geometry = component.slice(component.indexOf("const hitSize"), component.indexOf("export function WorkPanelScrollThumb"));
+  const {code} = await transform(geometry,{loader:"ts",format:"esm"});
+  const {workPanelThumbOffset:offset,workPanelThumbScroll:move} = await import("data:text/javascript;base64,"+Buffer.from(code).toString("base64"));
+  assert.equal(offset(0,900,80),0);
+  assert.equal(offset(450,900,80),40);
+  assert.equal(offset(1000,900,80),80);
+  assert.equal(offset(0,0,80),0);
+  assert.equal(move(40,0,900,80),450);
+  assert.equal(move(81,0,900,80),900);
+  assert.equal(move(-55,450,900,80),0);
+  assert.equal(move(99,250,900,0),250);
+  assert.match(layout,/\{mobile && <WorkPanelScrollThumb viewport=\{panelViewport\}/);
+  assert.match(layout,/className="resizable-work-panel-grip"/);
+  assert.match(component,/role="scrollbar"/);
+  assert.match(component,/setPointerCapture/);
+  assert.match(component,/pane\.addEventListener\("scroll"/);
+  assert.match(css,/width: 44px; height: 44px/);
+  assert.match(css,/width: 22px; height: 22px; border-radius: 50%/);
+  for(const source of [component,layout]) await transform(source,{loader:"tsx"});
+});

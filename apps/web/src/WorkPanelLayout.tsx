@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { GripHorizontal, GripVertical, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { mobileWorkPanelAvailableHeight,mobileWorkPanelMaxSize,watchMobileWorkPanelGeometry } from "./work-panel-viewport";
+import { WorkPanelScrollThumb } from "./WorkPanelScrollThumb";
 import "./WorkPanelLayout.css";
 
 type StoredPanel = { desktop: number; mobile: number; open: boolean };
@@ -41,6 +42,9 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const [mobileAvailableHeight,setMobileAvailableHeight] = useState<number|null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
+  const panelViewport = useRef<HTMLDivElement>(null);
+  const panelContent = useRef<HTMLDivElement>(null);
+  const panelScrollId = useId();
   const pendingPageScroll = useRef<{ scrollTop: number; size: number } | null>(null);
   const dragStart = useRef<{
     pointerId: number;
@@ -199,8 +203,9 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
           aria-label="لوح العمل"
           data-panel-state={settings.open ? "open" : "closed"}
         >
-          {settings.open && (
-            <div className="resizable-work-panel-content" dir="rtl">
+          {settings.open && <>
+            <div id={panelScrollId} ref={panelViewport} className="resizable-work-panel-content" dir="rtl">
+              <div ref={panelContent} className="resizable-work-panel-content-inner">
               <div className="resizable-work-panel-heading">
                 <strong>لوح العمل</strong>
                 <button
@@ -214,8 +219,10 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
                 </button>
               </div>
               {renderTools?.(mobile ? size : viewport.height - headerHeight)}
+              </div>
             </div>
-          )}
+            {mobile && <WorkPanelScrollThumb viewport={panelViewport} content={panelContent} controls={panelScrollId} />}
+          </>}
           {!settings.open && (
             <button
               type="button"
