@@ -195,8 +195,8 @@
 }
 .work-panel-movement-kind-dot {
   display: none;
-  flex: 0 0 6px;
-  block-size: 6px;
+  flex: 0 0 9px;
+  block-size: 9px;
   border-radius: 50%;
 }
 .work-panel-movement-kind:is([data-movement-kind="sale"], [data-movement-kind="sales_return"]) .work-panel-movement-kind-dot {
