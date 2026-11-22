@@ -44,3 +44,25 @@
   .interactive-columns-table .interactive-column-resizer { width:18px; }
   .interactive-columns-table .interactive-column-handle { padding-inline-end:22px; }
 }
+
+/* The optional accent follows the value, not the header, cell or controls. */
+[data-column-value-tone="green"] { --column-value-accent:#22a067; }
+[data-column-value-tone="orange"] { --column-value-accent:#e88c22; }
+[data-column-value-tone="red"] { --column-value-accent:#dd494d; }
+[data-column-value-tone="blue"] { --column-value-accent:#4389e9; }
+td[data-column-value-tone] .column-value-content,
+.item-options-mobile-stat > bdi[data-column-value-tone],
+.item-options-mobile-heading .company-item-label[data-column-value-tone] {
+  display:inline-block;
+  padding:2px 5px;
+  border:1px solid color-mix(in srgb,var(--column-value-accent) 84%,var(--border));
+  border-radius:7px;
+  background:color-mix(in srgb,var(--column-value-accent) 11%,transparent);
+  color:color-mix(in srgb,var(--column-value-accent) 47%,var(--text));
+  line-height:1.25;
+}
+.item-options-mobile-stat > bdi[data-column-value-tone],
+.item-options-mobile-heading .company-item-label[data-column-value-tone] {
+  box-sizing:border-box;
+  max-inline-size:100%;
+}

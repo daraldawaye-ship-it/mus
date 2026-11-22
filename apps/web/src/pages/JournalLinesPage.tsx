@@ -48,7 +48,7 @@ export default function JournalLinesPage({ context }: {context:CompanyContext}) 
     {key:"description",label:"بيان السطر",width:270,sortable:false,cell:r=>r.description||"—"},
     {key:"lineNumber",label:"السطر",width:70,sortable:false,cell:r=><bdi>{r.lineNumber}</bdi>},
     {key:"status",label:"الحالة",width:95,sortable:false,cell:r=>documentStatusLabels[r.status]},
-    {key:"document",label:"الأصل",width:120,sortable:false,cell:r=>
+    {key:"document",label:"الأصل",width:120,sortable:false,colorValue:false,cell:r=>
       <Link to={`/companies/${companyId}/financial-documents/${r.documentId}`} aria-label={`فتح القيد ${r.number}`}>فتح القيد</Link>},
   ];
   const sort=list.sorting[0];

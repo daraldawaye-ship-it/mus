@@ -1,3 +1,4 @@
+import {canColorColumnValue,columnValueTone} from "../column-value-colors";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { noTableColumnDefaults, useTableColumnDefaults } from "../table-column-defaults";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
@@ -309,6 +310,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const defaults = useTableColumnDefaults(companyId, "item-options-list", canView);
   const savedDefaults = (defaults.isError ? undefined : defaults.data?.columns) ?? noTableColumnDefaults;
   const defaultById = new Map(savedDefaults?.map(column => [column.id, column.visible]));
+  const valueToneById = new Map(savedDefaults.map(column => [column.id,columnValueTone(column.color)]));
+  const itemValueTone = (column:TableColumn) => canColorColumnValue("item-options-list",column) ? valueToneById.get(column) : undefined;
   const preferred = allTableColumns.filter(id => defaultById.get(id) ?? defaultVisibleTableColumns.includes(id));
   const visibleColumns = visibleOverride ?? (preferred.length ? preferred : defaultVisibleTableColumns);
   const canEditReserve = !!itemListPage?.enabled && !!itemListPage.actionAccess.edit;
@@ -931,6 +934,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   };
   const columns: InteractiveTableColumn<Row, TableColumn>[] = tableColumnOptions.map(([key, label]) => ({
     key, label, width: tableColumnWidths[key], cell: columnCells[key],
+    colorValue: canColorColumnValue("item-options-list",key) ? undefined : false,
     sortable: sortOptions.some(([sortKey]) => sortKey === key),
     className: key === "choice" ? "item-options-choice-cell" :
       key === "purchaseNotes" ? "item-options-purchase-notes-cell" : undefined,
@@ -1346,7 +1350,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               updateDock?.(dockItemSource(row));
             }}>
             <div className="item-options-mobile-heading">
-              <span className="company-item-label" style={hiddenColumnStyle("name")}>{row.name}</span>
+              <span className="company-item-label" data-column-value-tone={itemValueTone("name")} style={hiddenColumnStyle("name")}>{row.name}</span>
               {!row.active && <span style={hiddenColumnStyle("name")} className="item-options-mobile-inactive"> (مؤرشف)</span>}
               <label className="item-options-mobile-select" style={hiddenColumnStyle("choice")}>
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
@@ -1358,19 +1362,19 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
               <div style={hiddenColumnStyle("stock")} className="item-options-mobile-stat">
-                <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
+                <span>المتوفر</span><bdi data-column-value-tone={itemValueTone("stock")}>{firstUnitStockText(row.availableSmallest, row)}</bdi>
               </div>
               <div style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-mobile-stat">
-                <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi>{row.saleQuantityMonth}</bdi>
+                <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi data-column-value-tone={itemValueTone("saleQuantityMonth")}>{row.saleQuantityMonth}</bdi>
               </div>
               <div style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-mobile-stat">
-                <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
+                <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi data-column-value-tone={itemValueTone("requiredPurchaseQuantity")}>{row.requiredPurchaseQuantity}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchasePrice")} className="item-options-mobile-stat">
-                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
+                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi data-column-value-tone={itemValueTone("purchasePrice")}>{row.purchasePrice}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-mobile-stat">
-                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
+                <span>قيمة المطلوب</span><bdi data-column-value-tone={itemValueTone("requiredPurchaseValue")}>{row.requiredPurchaseValue}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchaseNotes")} className="item-options-mobile-stat item-options-mobile-purchase-notes">
                 <span>ملاحظات عند الشراء</span>{renderPurchaseNote(row)}
@@ -1392,58 +1396,58 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 <div style={hiddenColumnStyle("orderStoppedUntil")} className="item-options-mobile-stat"><span>إيقاف</span><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} inlineStatus /></div>
 <div style={hiddenColumnStyle("reviewed")} className="item-options-mobile-stat"><span>مراجع</span><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></div>
 <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
-                <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
+                <span>شهر</span><bdi data-column-value-tone={itemValueTone("month")}>{row.saleTimesMonth}</bdi>
               </div>
               <div style={hiddenColumnStyle("marketOrder30Days")} className="item-options-mobile-stat">
-                <span>مرات الطلب من السوق آخر 30 يوم</span><bdi>{row.marketOrder30Days}</bdi>
+                <span>مرات الطلب من السوق آخر 30 يوم</span><bdi data-column-value-tone={itemValueTone("marketOrder30Days")}>{row.marketOrder30Days}</bdi>
               </div>
               <div style={hiddenColumnStyle("marketOrderAfterPurchase30Days")} className="item-options-mobile-stat">
-                <span>مرات الطلب من السوق آخر 30 يوم بعد آخر شراء</span><bdi>{row.marketOrderAfterPurchase30Days}</bdi>
+                <span>مرات الطلب من السوق آخر 30 يوم بعد آخر شراء</span><bdi data-column-value-tone={itemValueTone("marketOrderAfterPurchase30Days")}>{row.marketOrderAfterPurchase30Days}</bdi>
               </div>
               <div style={hiddenColumnStyle("fourMonths")} className="item-options-mobile-stat">
-                <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
+                <span>4 أشهر</span><bdi data-column-value-tone={itemValueTone("fourMonths")}>{row.saleTimesFourMonths}</bdi>
               </div>
               <div style={hiddenColumnStyle("allTime")} className="item-options-mobile-stat">
-                <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
+                <span>منذ البداية</span><bdi data-column-value-tone={itemValueTone("allTime")}>{row.saleTimesAllTime}</bdi>
               </div>
               <div style={hiddenColumnStyle("previousYear")} className="item-options-mobile-stat">
-                <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
+                <span>مرات عام السابق</span><bdi data-column-value-tone={itemValueTone("previousYear")}>{row.saleTimesPreviousYear}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverage")} className="item-options-mobile-stat">
-                <span>الكفاية بدون الاحتياط/يوم</span><bdi>{row.approximateCoverageDays ?? "—"}</bdi>
+                <span>الكفاية بدون الاحتياط/يوم</span><bdi data-column-value-tone={itemValueTone("coverage")}>{row.approximateCoverageDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverageWithReserve")} className="item-options-mobile-stat">
-                <span>الكفاية مع الاحتياط/يوم</span><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi>
+                <span>الكفاية مع الاحتياط/يوم</span><bdi data-column-value-tone={itemValueTone("coverageWithReserve")}>{row.coverageAfterReserveDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverageWithRequired")} className="item-options-mobile-stat">
-                <span>الكفاية مع المطلوب/يوم</span><bdi>{row.coverageWithRequiredDays}</bdi>
+                <span>الكفاية مع المطلوب/يوم</span><bdi data-column-value-tone={itemValueTone("coverageWithRequired")}>{row.coverageWithRequiredDays}</bdi>
               </div>
               <div style={hiddenColumnStyle("reserveCoverage")} className="item-options-mobile-stat">
-                <span>كفاية كمية الاحتياط وحدها/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
+                <span>كفاية كمية الاحتياط وحدها/يوم</span><bdi data-column-value-tone={itemValueTone("reserveCoverage")}>{row.reserveCoverageDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-mobile-stat">
-                <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
+                <span>كفاية عامل الشراء/يوم</span><bdi data-column-value-tone={itemValueTone("purchaseFactorCoverage")}>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionSaleMonth")} className="item-options-mobile-stat">
-                <span>كمية التركيب المباعة في شهر</span><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi>
+                <span>كمية التركيب المباعة في شهر</span><bdi data-column-value-tone={itemValueTone("compositionSaleMonth")}>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionStock")} className="item-options-mobile-stat">
-                <span>المتوفر للتركيب</span><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi>
+                <span>المتوفر للتركيب</span><bdi data-column-value-tone={itemValueTone("compositionStock")}>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionCoverage")} className="item-options-mobile-stat">
-                <span>الكفاية التقريبية للتركيب/يوم</span><bdi>{row.compositionCoverageDays ?? "0"}</bdi>
+                <span>الكفاية التقريبية للتركيب/يوم</span><bdi data-column-value-tone={itemValueTone("compositionCoverage")}>{row.compositionCoverageDays ?? "0"}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentQtySinceDisplay")} className="item-options-mobile-stat">
-                <span>صافي كمية العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>
+                <span>صافي كمية العجز والزيادة منذ آخر عرض</span><bdi data-column-value-tone={itemValueTone("adjustmentQtySinceDisplay")}>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentValueSinceDisplay")} className="item-options-mobile-stat">
-                <span>صافي قيمة العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
+                <span>صافي قيمة العجز والزيادة منذ آخر عرض</span><bdi data-column-value-tone={itemValueTone("adjustmentValueSinceDisplay")}>{formatSignedAmount(row.adjustmentValueSinceDisplay)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentQtySinceApproval")} className="item-options-mobile-stat">
-                <span>صافي كمية العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>
+                <span>صافي كمية العجز والزيادة منذ آخر اعتماد</span><bdi data-column-value-tone={itemValueTone("adjustmentQtySinceApproval")}>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentValueSinceApproval")} className="item-options-mobile-stat">
-                <span>صافي قيمة العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
+                <span>صافي قيمة العجز والزيادة منذ آخر اعتماد</span><bdi data-column-value-tone={itemValueTone("adjustmentValueSinceApproval")}>{formatSignedAmount(row.adjustmentValueSinceApproval)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
                       </div>
           </article>)}

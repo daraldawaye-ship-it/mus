@@ -4,11 +4,12 @@ import {useDockTableUpdate} from "./DockTableContext";
 import {isDockRowClick} from "./dock-row-interaction";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./InteractiveColumnsTable.css";
+import {columnValueTone} from "./column-value-colors";
 import { usableColumnDefaults, type TableColumnDefault } from "../../../packages/contracts/src/table-column-defaults";
 
 export type InteractiveTableColumn<Row, Key extends string = string> = {
   key: Key; label: string; width: number; cell: (row: Row) => ReactNode;
-  sortable?: boolean; className?: string; header?:ReactNode; scrollText?:boolean;
+  sortable?: boolean; className?: string; header?:ReactNode; scrollText?:boolean; colorValue?:false;
 };
 type Props<Row, Key extends string> = {
   columns: readonly InteractiveTableColumn<Row, Key>[]; rows: readonly Row[];
@@ -79,8 +80,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   });
   const usableDefaults = usableColumnDefaults(columns.map(column => column.key), sharedDefaults ?? []);
   const hidden = hiddenOverride ?? usableDefaults.filter(column => !column.visible).map(column => column.id);
-  const mutedColors = new Map(usableDefaults.filter(column => column.color).map(column => [column.id, column.color]));
-  const tint = (key: Key) => { const color=mutedColors.get(key); return color ? `color-mix(in srgb, ${color} 16%, var(--surface))` : undefined; };
+  const valueTones = new Map(usableDefaults.map(column => [column.id, columnValueTone(column.color)]));
   const effective=allowColumnVisibility?availableColumns.filter(key=>!hidden.includes(key)):availableColumns;
   const visibleColumns=effective.length?effective:availableColumns;
   const toggleVisibility=(key:Key)=>{
@@ -288,9 +288,14 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   }, []);
 
   // Keep cell subtrees stable during resizing; observers handle their changed viewport widths.
+  const hasSharedDefaults = sharedDefaults !== undefined;
   const renderedRows = useMemo(() => rows.map(row => ({ row, key: rowKey(row), className: rowClassName?.(row),
-    cells: new Map(columns.map(column => [column.key, column.scrollText===false?column.cell(row):<ScrollableTableCell>{column.cell(row)}</ScrollableTableCell>])) })),
-  [rows, columns, rowKey, rowClassName]);
+    cells: new Map(columns.map(column => {
+      const cell = column.cell(row);
+      const value = hasSharedDefaults && column.colorValue!==false ? <span className="column-value-content">{cell}</span> : cell;
+      return [column.key, column.scrollText===false?value:<ScrollableTableCell>{value}</ScrollableTableCell>];
+    })) })),
+  [rows, columns, rowKey, rowClassName, hasSharedDefaults]);
   const columnMap = new Map(columns.map(column => [column.key, column]));
   const shown = layout.order.filter(key => visibleColumns.includes(key));
   const lastVisible = shown[shown.length - 1];
@@ -337,7 +342,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
           <thead><tr>{shown.map(key => {
             const column = columnMap.get(key)!;
             const sortable = !!column.sortable && !!onSort;
-            return <th key={key} scope="col" style={{ backgroundColor: tint(key) }} data-column={key} data-last-visible={key === lastVisible ? "true" : undefined} className={`${column.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}
+            return <th key={key} scope="col" data-column={key} data-last-visible={key === lastVisible ? "true" : undefined} className={`${column.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}
               aria-sort={sortable ? (sortKey === key ? (sortDirection === "asc" ? "ascending" : "descending") : "none") : undefined}>
               <button type="button" className="interactive-column-handle" data-narrow={layout.widths[key] < 80 ? "true" : undefined}
                 ref={node => { if (node) handles.current.set(key, node); else handles.current.delete(key); }}
@@ -375,7 +380,8 @@ function InteractiveColumnsTableState<Row, Key extends string>({
             }}>
             {/* Keep hidden editors mounted so an in-flight debounced edit is not cancelled. */}
             {layout.order.map(key => <td key={key} data-column={key} data-last-visible={key === lastVisible ? "true" : undefined}
-              style={visibleColumns.includes(key) ? { borderInlineStartColor: mutedColors.get(key) ?? undefined } : { display: "none" }}
+              data-column-value-tone={columnMap.get(key)?.colorValue===false ? undefined : valueTones.get(key)}
+              style={visibleColumns.includes(key) ? undefined : { display: "none" }}
               className={`${columnMap.get(key)?.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}>{item.cells.get(key)}</td>)}
           </tr>{details!=null&&<tr className="interactive-column-row-details"><td colSpan={Math.max(1,shown.length)}>{details}</td></tr>}</Fragment>;
           })}{!rows.length && <tr><td colSpan={Math.max(1, shown.length)}>{emptyMessage}</td></tr>}</tbody>
