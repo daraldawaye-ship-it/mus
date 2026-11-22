@@ -1,3 +1,4 @@
+import {accountLedgerStartLimit,applyAccountLedgerStartLimit} from "../../../../packages/contracts/src/account-ledger-date-policy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -801,9 +802,15 @@ export function AccountLedgerPreview({
   hideFullLink?:boolean;
 }) {
   const { user } = useSession();
-  const [dateFrom, setDateFrom] = useState(()=>hideFullLink?"":todayInAdenForAccountPreview());
+  const startLimit = accountLedgerStartLimit(companyId,!!user?.owner);
+  const [requestedFrom, setRequestedFrom] = useState(()=>startLimit??(hideFullLink?"":todayInAdenForAccountPreview()));
+  const dateFrom = applyAccountLedgerStartLimit(requestedFrom,startLimit);
   const [dateTo, setDateTo] = useState(()=>hideFullLink?"":todayInAdenForAccountPreview());
   const [page, setPage] = useState(1);
+  const setDateFrom = (value:string) => {
+    setRequestedFrom(applyAccountLedgerStartLimit(value,startLimit));
+    setPage(1);
+  };
   useEffect(() => {
     // Preserve the same deliberate-view audit event used by the full ledger.
     void api("/companies/" + companyId + "/account-ledger/activity", {
@@ -835,16 +842,16 @@ export function AccountLedgerPreview({
   return (
     <Card title="كشف الحساب">
       {hideFullLink ? <div className="work-panel-date-range" role="group" aria-label="فترة كشف الحساب">
-        <label>من <input type="date" aria-label="بداية فترة كشف الحساب" value={dateFrom}
-          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
+        <label>من <input type="date" aria-label="بداية فترة كشف الحساب" value={dateFrom} min={startLimit} required={!!startLimit}
+          onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label>إلى <input type="date" aria-label="نهاية فترة كشف الحساب" value={dateTo}
           onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
       </div> : <div className="accounts-ledger-dates">
         <Field
           label="من تاريخ"
           type="date"
-          value={dateFrom}
-          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+          value={dateFrom} min={startLimit} required={!!startLimit}
+          onChange={(event) => setDateFrom(event.target.value)}
         />
         <Field
           label="إلى تاريخ"

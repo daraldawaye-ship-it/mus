@@ -1,3 +1,4 @@
+import {accountLedgerStartLimit,applyAccountLedgerStartLimit} from "../../../../packages/contracts/src/account-ledger-date-policy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Link,
@@ -1753,8 +1754,10 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const today = todayInAdenForLedger();
-  // A missing date defaults to today; an explicitly cleared field stays empty.
-  const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
+  const startLimit = pledge ? undefined : accountLedgerStartLimit(companyId,!!user?.owner);
+  // The owner retains the existing today/default and optional clearing.
+  const requestedFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : startLimit ?? today;
+  const dateFrom = applyAccountLedgerStartLimit(requestedFrom,startLimit);
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
   const accountId = Number(params.get("accountId")) || 0;
@@ -1817,7 +1820,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
     setPreparePrint(false);
     setParams((previous) => {
       const next = new URLSearchParams(previous);
-      next.set(key, value);
+      next.set(key, key==="dateFrom" ? applyAccountLedgerStartLimit(value,startLimit) : value);
       next.delete("page");
       return next;
     });
@@ -1978,6 +1981,9 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           <DateField
             label="من تاريخ"
             value={dateFrom}
+            min={startLimit}
+            required={!!startLimit}
+            restoreInvalidOnBlur={!!startLimit}
             onCommit={(value) => commitDate("dateFrom", value)}
           />
           <DateField

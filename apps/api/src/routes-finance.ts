@@ -18,6 +18,7 @@ import {
   type AccountLedgerLine,
   type User,
 } from "../../../packages/contracts/src/index.ts";
+import {accountLedgerStartLimit,applyAccountLedgerStartLimit} from "../../../packages/contracts/src/account-ledger-date-policy.ts";
 import type { JournalLine } from "../../../packages/contracts/src/journal-lines.ts";
 import { transaction } from "./db.ts";
 import { canOperateAdministrativeCustody } from "../../../packages/contracts/src/pages.ts";
@@ -58,7 +59,7 @@ import { conflict, masterPage, mutateMaster } from "./services/masters.ts";
 async function readFinance<T>(
   pool: Pool,
   req: Request,
-  action: (client: PoolClient, companyId: number) => Promise<T>,
+  action: (client: PoolClient, companyId: number, user: User) => Promise<T>,
   allowAccountRead = false,
 ): Promise<T> {
   const companyId = id(req.params.companyId);
@@ -74,7 +75,7 @@ async function readFinance<T>(
         throw error;
       await companyAccess(client, user, companyId, "accounts.view");
     }
-    return action(client, companyId);
+    return action(client, companyId, user);
   });
 }
 const documentColumns = {
@@ -221,11 +222,12 @@ export async function postDraft(
   );
 }
 
-function dateFilters(req: Request): { from: string | null; to: string | null } {
-  const from =
+function dateFilters(req: Request, startLimit?: string): { from: string | null; to: string | null } {
+  const requestedFrom =
     req.query.dateFrom === undefined || req.query.dateFrom === ""
       ? null
       : parse(documentDateSchema, req.query.dateFrom);
+  const from = applyAccountLedgerStartLimit(requestedFrom,startLimit);
   const to =
     req.query.dateTo === undefined || req.query.dateTo === ""
       ? null
@@ -242,6 +244,7 @@ export async function readAccountLedger(
   accountId: number,
   req: Request,
   mode: "account" | "cashbox" | "administrativeCustody" = "account",
+  startLimit?: string,
 ) {
   const ownCashbox = mode !== "account";
   const account = await client.query(
@@ -250,7 +253,7 @@ export async function readAccountLedger(
   );
   if (!account.rowCount)
     missing("الحساب الحركي غير موجود في هذه الشركة");
-  const dates = dateFilters(req);
+  const dates = dateFilters(req,startLimit);
   if (ownCashbox) {
     const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
     const date = (key: string) => parts.find(part => part.type === key)?.value ?? "";
@@ -1138,12 +1141,14 @@ export function financeRoutes(pool: Pool): Router {
     `${base}/account-ledger`,
     handler(async (req, res) => {
       res.json(
-        await readFinance(pool, req, (client, companyId) =>
+        await readFinance(pool, req, (client, companyId, user) =>
           readAccountLedger(
             client,
             companyId,
             id(typeof req.query.accountId === "string" ? req.query.accountId : undefined),
             req,
+            "account",
+            accountLedgerStartLimit(companyId,user.owner),
           ),
         ),
       );
