@@ -108,16 +108,9 @@ export function taskRoutes(pool:Pool):Router {
    const user=await currentActor(client,actor(req),false);
    const directory=await directoryEntries(client,user,null);
    assertDirectoryAccess(directory.find(p=>p.key==="public.tasks")!);
-   const companies=(await client.query(`
-    SELECT c.id,c.name FROM companies c WHERE $1::boolean OR EXISTS(
-      SELECT 1 FROM employees e WHERE e.company_id=c.id AND e.user_id=$2 AND e.active
-    ) ORDER BY c.id LIMIT 100`,[user.owner,user.id])).rows;
-   const output=[];
-   for(const company of companies){
-    const tasks=await companyTasks(client,user,company.id,false);
-    output.push(...tasks.map(task=>({...task,companyName:company.name})));
-   }
-   return output;
+   // Site tasks and company tasks are separate scopes. The current task
+   // definitions use company records and have no site-wide counterpart.
+   return [];
   });
   res.json({items});
  }));

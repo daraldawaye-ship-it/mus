@@ -131,17 +131,19 @@ export function AutomaticTasksPage({context}:{context?:CompanyContext}) {
   !search||[task.name,task.description,task.companyName??""].join(" ").toLocaleLowerCase("ar")
    .includes(search.trim().toLocaleLowerCase("ar"))),[list.data,search]);
  return <>
-  <PageHeader title="المهام الآلية" description="تظهر المهام من سجلات العمل تلقائيًا؛ لا تُضاف مهام يدويًا."/>
+  <PageHeader title="المهام الآلية" description={companyId?
+   "المهام المولدة من سجلات هذه الشركة.":
+   "مهام الموقع فقط. تظهر مهام كل شركة داخل صفحتها."}/>
   <Card>
    <div className="form-actions" style={{flexWrap:"wrap"}}>
-    <label>بحث في المهام <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="اسم المهمة أو الشركة"/></label>
+    <label>بحث في المهام <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="اسم المهمة"/></label>
     {context?.general&&<label><input type="checkbox" checked={all} onChange={e=>setAll(e.target.checked)}/> عرض جميع التعريفات حتى غير المطلوبة</label>}
     <Button variant="secondary" size="compact" onClick={()=>void client.invalidateQueries({queryKey:["automatic-tasks"]})}>تحديث</Button>
    </div>
   </Card>
   {list.isLoading&&<Notice>جارٍ تحميل المهام…</Notice>}
   {list.error&&<Notice tone="error">{(list.error as Error).message}</Notice>}
-  {!list.isLoading&&!list.error&&!tasks.length&&<Notice>لا توجد مهام مطلوبة حاليًا.</Notice>}
+  {!list.isLoading&&!list.error&&!tasks.length&&<Notice>{companyId?"لا توجد مهام مطلوبة حاليًا.":"لا توجد مهام آلية للموقع حاليًا."}</Notice>}
   {tasks.map(task=><TaskRow key={`${task.companyId}:${task.key}`} task={task}
    employees={members.data?.items.filter(e=>e.active)??[]}
    onSaved={()=>void client.invalidateQueries({queryKey:["automatic-tasks"]})}/>)}
