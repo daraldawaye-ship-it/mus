@@ -69,6 +69,11 @@ export async function requestPermissionTargets(
         ? "create"
         : "edit";
   if (!resource) return action === "view" ? [] : [["company.settings:edit"]];
+  if (resource === "journal-lines" && action === "view")
+    return [
+      pagePermissionAliases("company.journals", "view"),
+      pagePermissionAliases("company.journal-lines", "view"),
+    ];
   if (resource === "account-statistics-report")
     return [
       pagePermissionAliases("company.accounts", "view"),

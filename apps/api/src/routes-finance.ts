@@ -18,6 +18,7 @@ import {
   type AccountLedgerLine,
   type User,
 } from "../../../packages/contracts/src/index.ts";
+import type { JournalLine } from "../../../packages/contracts/src/journal-lines.ts";
 import { transaction } from "./db.ts";
 import { canOperateAdministrativeCustody } from "../../../packages/contracts/src/pages.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
@@ -475,6 +476,53 @@ export function financeRoutes(pool: Pool): Router {
         );
       }, req.query.type === "accounts");
       res.json(result);
+    }),
+  );
+  router.get(
+    `${base}/journal-lines`,
+    handler(async (req, res) => {
+      res.set("Cache-Control", "private, no-store");
+      res.json(await readFinance(pool, req, async (client, companyId) => {
+        const accountName = "COALESCE(l.account_name,a.name)";
+        const accountCode = "COALESCE(l.account_code,a.code)";
+        const query = listQuery(req.query, {
+          id: "l.id", number: "d.number", documentDate: "d.document_date",
+          accountName, accountCode, debit: "l.debit", credit: "l.credit",
+        }, "documentDate:desc,number:desc,id:asc");
+        const dates = dateFilters(req);
+        const params: unknown[] = [companyId];
+        let where = "d.company_id=$1 AND d.kind='journal'";
+        if (dates.from) { params.push(dates.from); where += ` AND d.document_date >= $${params.length}::date`; }
+        if (dates.to) { params.push(dates.to); where += ` AND d.document_date <= $${params.length}::date`; }
+        if (req.query.status !== undefined) {
+          const status = parse(z.enum(documentStatuses), req.query.status);
+          params.push(status); where += ` AND d.status=$${params.length}`;
+        }
+        if (query.q) {
+          params.push(searchPattern(query.q));
+          const val = `$${params.length}`;
+          where += ` AND (d.number ILIKE ${val} OR d.description ILIKE ${val} OR l.description ILIKE ${val}
+            OR ${accountName} ILIKE ${val} OR ${accountCode} ILIKE ${val})`;
+        }
+        // Use the same document date as the journal list and original detail.
+        // The account-ledger correction date is a different reporting field.
+        const lines = `FROM financial_documents d
+          JOIN financial_document_lines l ON (l.company_id,l.document_id)=(d.company_id,d.id)`;
+        const accountJoin = "JOIN accounts a ON (a.company_id,a.id)=(l.company_id,l.account_id)";
+        const from = `${lines} ${accountJoin}
+          JOIN company_currencies c ON (c.company_id,c.id)=(d.company_id,d.currency_id)
+          WHERE ${where}`;
+        const count = await client.query<{total: number}>(
+          `SELECT count(*)::integer AS total ${lines} ${query.q ? accountJoin : ""} WHERE ${where}`, params,
+        );
+        const rows = await client.query<JournalLine>(`SELECT l.id,d.id AS "documentId",l.line_number AS "lineNumber",
+          d.number,d.document_date::text AS "documentDate",d.status,l.account_id AS "accountId",
+          ${accountCode} AS "accountCode",${accountName} AS "accountName",
+          l.debit::text,l.credit::text,COALESCE(d.currency_code,c.code) AS "currencyCode",l.description
+          ${from} ORDER BY ${query.order} LIMIT $${params.length+1} OFFSET $${params.length+2}`,
+          [...params,query.pageSize,query.offset]);
+        return { items: rows.rows, total: count.rows[0].total, page: query.page, pageSize: query.pageSize };
+      }));
     }),
   );
   router.get(

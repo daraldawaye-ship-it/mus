@@ -176,10 +176,12 @@ export function Field({
   );
 }
 
-export function DateField({ label, value, onCommit }: {
+export function DateField({ label, value, onCommit, required, disabled }: {
   label: string;
   value: string;
   onCommit?: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -189,7 +191,7 @@ export function DateField({ label, value, onCommit }: {
   }, [value]);
 
   const commit = (input: HTMLInputElement) => {
-    if (input.validity.valid && input.value !== value) onCommit?.(input.value);
+    if (!disabled && input.validity.valid && input.value !== value) onCommit?.(input.value);
   };
 
   return (
@@ -200,6 +202,8 @@ export function DateField({ label, value, onCommit }: {
         type="date"
         min="0001-01-01"
         max="9999-12-31"
+        required={required}
+        disabled={disabled}
         defaultValue={value}
         onBlur={(event) => commit(event.currentTarget)}
         onKeyDown={(event) => {

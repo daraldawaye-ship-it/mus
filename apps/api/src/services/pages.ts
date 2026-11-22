@@ -547,6 +547,8 @@ export async function requestPageKeys(
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (resource === "journal-lines")
+    keys.push("company.journal-lines", "company.journals", "company.financial-documents");
   // Sales header custody button has its own permission, not custody-page access.
   if (rest === "sales/administrative-custody-transfers" ||
       rest === "sales/administrative-custody-transfer-access")

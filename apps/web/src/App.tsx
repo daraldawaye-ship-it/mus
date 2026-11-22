@@ -234,6 +234,7 @@ const LocationsPage = lazy(() =>
     default: module.LocationsPage,
   })),
 );
+const JournalLinesPage = lazy(() => import("./pages/JournalLinesPage"));
 const FinancialDocumentsPage = lazy(() =>
   import("./pages/FinancePages").then((module) => ({
     default: module.FinancialDocumentsPage,
@@ -410,6 +411,7 @@ const companySections = [
   "financial-documents",
   "financial-document",
   "journals",
+  "journal-lines",
   "receipts",
   "payments",
   "account-balances",
@@ -558,6 +560,7 @@ function Navigation({
     "company.purchase-line-movements": <TableProperties size={17} />,
     "company.financial-documents": <FileText size={17} />,
     "company.journals": <BookOpen size={17} />,
+    "company.journal-lines": <BookOpen size={17} />,
     "company.receipts": <HandCoins size={17} />,
     "company.payments": <Wallet size={17} />,
     "company.account-balances": <Landmark size={17} />,
@@ -1048,6 +1051,8 @@ function CompanyContent({
           />
         </Suspense>
       );
+    case "journal-lines":
+      return <Suspense fallback={<Notice>جارٍ تحميل القيود بالسطور…</Notice>}><JournalLinesPage key={context.company.id} context={context} /></Suspense>;
     case "financial-documents":
     case "journals":
     case "receipts":

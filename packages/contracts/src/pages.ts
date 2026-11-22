@@ -972,6 +972,15 @@ page(
   { parentKey: "company.financial-documents" },
 );
 page(
+  "company.journal-lines",
+  "القيود بالسطور",
+  "المحاسبة",
+  "/companies/:companyId/journal-lines",
+  { view: financial.view },
+  "سطر مستقل لكل حساب في القيد، مع الرجوع إلى أصل القيد.",
+  { parentKey: "company.journals", type: "report" },
+);
+page(
   "company.receipts",
   "سندات القبض",
   "المحاسبة",

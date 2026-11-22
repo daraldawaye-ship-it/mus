@@ -159,6 +159,7 @@ function DocumentList({
   kind?: FinancialDocumentKind;
 }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
   if (kind) filters.set("kind", kind);
@@ -235,8 +236,22 @@ function DocumentList({
         ),
       },
     ],
-    [companyId],
+    [companyId, kind],
   );
+  const journalColumns = useMemo<InteractiveTableColumn<FinancialDocument>[]>(() => [
+    { key: "number", label: "الرقم", width: 155, cell: row => <Link to={documentPath(companyId, row.id)}>{row.number}</Link> },
+    { key: "documentDate", label: "التاريخ", width: 120, cell: row => row.documentDate },
+    { key: "kind", label: "النوع", width: 110, cell: row => documentKindLabels[row.kind] },
+    { key: "status", label: "الحالة", width: 100, cell: row => <span className={`financial-status financial-status-${row.status}`}>{documentStatusLabels[row.status]}</span> },
+    { key: "currencyCode", label: "العملة", width: 85, sortable: false, cell: row => row.currencyCode },
+    { key: "totalDebit", label: "المبلغ", width: 160, cell: row => money(row.totalDebit) },
+    { key: "description", label: "البيان", width: 230, sortable: false, cell: row => <ValueCell>{row.description || "—"}</ValueCell> },
+    { key: "createdByName", label: "المنشئ", width: 145, sortable: false, cell: row => row.createdByName },
+    { key: "actions", label: "فتح", width: 75, sortable: false, cell: row => <Link to={documentPath(companyId, row.id)}>عرض</Link> },
+  ], [companyId]);
+  const journalSort = list.sorting[0];
+  const total = list.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / list.pageSize));
   return (
     <>
       <PageHeader
@@ -293,6 +308,12 @@ function DocumentList({
               </option>
             ))}
           </Select>
+          {kind === "journal" ? <>
+            <DateField label="من تاريخ" value={params.get("dateFrom") ?? ""}
+              onCommit={value => updateFilter(setParams, "dateFrom", value)} />
+            <DateField label="إلى تاريخ" value={params.get("dateTo") ?? ""}
+              onCommit={value => updateFilter(setParams, "dateTo", value)} />
+          </> : <>
           <Field
             label="من تاريخ"
             type="date"
@@ -309,6 +330,7 @@ function DocumentList({
               updateFilter(setParams, "dateTo", event.target.value)
             }
           />
+          </>}
         </div>
         {list.error && (
           <Notice tone="error">
@@ -318,7 +340,31 @@ function DocumentList({
             </Button>
           </Notice>
         )}
-        <DataTable
+        {kind === "journal" ? <>
+          <InteractiveColumnsTable
+            columns={journalColumns}
+            rows={list.data?.items ?? []}
+            rowKey={row => row.id}
+            visibleColumns={journalColumns.map(column => column.key)}
+            allowColumnVisibility
+            storageKey={`alraesy:d13:journals:${companyId}:${user?.id ?? "guest"}`}
+            sortKey={journalSort?.id}
+            sortDirection={journalSort?.desc ? "desc" : "asc"}
+            onSort={key => list.setSorting([{ id: key, desc: journalSort?.id === key ? !journalSort.desc : false }])}
+            ariaLabel={listTitles.journal}
+            emptyMessage={list.loading ? "جارٍ التحميل…" : "لا توجد نتائج."}
+          />
+          <div className="table-filters">
+            <label>حجم الصفحة <select value={list.pageSize} onChange={event => list.setPageSize(Number(event.target.value))}>
+              {[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+            </select></label>
+            <small>إجمالي القيود: {total} · الصفحة {list.page} من {totalPages}</small>
+            <Button type="button" size="compact" variant="secondary" disabled={list.page <= 1}
+              onClick={() => list.setPage(list.page - 1)}>السابق</Button>
+            <Button type="button" size="compact" variant="secondary" disabled={list.page >= totalPages}
+              onClick={() => list.setPage(list.page + 1)}>التالي</Button>
+          </div>
+        </> : <DataTable
           columns={columns}
           data={list.data?.items ?? []}
           total={list.data?.total ?? 0}
@@ -330,7 +376,7 @@ function DocumentList({
           onSortingChange={list.setSorting}
           loading={list.loading}
           ariaLabel={kind ? listTitles[kind] : "العمليات المالية"}
-        />
+        />}
       </Card>
     </>
   );
@@ -884,7 +930,11 @@ function DocumentEditor({
 
   // These shared controls appear in the compact cashbox modal and in the full
   // editor. Only their placement changes; voucher validation and posting do not.
-  const dateControl = (
+  const dateControl = kind === "journal" ? (
+    <DateField label="تاريخ المستند" value={documentDate} required
+      disabled={!canEdit || saving || !allowDateEdit}
+      onCommit={value => { touch(); setDate(value); }} />
+  ) : (
     <Field
       label="تاريخ المستند"
       type="date"
@@ -1426,14 +1476,15 @@ function DocumentEditor({
               ينشأ قيد معاكس بالمبالغ وسعر الصرف المثبتين، مع الاحتفاظ بالمستند
               الأصلي.
             </p>
-            <Field
+            {kind === "journal" ? <DateField label="تاريخ القيد العكسي" value={reverseDate} required
+              disabled={saving} onCommit={setReverseDate} /> : <Field
               label="تاريخ القيد العكسي"
               type="date"
               value={reverseDate}
               required
               disabled={saving}
               onChange={(event) => setReverseDate(event.target.value)}
-            />
+            />}
             <Field
               label="سبب العكس"
               value={reverseReason}
