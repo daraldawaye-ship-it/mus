@@ -72,11 +72,9 @@ const draftExclusionSchema = z.object({
   excludedItemIds: z.array(z.number().int().min(1).max(2147483647)).max(50000),
 }).strict();
 
-async function filteredItems(
+export async function assertItemOptionsListReadAccess(
   client: PoolClient, user: ReturnType<typeof actor>, companyId: number,
-  options: Options, unselectedForDraft = false, excludedDraftItemIds: number[] = [],
-  includeSharedSelectionsForDraft = false,
-) {
+): Promise<void> {
   const entries = await directoryEntries(client, user, companyId);
   const visible = (key: string) => {
     const entry = entries.find(page => page.key === key);
@@ -88,6 +86,14 @@ async function filteredItems(
       || !await canReadItemCoverage(client, user, companyId))
     throw new HttpError(403, "item_filter_denied",
       "تتطلب قائمة الأصناف صلاحيات الأصناف والمبيعات والمشتريات والمخزون والكفاية");
+}
+
+async function filteredItems(
+  client: PoolClient, user: ReturnType<typeof actor>, companyId: number,
+  options: Options, unselectedForDraft = false, excludedDraftItemIds: number[] = [],
+  includeSharedSelectionsForDraft = false,
+) {
+  await assertItemOptionsListReadAccess(client, user, companyId);
 
   // Monthly sales data is cached and maintained on invoice posting.
   await assertItemSaleRankingsReady(client);

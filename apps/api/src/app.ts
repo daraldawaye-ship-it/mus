@@ -20,6 +20,7 @@ import { businessRoutes } from "./business-routes.ts";
 import { systemMonitorRoutes } from "./routes-system-monitor.ts";
 import { ownerSqlConsoleRoutes } from "./routes-owner-sql.ts";
 import { ownerAdministrativeNotesRoutes } from "./routes-owner-administrative-notes.ts";
+import { tableColumnDefaultsRoutes } from "./routes-table-column-defaults.ts";
 import { callOwnerSqlMcp } from "./services/owner-sql-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
@@ -150,6 +151,7 @@ export async function createApp(options: AppOptions = {}) {
     monitor,
     ownerSqlConsoleRoutes(pool,marketOptions),
     ownerAdministrativeNotesRoutes(pool),
+    tableColumnDefaultsRoutes(pool),
     business,
     pledgeRoutes(pool),
   );

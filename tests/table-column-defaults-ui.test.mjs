@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+import { transform } from "esbuild";
+const load = rel => readFile(new URL(`../${rel}`,import.meta.url),"utf8");
+test("both D13 pilots only apply known columns without blocking initial rows or overwriting personal choices", async () => {
+  const contract=await load("packages/contracts/src/table-column-defaults.ts");
+  const zod=import.meta.resolve("zod");
+  const {code}=await transform(contract,{loader:"ts",format:"esm"});
+  const scope=await import("data:text/javascript;base64,"+Buffer.from(code.replace('"zod"',JSON.stringify(zod))).toString("base64"));
+  assert.deepEqual(scope.tableColumnDefaultIds,["item-options-list","journal-lines"]);
+  const good={id:"name",width:185,visible:true,color:"#112233"};
+  const others={...good,id:"reserve",visible:false,color:null};
+  assert.equal(scope.tableColumnDefaultsInputSchema.safeParse({columns:[good,others],expectedRevision:0}).success,true);
+  for(const wrong of [{...good,width:47},{...good,width:641},{...good,color:"url(http://x)"},{...good,id:"other weird!"}])
+    assert.equal(scope.tableColumnDefaultsInputSchema.safeParse({columns:[wrong],expectedRevision:0}).success,false);
+  assert.equal(scope.tableColumnDefaultsInputSchema.safeParse({columns:[good,good],expectedRevision:0}).success,false);
+  assert.deepEqual(scope.usableColumnDefaults(["reserve"],[good,others,others]),[others]);
+  const item=await load("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const itemKeys=[...item.match(/const tableColumnOptions = (.*) as const;/)[1].matchAll(/\["([^"]+)","([^"]+)"\]/g)].map(m=>m[1]);
+  assert.deepEqual(itemKeys,scope.tableColumnDefaultsCatalog["item-options-list"].columnIds);
+  const journal=await load("apps/web/src/pages/JournalLinesPage.tsx");
+  assert.deepEqual([...journal.matchAll(/key:"([^"]+)",label:"([^"]+)",width:(\d+)/g)].map(m=>m[1]),scope.tableColumnDefaultsCatalog["journal-lines"].columnIds);
+  assert.match(item,/visibleOverride \?\? /);
+  assert.match(item,/setVisibleColumns\(restoredColumns\)/);
+  assert.match(journal,/rows=\{data\?\.items\?\?\[\]\}/);
+  const table=await load("apps/web/src/InteractiveColumnsTable.tsx");
+  assert.match(table,/hiddenOverride \?\? usableDefaults/);
+  assert.match(table,/readLayout\(columnsRef\.current, storageKey, sharedDefaults\)/);
+  assert.match(table,/localOverride\.current\) return/);
+  assert.match(table,/const scope = JSON\.stringify\(\[props\.storageKey, props\.columns\.map/);
+});
+test("company settings mount locally with a revision and no guest/preview editor", async ()=>{
+  const p=await load("apps/web/src/pages/TableColumnDefaultsPage.tsx");
+  assert.match(p,/!!user\?\.owner && !employeePreview && !visitorOnly/);
+  assert.match(p,/expectedRevision:revision/);
+  assert.match(p,/key=\{\x60\$\{companyId\}:\$\{user.id\}:\$\{tableId\}\x60\}/);
+  const hook=await load("apps/web/src/table-column-defaults.ts");
+  assert.match(hook,/\["table-column-defaults", user\?\.id, companyId, tableId\]/);
+  assert.match(hook,/enabled: !!user && enabled/);
+});
+
+test("slow or unavailable settings fall back independently, and a stored layout wins", async ()=>{
+  const item=await load("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const journal=await load("apps/web/src/pages/JournalLinesPage.tsx");
+  assert.match(item,/savedDefaults = \(defaults.isError \? undefined : defaults.data\?\.columns\) \?\? noTableColumnDefaults/);
+  assert.match(item,/result\.rows/);
+  assert.doesNotMatch(item,/defaults\.is(Pending|Loading)\s*\)\s*return/);
+  assert.match(journal,/savedDefaults=\(defaults.isError\?undefined:defaults.data\?\.columns\)\?\?noTableColumnDefaults/);
+  assert.doesNotMatch(journal,/defaults\.is(Pending|Loading)\s*\)\s*return/);
+  assert.doesNotMatch(await load("apps/web/src/App.tsx"),/useTableColumnDefaults|tableDefaultsPath/);
+  const hook=await load("apps/web/src/table-column-defaults.ts");
+  assert.match(hook,/staleTime: 60_000/);
+  assert.match(hook,/refetchOnWindowFocus: false/);
+  const shared=await load("apps/web/src/InteractiveColumnsTable.tsx");
+  const helpers=shared.slice(shared.indexOf("const MIN_WIDTH"),shared.indexOf("/** A scope change"));
+  const fake = `const usableColumnDefaults=(keys,shared)=>shared.filter(row=>keys.includes(row.id));
+    const window={localStorage:{getItem:()=>settings}};${helpers}
+    export const resolve=(columns,defaults)=>readLayout(columns,"test",defaults);
+    export let settings=null;export function set(value){settings=value;}`;
+  const {code}=await transform(fake,{loader:"ts",format:"esm"});
+  const candidate=await import("data:text/javascript;base64,"+Buffer.from(code).toString("base64"));
+  const columns=[{key:"one",width:185},{key:"two",width:80}];
+  const response=[{id:"two",width:90,visible:false,color:null},{id:"one",width:100,visible:true,color:null}];
+  assert.deepEqual(candidate.resolve(columns,[]),{order:["one","two"],widths:{one:185,two:80}});
+  assert.deepEqual(candidate.resolve(columns,response),{order:["two","one"],widths:{one:100,two:90}});
+  candidate.set(JSON.stringify({order:["one","two"],widths:{one:220,two:110}}));
+  assert.deepEqual(candidate.resolve(columns,response),{order:["one","two"],widths:{one:220,two:110}});
+  assert.match(shared,/hiddenOverride \?\? usableDefaults/);
+});

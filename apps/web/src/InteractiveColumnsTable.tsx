@@ -4,6 +4,7 @@ import {useDockTableUpdate} from "./DockTableContext";
 import {isDockRowClick} from "./dock-row-interaction";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./InteractiveColumnsTable.css";
+import { usableColumnDefaults, type TableColumnDefault } from "../../../packages/contracts/src/table-column-defaults";
 
 export type InteractiveTableColumn<Row, Key extends string = string> = {
   key: Key; label: string; width: number; cell: (row: Row) => ReactNode;
@@ -15,6 +16,7 @@ type Props<Row, Key extends string> = {
   sortKey?: string; sortDirection?: "asc" | "desc"; onSort?: (key: Key) => void;
   rowClassName?: (row: Row) => string | undefined; onRowClick?: (row: Row) => void;
   ariaLabel: string; emptyMessage?: string; className?: string;
+  sharedDefaults?: readonly TableColumnDefault[];
   dockRowSource?:(row:Row)=>unknown; renderRowDetails?:(row:Row)=>ReactNode; allowColumnVisibility?:boolean;
 };
 type Layout<Key extends string> = { order: Key[]; widths: Record<Key, number> };
@@ -28,12 +30,15 @@ const MIN_WIDTH = 48, MAX_WIDTH = 640;
 const boundedWidth = (value: number) => Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(value)));
 const sameOrder = <Key extends string>(a: readonly Key[], b: readonly Key[]) => a.length === b.length && a.every((key, index) => key === b[index]);
 
-function defaultLayout<Row, Key extends string>(columns: readonly InteractiveTableColumn<Row, Key>[]): Layout<Key> {
-  return { order: columns.map(column => column.key), widths: Object.fromEntries(columns.map(column => [column.key, boundedWidth(column.width)])) as Record<Key, number> };
+function defaultLayout<Row, Key extends string>(columns: readonly InteractiveTableColumn<Row, Key>[], shared?: readonly TableColumnDefault[]): Layout<Key> {
+  const keys = columns.map(column => column.key);
+  const usable = usableColumnDefaults(keys, shared ?? []);
+  const configured = new Map(usable.map(column => [column.id, column.width]));
+  return { order: [...configured.keys(), ...keys.filter(key => !configured.has(key))], widths: Object.fromEntries(columns.map(column => [column.key, boundedWidth(configured.get(column.key) ?? column.width)])) as Record<Key, number> };
 }
 
-function readLayout<Row, Key extends string>(columns: readonly InteractiveTableColumn<Row, Key>[], storageKey: string): Layout<Key> {
-  const fallback = defaultLayout(columns);
+function readLayout<Row, Key extends string>(columns: readonly InteractiveTableColumn<Row, Key>[], storageKey: string, shared?: readonly TableColumnDefault[]): Layout<Key> {
+  const fallback = defaultLayout(columns, shared);
   if (typeof window === "undefined") return fallback;
   try {
     const saved: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
@@ -61,15 +66,19 @@ export default function InteractiveColumnsTable<Row, Key extends string = string
 
 function InteractiveColumnsTableState<Row, Key extends string>({
   columns, rows, rowKey, visibleColumns:availableColumns, storageKey, sortKey, sortDirection, onSort,
-  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className, dockRowSource,renderRowDetails,allowColumnVisibility,
+  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className, dockRowSource,renderRowDetails,allowColumnVisibility,sharedDefaults,
 }: Props<Row, Key>) {
   const updateDock=useDockTableUpdate();
-  const [hidden,setHidden]=useState<Key[]>(()=>{
+  const [hiddenOverride,setHidden]=useState<Key[] | null>(()=>{
     try{
-      const saved:unknown=JSON.parse(window.localStorage.getItem(storageKey+":hidden")??"[]");
-      return Array.isArray(saved)?columns.map(column=>column.key).filter(key=>saved.includes(key)):[];
-    }catch{return [];}
+      const saved:unknown=JSON.parse(window.localStorage.getItem(storageKey+":hidden")??"null");
+      return Array.isArray(saved)?columns.map(column=>column.key).filter(key=>saved.includes(key)):null;
+    }catch{return null;}
   });
+  const usableDefaults = usableColumnDefaults(columns.map(column => column.key), sharedDefaults ?? []);
+  const hidden = hiddenOverride ?? usableDefaults.filter(column => !column.visible).map(column => column.id);
+  const mutedColors = new Map(usableDefaults.filter(column => column.color).map(column => [column.id, column.color]));
+  const tint = (key: Key) => { const color=mutedColors.get(key); return color ? `color-mix(in srgb, ${color} 16%, var(--surface))` : undefined; };
   const effective=allowColumnVisibility?availableColumns.filter(key=>!hidden.includes(key)):availableColumns;
   const visibleColumns=effective.length?effective:availableColumns;
   const toggleVisibility=(key:Key)=>{
@@ -78,7 +87,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
     setHidden(next);
     try{window.localStorage.setItem(storageKey+":hidden",JSON.stringify(next));}catch{/* optional */}
   };
-  const [layout, setLayout] = useState(() => readLayout(columns, storageKey));
+  const [layout, setLayout] = useState(() => readLayout(columns, storageKey, sharedDefaults));
   const [resizing, setResizing] = useState<Key | null>(null);
   const [preview, setPreview] = useState<Preview<Key> | null>(null);
   const [message, setMessage] = useState("");
@@ -88,10 +97,19 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   const drag = useRef<Drag<Key> | null>(null), resize = useRef<Resize<Key> | null>(null);
   const animation = useRef(0), suppressClick = useRef(false);
   const helpId = useId();
+  // Server defaults are a late, optional preference. Never remount row editors.
+  const localOverride = useRef<Layout<Key> | null>(null);
+  useEffect(() => {
+    if (drag.current || resize.current || localOverride.current) return;
+    const next = readLayout(columnsRef.current, storageKey, sharedDefaults);
+    layoutRef.current = next;
+    setLayout(next);
+  }, [sharedDefaults, storageKey, resizing, preview !== null]);
   layoutRef.current = layout; visibleRef.current = visibleColumns; columnsRef.current = columns;
   const label = (key: Key) => columnsRef.current.find(column => column.key === key)?.label ?? key;
 
   function save(next: Layout<Key>) {
+    localOverride.current = next;
     try { window.localStorage.setItem(storageKey, JSON.stringify(next)); }
     catch { /* Storage restrictions do not block table interaction. */ }
   }
@@ -273,7 +291,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   const shown = layout.order.filter(key => visibleColumns.includes(key));
   const lastVisible = shown[shown.length - 1];
   const tableWidth = shown.reduce((sum, key) => sum + layout.widths[key], 0);
-  const defaults = defaultLayout(columns);
+  const defaults = defaultLayout(columns, sharedDefaults);
   const isDefault = sameOrder(layout.order, defaults.order) && columns.every(column => layout.widths[column.key] === defaults.widths[column.key]);
   return <div className={`interactive-columns-table${preview ? " is-moving-column" : ""}${resizing ? " is-resizing-column" : ""}${className ? ` ${className}` : ""}`} dir="rtl">
     <div className="interactive-columns-toolbar">
@@ -286,13 +304,22 @@ function InteractiveColumnsTableState<Row, Key extends string>({
               onChange={()=>toggleVisibility(column.key)} />
             {column.label}
           </label>)}
+        {sharedDefaults !== undefined && hiddenOverride !== null && <button type="button"
+          className="button button-secondary interactive-columns-reset" onClick={() => {
+            setHidden(null);
+            try { window.localStorage.removeItem(storageKey+":hidden"); } catch {/* optional */}
+          }}>إظهار أعمدة الشركة الافتراضية</button>}
       </details>}
       <details className="interactive-columns-help"><summary>طريقة تحريك الأعمدة</summary>
         <p id={helpId}>اسحب عنوان العمود لتغيير ترتيبه، أو الفاصل الأيسر لتغيير عرضه. انقر العنوان للفرز، واسحب النص الطويل داخل الخلية لقراءة بقيته. تُحفظ العروض والترتيب على هذا الجهاز.</p>
         <p>بلوحة المفاتيح: <bdi>Alt + ← / →</bdi> على العنوان لنقله، والأسهم على الفاصل لتغيير العرض. <bdi>Esc</bdi> يلغي السحب الجاري.</p>
       </details>
       <button type="button" className="button button-secondary interactive-columns-reset" disabled={isDefault} onClick={() => {
-        finishDrag(true); finishResize(true); layoutRef.current = defaults; setLayout(defaults); save(defaults);
+        finishDrag(true); finishResize(true); layoutRef.current = defaults; setLayout(defaults);
+        if (sharedDefaults !== undefined) {
+          localOverride.current = null;
+          try { window.localStorage.removeItem(storageKey); } catch {/* optional */}
+        } else save(defaults);
         if (viewport.current) viewport.current.scrollLeft = 0;
         setMessage("أُعيد ترتيب الأعمدة وعروضها الأصلية.");
       }}><RotateCcw size={12} aria-hidden="true" />إعادة ترتيب وعرض الأعمدة</button>
@@ -304,7 +331,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
           <thead><tr>{shown.map(key => {
             const column = columnMap.get(key)!;
             const sortable = !!column.sortable && !!onSort;
-            return <th key={key} scope="col" data-column={key} data-last-visible={key === lastVisible ? "true" : undefined} className={`${column.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}
+            return <th key={key} scope="col" style={{ backgroundColor: tint(key) }} data-column={key} data-last-visible={key === lastVisible ? "true" : undefined} className={`${column.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}
               aria-sort={sortable ? (sortKey === key ? (sortDirection === "asc" ? "ascending" : "descending") : "none") : undefined}>
               <button type="button" className="interactive-column-handle" data-narrow={layout.widths[key] < 80 ? "true" : undefined}
                 ref={node => { if (node) handles.current.set(key, node); else handles.current.delete(key); }}
@@ -342,7 +369,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
             }}>
             {/* Keep hidden editors mounted so an in-flight debounced edit is not cancelled. */}
             {layout.order.map(key => <td key={key} data-column={key} data-last-visible={key === lastVisible ? "true" : undefined}
-              style={visibleColumns.includes(key) ? undefined : { display: "none" }}
+              style={visibleColumns.includes(key) ? { borderInlineStartColor: mutedColors.get(key) ?? undefined } : { display: "none" }}
               className={`${columnMap.get(key)?.className ?? ""}${preview?.key === key ? " interactive-column-source" : ""}`}>{item.cells.get(key)}</td>)}
           </tr>{details!=null&&<tr className="interactive-column-row-details"><td colSpan={Math.max(1,shown.length)}>{details}</td></tr>}</Fragment>;
           })}{!rows.length && <tr><td colSpan={Math.max(1, shown.length)}>{emptyMessage}</td></tr>}</tbody>

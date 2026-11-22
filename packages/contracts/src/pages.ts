@@ -988,6 +988,15 @@ page(
   { parentKey: "company.financial-documents" },
 );
 page(
+  "company.table-column-defaults",
+  "إعدادات أعمدة الصفحات",
+  "إدارة الشركة",
+  "/companies/:companyId/table-column-defaults",
+  { view: owner, edit: owner },
+  "ضبط ترتيب الأعمدة وعرضها ولونها وإظهارها افتراضيًا في الجداول المدعومة.",
+  { type: "form" },
+);
+page(
   "company.journal-lines",
   "القيود بالسطور",
   "المحاسبة",

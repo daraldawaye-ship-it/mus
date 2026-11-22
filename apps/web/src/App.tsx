@@ -236,6 +236,7 @@ const LocationsPage = lazy(() =>
     default: module.LocationsPage,
   })),
 );
+const TableColumnDefaultsPage = lazy(() => import("./pages/TableColumnDefaultsPage"));
 const JournalLinesPage = lazy(() => import("./pages/JournalLinesPage"));
 const FinancialDocumentsPage = lazy(() =>
   import("./pages/FinancePages").then((module) => ({
@@ -414,6 +415,7 @@ const companySections = [
   "financial-document",
   "journals",
   "journal-lines",
+  "table-column-defaults",
   "expected-cards",
   "expected-movements",
   "receipts",
@@ -1057,6 +1059,9 @@ function CompanyContent({
           />
         </Suspense>
       );
+    case "table-column-defaults":
+      if (!user?.owner) return <Notice tone="warning">هذه الصفحة لمالك المنصة فقط.</Notice>;
+      return <Suspense fallback={<Notice>جارٍ تحميل إعدادات الأعمدة…</Notice>}><TableColumnDefaultsPage key={context.company.id} context={context} /></Suspense>;
     case "journal-lines":
       return <Suspense fallback={<Notice>جارٍ تحميل القيود بالسطور…</Notice>}><JournalLinesPage key={context.company.id} context={context} /></Suspense>;
     case "expected-cards":

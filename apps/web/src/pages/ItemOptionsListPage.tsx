@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { noTableColumnDefaults, useTableColumnDefaults } from "../table-column-defaults";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import "./ItemOptionsListLayout.css";
 import { useDockTableUpdate } from "../DockTableContext";
@@ -252,8 +253,8 @@ const tableColumnWidths: Record<TableColumn, number> = {
   adjustmentQtySinceApproval: 92,
   adjustmentValueSinceApproval: 105,
 };
-function readVisibleTableColumns(key: string): TableColumn[] {
-  if (typeof window === "undefined") return defaultVisibleTableColumns;
+function readVisibleTableColumns(key: string): TableColumn[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const current = window.localStorage.getItem(key);
     const prior = (version: number) =>
@@ -267,9 +268,9 @@ function readVisibleTableColumns(key: string): TableColumn[] {
         if (saved !== null) { raw = saved; priorVersion = version; break; }
       }
     }
-    if (!raw) return defaultVisibleTableColumns;
+    if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return defaultVisibleTableColumns;
+    if (!Array.isArray(parsed)) return null;
     const legacy = priorVersion === 1;
     const oldBeforePlanning = priorVersion !== null && priorVersion < 4;
     const valid = allTableColumns.filter(id => parsed.includes(id)
@@ -279,9 +280,9 @@ function readVisibleTableColumns(key: string): TableColumn[] {
       || (priorVersion !== null && priorVersion < 5 && id === "compositionCoverage")
       || (priorVersion !== null && priorVersion < 6 &&
           marketOrderColumns.includes(id as typeof marketOrderColumns[number])));
-    if (!valid.length) return defaultVisibleTableColumns;
+    if (!valid.length) return null;
     return valid;
-  } catch { return defaultVisibleTableColumns; }
+  } catch { return null; }
 }
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -298,13 +299,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [actionMessage, setActionMessage] = useState("");
   const columnsStorageKey = `alraesy:item-options-columns:v8:${companyId}:${user?.id ?? "guest"}`;
   const columnLayoutStorageKey = `alraesy:item-options-table-layout:v1:${companyId}:${user?.id ?? "guest"}`;
-  const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
-  const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
+  const [visibleOverride, setVisibleColumns] = useState<TableColumn[] | null>(() => readVisibleTableColumns(columnsStorageKey));
+  const [editingColumns, setEditingColumns] = useState<TableColumn[]>(() => visibleOverride ?? defaultVisibleTableColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const [purchaseNoteDialog, setPurchaseNoteDialog] = useState<{ name: string; notes: string } | null>(null);
   const directory = usePageDirectory(companyId);
   const itemListPage = directory.data?.find(row => row.key === "company.item-options-list");
   const canView = !!itemListPage?.enabled && !!itemListPage.actionAccess.view;
+  const defaults = useTableColumnDefaults(companyId, "item-options-list", canView);
+  const savedDefaults = (defaults.isError ? undefined : defaults.data?.columns) ?? noTableColumnDefaults;
+  const defaultById = new Map(savedDefaults?.map(column => [column.id, column.visible]));
+  const preferred = allTableColumns.filter(id => defaultById.get(id) ?? defaultVisibleTableColumns.includes(id));
+  const visibleColumns = visibleOverride ?? (preferred.length ? preferred : defaultVisibleTableColumns);
   const canEditReserve = !!itemListPage?.enabled && !!itemListPage.actionAccess.edit;
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
@@ -349,7 +355,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   useEffect(() => {
     const next = readVisibleTableColumns(columnsStorageKey);
     setVisibleColumns(next);
-    setEditingColumns(next);
+    setEditingColumns(next ?? defaultVisibleTableColumns);
     setColumnsDialogOpen(false);
   }, [columnsStorageKey]);
   const hiddenColumnStyle = (column: string) =>
@@ -363,6 +369,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setVisibleColumns(editingColumns);
     try { window.localStorage.setItem(columnsStorageKey, JSON.stringify(editingColumns)); }
     catch { /* Private mode may disable local storage. */ }
+    setColumnsDialogOpen(false);
+  };
+
+  const restoreSharedVisibility = () => {
+    setVisibleColumns(null);
+    try { window.localStorage.setItem(columnsStorageKey, "null"); }
+    catch { /* Optional storage. */ }
     setColumnsDialogOpen(false);
   };
 
@@ -1297,6 +1310,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           {!editingColumns.length && <Notice tone="warning">اختر عمودًا واحدًا على الأقل.</Notice>}
           <div className="form-actions">
             <Button variant="secondary" onClick={() => setEditingColumns([...allTableColumns])}>إظهار الكل</Button>
+            {visibleOverride && <Button variant="secondary" onClick={restoreSharedVisibility}>افتراضي الشركة</Button>}
             <Button variant="secondary" onClick={() => setColumnsDialogOpen(false)}>إلغاء</Button>
             <Button disabled={!editingColumns.length} onClick={applyColumns}>موافق</Button>
           </div>
@@ -1440,7 +1454,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           className="item-options-desktop-table"
           ariaLabel="نتائج الأصناف حسب الخيارات"
           columns={columns} rows={result.rows} rowKey={row => row.itemId}
-          visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey}
+          visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey} sharedDefaults={savedDefaults}
           sortKey={activeSort} sortDirection={activeDirection}
           onSort={column => {
             const option = sortOptions.find(([key]) => key === column);

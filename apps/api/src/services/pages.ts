@@ -238,6 +238,7 @@ export async function directoryEntries(
         definition.scope === "company" ? local.get(definition.key) : undefined;
     const own = companyId ? localSetting : globalSetting;
     const isEnabled = enabled(definition.key);
+    const canSeeColumnSettings = definition.key !== "company.table-column-defaults" || user.owner;
     return {
       ...definition,
       id: definition.key,
@@ -245,6 +246,7 @@ export async function directoryEntries(
       href: pageHref(definition, companyId),
       order: own?.sort_order ?? globalSetting?.sort_order ?? definition.order,
       visible:
+        canSeeColumnSettings &&
         (globalSetting?.visible ?? definition.visible) &&
         (localSetting?.visible ?? true),
       enabled: isEnabled,
@@ -255,6 +257,7 @@ export async function directoryEntries(
       configuredEnabled: own?.enabled ?? true,
       revision: own?.revision ?? null,
       canConfigure:
+        canSeeColumnSettings &&
         !definition.critical &&
         (companyId
           ? definition.scope === "company" &&
@@ -266,6 +269,7 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
+            canSeeColumnSettings &&
             !!definition.actions[action] &&
             (definition.scope !== "company" ||
               centralPageAllows(centralPolicies, definition.key, action,
@@ -552,7 +556,7 @@ export async function requestPageKeys(
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
-  if (resource === "journal-lines")
+  if (resource === "journal-lines" || rest === "table-column-defaults/journal-lines")
     keys.push("company.journal-lines", "company.journals", "company.financial-documents");
   // Sales header custody button has its own permission, not custody-page access.
   if (rest === "sales/administrative-custody-transfers" ||

@@ -69,11 +69,16 @@ export async function requestPermissionTargets(
         ? "create"
         : "edit";
   if (!resource) return action === "view" ? [] : [["company.settings:edit"]];
-  if (resource === "journal-lines" && action === "view")
+  if ((resource === "journal-lines" ||
+    (resource === "table-column-defaults" && detail === "journal-lines" && segments.length === 2)) &&
+    action === "view")
     return [
       pagePermissionAliases("company.journals", "view"),
       pagePermissionAliases("company.journal-lines", "view"),
     ];
+  if (resource === "table-column-defaults" && detail === "item-options-list" &&
+      segments.length === 2 && action === "view")
+    return [pagePermissionAliases("company.item-options-list", "view")];
   if (resource === "account-statistics-report")
     return [
       pagePermissionAliases("company.accounts", "view"),

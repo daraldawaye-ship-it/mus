@@ -3,6 +3,7 @@ import { documentStatusLabels, documentStatuses, type CompanyContext } from "../
 import type { JournalLine } from "../../../../packages/contracts/src/journal-lines";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { usePagedQuery, useSession } from "../api";
+import { noTableColumnDefaults, useTableColumnDefaults } from "../table-column-defaults";
 import { formatMoney } from "../format-money";
 import { errorMessage } from "../phase2";
 import { Button, Card, DateField, Field, Notice, PageHeader, Select } from "../ui";
@@ -16,6 +17,8 @@ const postedDateTime = new Intl.DateTimeFormat("en-GB", {
 export default function JournalLinesPage({ context }: {context:CompanyContext}) {
   const companyId = context.company.id;
   const {user}=useSession();
+  const defaults=useTableColumnDefaults(companyId,"journal-lines",true);
+  const savedDefaults=(defaults.isError?undefined:defaults.data?.columns)??noTableColumnDefaults;
   const [params,setParams]=useSearchParams();
   const filters=new URLSearchParams();
   for(const key of ["dateFrom","dateTo","status"]){
@@ -69,7 +72,7 @@ export default function JournalLinesPage({ context }: {context:CompanyContext}) 
       </div>
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
       <InteractiveColumnsTable columns={columns} rows={data?.items??[]} rowKey={row=>row.id}
-        visibleColumns={columns.map(column=>column.key)} allowColumnVisibility
+        visibleColumns={columns.map(column=>column.key)} allowColumnVisibility sharedDefaults={savedDefaults}
         storageKey={`alraesy:d13:journal-lines:${companyId}:${user?.id??"guest"}`}
         sortKey={sort?.id} sortDirection={sort?.desc?"desc":"asc"}
         onSort={key=>list.setSorting([{id:key,desc:sort?.id===key?!sort.desc:false}])}
