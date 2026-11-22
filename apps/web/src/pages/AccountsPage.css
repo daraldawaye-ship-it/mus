@@ -1,18 +1,6 @@
-/* Accounts list: two thirds for the directory, one third for a selected account. */
-.accounts-split-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-.accounts-split-layout > * { min-width: 0; }
-.accounts-split-layout > .card { min-width: 0; }
-.accounts-detail-pane {
-  min-width: 0;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
-  overscroll-behavior: contain;
-}
+/* Accounts directory uses the full available width. */
+.accounts-directory-layout,
+.accounts-directory-layout > .card { min-width: 0; }
 .accounts-name-actions {
   display: inline-flex;
   flex-direction: row;
@@ -40,22 +28,6 @@
   line-height: 1;
 }
 .accounts-action-select:focus-visible { outline: 2px solid var(--accent, #7eb9ff); outline-offset: 1px; }
-.accounts-pane-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.accounts-pane-heading strong { overflow-wrap: anywhere; }
-.accounts-pane-close {
-  border: 1px solid var(--border, #526477);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  padding: 4px 9px;
-  cursor: pointer;
-}
 .accounts-ledger-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .accounts-ledger-totals { display: grid; gap: 5px; margin: 12px 0; font-size: .9em; }
 .accounts-ledger-scroll { max-width: 100%; overflow-x: auto; }
@@ -64,21 +36,15 @@
 .accounts-ledger-table th { white-space: nowrap; }
 .accounts-ledger-pager { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 10px; }
 .accounts-ledger-full { display: inline-block; margin-top: 12px; }
-@media (max-width: 900px) {
-  .accounts-split-layout { grid-template-columns: minmax(0, 1fr); }
-  .accounts-detail-pane { max-height: none; overflow: visible; }
-  .accounts-detail-pane:empty { display: none; }
-}
-
-/* Compact editable settings within the two-thirds-wide accounts directory. */
-.accounts-split-layout .table-scroll .account-inline-select {
+/* Compact editable settings in the accounts directory. */
+.accounts-directory-layout .table-scroll .account-inline-select {
   width: 100%;
   min-width: 0;
   height: 28px;
   padding: 1px 2px;
   font-size: 11px;
 }
-.accounts-split-layout .table-scroll .account-inline-active {
+.accounts-directory-layout .table-scroll .account-inline-active {
   min-width: 0;
   padding-inline: 1px;
 }
