@@ -121,14 +121,29 @@
 .work-panel-tools .work-panel-item-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
+  align-items: center;
+  gap: 4px;
   width: 100%;
 }
-.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger { flex: 0 0 auto; }
+.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger {
+  flex: 0 0 auto;
+  min-width: 30px;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 3px;
+  gap: 1px;
+}
+.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger svg {
+  width: 12px;
+  height: 12px;
+}
 .work-panel-tools .work-panel-item-options > .design-press-key {
-  min-width: 0;
+  min-width: 24px;
   max-width: 100%;
-  padding-inline: 6px;
+  min-height: 24px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.15;
   white-space: normal;
   overflow-wrap: anywhere;
 }
