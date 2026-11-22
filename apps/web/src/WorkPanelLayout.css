@@ -33,6 +33,17 @@
   min-height: 0;
   min-width: 0;
   overflow: visible;
+  --work-panel-divider: var(--focus, currentColor);
+}
+/* A theme-colored boundary, painted without taking space from either pane. */
+.resizable-work-panel-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 4px;
+  background: var(--work-panel-divider);
+  pointer-events: none;
+  z-index: 1;
 }
 .resizable-work-panel-content {
   height: 100%;
@@ -252,6 +263,8 @@
 .resizable-work-panel-expand { width: 100%; height: 100%; }
 .resizable-work-panel-grip {
   position: absolute;
+  z-index: 2;
+  border-color: var(--work-panel-divider);
   right: 0;
   top: 50%;
   transform: translateY(-50%);
@@ -286,6 +299,11 @@
     align-self: stretch;
     border-right: 0;
     border-top: 1px solid var(--border);
+  }
+  .resizable-work-panel-frame::before {
+    inset: 0 0 auto;
+    width: auto;
+    height: 4px;
   }
   .resizable-work-panel-content { padding: 7px 12px; }
   .resizable-work-panel-grip {
