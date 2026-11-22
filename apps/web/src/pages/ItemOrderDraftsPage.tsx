@@ -8,6 +8,8 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index.ts
 import type { ItemOptionsPresetGroup } from "../../../../packages/contracts/src/item-options-presets.ts";
 import { normalizeDigits } from "../../../../packages/contracts/src/masters.ts";
 import { api, useSession } from "../api";
+import { useDockTableUpdate } from "../DockTableContext";
+import { isDockRowClick } from "../dock-row-interaction";
 import { errorMessage } from "../phase2";
 import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
@@ -148,6 +150,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [classificationFilters,setClassificationFilters]=useState<Set<DraftClassificationFilter>>(
     ()=>new Set(draftClassificationFilters.map(option=>option.value)));
   const [page, setPage] = useState(1);
+  const updateDock=useDockTableUpdate();
   const [mobileD13,setMobileD13]=useState(false);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -845,7 +848,11 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           return <article className={"item-order-drafts-mobile-card" +
             (row.item.deleted ? " item-order-draft-deleted" : "") +
             (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
-            key={row.draftId + ":" + row.item.id}>
+            key={row.draftId + ":" + row.item.id}
+            onClick={event=>{
+              if(updateDock&&isDockRowClick(event,".item-order-drafts-mobile-card"))
+                updateDock({companyId,itemId:row.item.id,itemName:row.item.name});
+            }}>
             <div className="item-order-drafts-mobile-top">
               <input type="checkbox" style={columnStyle("select")} aria-label={"اختيار " + row.item.name}
                 disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}

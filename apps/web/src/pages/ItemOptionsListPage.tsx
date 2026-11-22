@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import "./ItemOptionsListLayout.css";
+import { useDockTableUpdate } from "../DockTableContext";
+import { isDockRowClick } from "../dock-row-interaction";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -284,6 +286,7 @@ function readVisibleTableColumns(key: string): TableColumn[] {
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const updateDock = useDockTableUpdate();
   const temporarySelection = useSharedItemSelection(companyId, user?.id);
   const temporaryOrder = useNumberedOrderDrafts(companyId, user?.id);
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
@@ -849,6 +852,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {fullText ? notes : short}
     </button>;
   }
+  const dockItemSource = (row: Row) => ({ companyId, itemId: row.itemId, itemName: row.name });
   function rememberItem(row: Row) {
     if (user) rememberRecentEntity(user.id, companyId, "item",
       { id: row.itemId, name: row.name });
@@ -1322,7 +1326,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {result && <>
         <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
           {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`}
-            role="listitem" onClick={() => rememberItem(row)}>
+            role="listitem" onClick={event => {
+              if (!isDockRowClick(event, ".item-options-mobile-entry")) return;
+              rememberItem(row);
+              updateDock?.(dockItemSource(row));
+            }}>
             <div className="item-options-mobile-heading">
               <span className="company-item-label" style={hiddenColumnStyle("name")}>{row.name}</span>
               {!row.active && <span style={hiddenColumnStyle("name")} className="item-options-mobile-inactive"> (مؤرشف)</span>}
@@ -1440,6 +1448,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           }}
           rowClassName={row => selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}
           onRowClick={rememberItem}
+          dockRowSource={dockItemSource}
           emptyMessage="لا توجد أصناف تطابق الخيارات الحالية."
         />
       </>}

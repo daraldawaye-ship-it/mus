@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ArrowDownUp, GripVertical, RotateCcw } from "lucide-react";
 import {useDockTableUpdate} from "./DockTableContext";
-import {dockInteractiveSelector} from "./dock-table-references";
+import {isDockRowClick} from "./dock-row-interaction";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./InteractiveColumnsTable.css";
 
@@ -336,14 +336,8 @@ function InteractiveColumnsTableState<Row, Key extends string>({
           <tbody>{renderedRows.map(item => {
             const details=renderRowDetails?.(item.row);
             return <Fragment key={item.key}><tr className={item.className} onClick={event=>{
-              if(updateDock&&dockRowSource&&!event.defaultPrevented&&event.detail===1&&
-                  !event.altKey&&!event.ctrlKey&&!event.shiftKey&&!event.metaKey){
-                const target=event.target as HTMLElement;
-                const selection=target.ownerDocument.getSelection();
-                if(target.closest("tr")===event.currentTarget&&!target.closest(dockInteractiveSelector)&&
-                   (!selection||selection.isCollapsed||!selection.containsNode(event.currentTarget,true)))
-                  updateDock(dockRowSource(item.row));
-              }
+              if(updateDock&&dockRowSource&&isDockRowClick(event,"tr"))
+                updateDock(dockRowSource(item.row));
               onRowClick?.(item.row);
             }}>
             {/* Keep hidden editors mounted so an in-flight debounced edit is not cancelled. */}
