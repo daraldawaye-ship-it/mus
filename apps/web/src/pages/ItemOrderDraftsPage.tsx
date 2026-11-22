@@ -538,7 +538,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   }
   const planningControls = (row: DraftRow, info: DraftMetrics | undefined) =>
     <OrderPlanningFields companyId={companyId} itemId={row.item.id} itemName={row.item.name}
-      info={info} canEdit={canEditPlanning} />;
+      info={info} canEdit={canEditPlanning} includeThreeDayStop />;
   const togglePlanning = (id: number) => setExpandedItemId(current => current === id ? null : id);
   const moreButton = (row: DraftRow) =>
     <button type="button" className="item-order-draft-expand-button"

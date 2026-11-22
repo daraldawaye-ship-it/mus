@@ -9,8 +9,8 @@ export type PlanningInfo = {
   minOrderQuantity: string; orderAlertQuantity: string | null; orderStoppedUntil: string | null;
 };
 
-export function OrderPlanningFields({ companyId, itemId, itemName, info, canEdit }: {
-  companyId: number; itemId: number; itemName: string; info?: PlanningInfo; canEdit: boolean;
+export function OrderPlanningFields({ companyId, itemId, itemName, info, canEdit, includeThreeDayStop = false }: {
+  companyId: number; itemId: number; itemName: string; info?: PlanningInfo; canEdit: boolean; includeThreeDayStop?: boolean;
 }) {
   return (
     <div className="item-order-draft-extra-fields">
@@ -54,7 +54,8 @@ export function OrderPlanningFields({ companyId, itemId, itemName, info, canEdit
         <strong>إيقاف طلب الصنف</strong>
         {info ? <ItemOrderStopQuickActions companyId={companyId}
           itemId={itemId} itemName={itemName} revision={info.revision}
-          orderStoppedUntil={info.orderStoppedUntil} canEdit={canEdit} />
+          orderStoppedUntil={info.orderStoppedUntil} canEdit={canEdit}
+          includeThreeDays={includeThreeDayStop} />
           : <small>جارٍ تحميل بيانات الصنف…</small>}
       </div>
       {!canEdit && <small className="muted">

@@ -167,12 +167,14 @@ const PERIODS = [
   { key:"one-year", label:"إيقاف سنة", description:"سنة" },
   { key:"four-months", label:"إيقاف 4 أشهر", description:"4 أشهر" },
 ] as const;
+const THREE_DAY_PERIOD = { key:"three-days", label:"إيقاف 3 أيام", description:"3 أيام" } as const;
+type OrderStopPeriod = typeof PERIODS[number] | typeof THREE_DAY_PERIOD;
 
 export function ItemOrderStopQuickActions({
-  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit,
+  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false,
 }: {
   companyId:number; itemId:number; itemName:string; revision:number;
-  orderStoppedUntil:string|null; canEdit:boolean;
+  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean;
 }) {
   const queryClient = useQueryClient();
   const currentRevision = useRef(revision);
@@ -182,7 +184,7 @@ export function ItemOrderStopQuickActions({
   useEffect(() => { if (revision >= currentRevision.current) currentRevision.current = revision; },
     [revision,itemId]);
 
-  async function stop(period: typeof PERIODS[number]) {
+  async function stop(period: OrderStopPeriod) {
     if (!canEdit || busy) return;
     const confirmed = window.confirm(
       "هل تؤكد إيقاف طلب الصنف «" + itemName + "» لمدة " + period.description +
@@ -214,7 +216,7 @@ export function ItemOrderStopQuickActions({
   }
   return <div className="item-order-draft-stop-actions">
     <div className="item-order-draft-stop-buttons">
-      {PERIODS.map(period =>
+      {(includeThreeDays ? [...PERIODS, THREE_DAY_PERIOD] : PERIODS).map(period =>
         <button key={period.key} type="button" className="button button-secondary"
           disabled={!canEdit || busy} onClick={() => void stop(period)}>
           {period.label}

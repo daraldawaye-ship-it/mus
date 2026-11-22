@@ -97,9 +97,13 @@ test("special-item threshold notification ignores stopped order dates; only NULL
   assert.match(routes,/orderAlertQuantity: itemOrderAlertQuantitySchema/);
   assert.match(routes,/order_alert_quantity=\$3::numeric/);
   assert.match(routes,/items\/:itemId\/order-stop-period/);
-  assert.match(routes,/period: z\.enum\(\["ten-years","one-year","four-months"\]\)/);
+  assert.match(routes,/period: z\.enum\(\["ten-years","one-year","four-months","three-days"\]\)/);
   assert.match(routes,/input\.period === "ten-years" \? 120/);
-  assert.match(routes,/input\.period === "one-year" \? 12 : 4/);
+  assert.match(routes,/input\.period === "one-year" \? 12/);
+  assert.match(routes,/input\.period === "four-months" \? 4 : 0/);
+  assert.match(routes,/input\.period === "three-days" \? 3 : 0/);
+  assert.match(routes,/make_interval\(months => \$3::integer, days => \$5::integer\)/);
+  assert.match(routes,/\[companyId,itemId,months,input\.revision,days\]/);
   assert.match(routes,/order_stopped_until=/);
   assert.match(routes,/AT TIME ZONE 'Asia\/Aden'/);
   assert.match(routes,/assertDirectoryAccess\(listPage,"edit"\)/);

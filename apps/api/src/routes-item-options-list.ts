@@ -1233,10 +1233,12 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const itemId = id(req.params.itemId);
     const input = parse(z.object({
       revision: z.number().int().positive(),
-      period: z.enum(["ten-years","one-year","four-months"]),
+      period: z.enum(["ten-years","one-year","four-months","three-days"]),
     }).strict(), req.body);
     const months = input.period === "ten-years" ? 120
-      : input.period === "one-year" ? 12 : 4;
+      : input.period === "one-year" ? 12
+        : input.period === "four-months" ? 4 : 0;
+    const days = input.period === "three-days" ? 3 : 0;
     const result = await transaction(pool, async client => {
       const user = await currentActor(client,actor(req));
       await companyAccess(client,user,companyId,"items.view");
@@ -1254,11 +1256,11 @@ export function itemOptionsListRoutes(pool: Pool): Router {
       const updated = (await client.query<{revision:number;order_stopped_until:string}>(
         "UPDATE items SET order_stopped_until=" +
           " ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date" +
-          " + make_interval(months => $3::integer))::date," +
+          " + make_interval(months => $3::integer, days => $5::integer))::date," +
           " revision=revision+1, updated_at=clock_timestamp()" +
           " WHERE company_id=$1 AND id=$2 AND revision=$4" +
           " RETURNING revision,order_stopped_until::text",
-        [companyId,itemId,months,input.revision],
+        [companyId,itemId,months,input.revision,days],
       )).rows[0];
       if (!updated) throw new HttpError(409,"stale_item","تغيرت نسخة الصنف؛ حدّث القائمة.");
       await audit(client,user,"item.field.update","item",itemId,
