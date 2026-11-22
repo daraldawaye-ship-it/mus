@@ -20,6 +20,11 @@
 .expected-status-completed { color: #16834b; background: #16834b18; }
 .expected-pager { margin-block-start: 8px; }
 .expected-dialog { width: min(650px, calc(100vw - 24px)); }
+.expected-inline-trigger { min-width: 0; gap: 4px; }
+.expected-inline-trigger .doctor-inline-value { flex: 1; max-width: none; }
+.expected-inline-trigger:disabled { cursor: wait; }
+.expected-inline-editor { min-width: 0; max-width: none; width: 100%; min-height: 30px; }
+.expected-inline-editor[dir="ltr"] { direction: ltr; text-align: left; }
 @media (max-width: 540px) {
   .expected-form-grid { grid-template-columns: 1fr; gap: 9px; }
   .expected-card-details { grid-template-columns: 1fr; }

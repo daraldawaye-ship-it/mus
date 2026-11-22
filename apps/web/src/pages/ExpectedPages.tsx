@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Pencil } from "lucide-react";
+import "../doctor-inline-cells.css";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Account, CompanyContext } from "../../../../packages/contracts/src/index";
@@ -12,8 +14,8 @@ import {
 import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
-import { formatMoney } from "../format-money";
-import { NumericPadField } from "../NumericPadField";
+import { formatWholeMoney } from "../format-money";
+import { NumericPadField, numericPadDigits } from "../NumericPadField";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { Button, Card, DateField, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 import "./ExpectedPages.css";
@@ -38,7 +40,7 @@ const nowInAden = () => {
   const get = (type: string) => parts.find(part => part.type === type)!.value;
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
-const money = (value: string | null) => <bdi>{formatMoney(value)}</bdi>;
+const money = (value: string | null) => <bdi>{formatWholeMoney(value)}</bdi>;
 const scheduleText = (card: ExpectedCard) => {
   if (card.recurrence === "weekly") return `كل ${weekdays[card.weekday ?? 0]}`;
   if (card.recurrence === "monthly") return `يوم ${card.monthDay} من كل شهر`;
@@ -101,17 +103,17 @@ function ExpectedHelp() {
   </details>;
 }
 
-function Pager<T>({ list, label }: { list: ReturnType<typeof usePagedQuery<T>>; label: string }) {
+function Pager<T>({ list, label, disabled = false }: { list: ReturnType<typeof usePagedQuery<T>>; label: string; disabled?: boolean }) {
   const total = list.error ? 0 : list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / list.pageSize));
   return <div className="table-filters expected-pager">
-    <Select label="حجم الصفحة" value={list.pageSize} onChange={event => list.setPageSize(Number(event.target.value))}>
+    <Select label="حجم الصفحة" value={list.pageSize} disabled={disabled} onChange={event => list.setPageSize(Number(event.target.value))}>
       {[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
     </Select>
     <small>{label}: {total} · صفحة {list.page} من {pages}</small>
-    <Button type="button" size="compact" variant="secondary" disabled={list.page <= 1}
+    <Button type="button" size="compact" variant="secondary" disabled={disabled || list.page <= 1}
       onClick={() => list.setPage(list.page - 1)}>السابق</Button>
-    <Button type="button" size="compact" variant="secondary" disabled={list.page >= pages}
+    <Button type="button" size="compact" variant="secondary" disabled={disabled || list.page >= pages}
       onClick={() => list.setPage(list.page + 1)}>التالي</Button>
   </div>;
 }
@@ -341,7 +343,7 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
         <Button type="button" size="compact" variant="secondary" onClick={() => void refresh()} disabled={list.loading}>تحديث</Button>
       </div>
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
-      <InteractiveColumnsTable columns={columns} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
+      <InteractiveColumnsTable columns={columns.map(column => ({ ...column, sortable: column.sortable !== false }))} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
         visibleColumns={columns.map(column => column.key)} allowColumnVisibility
         storageKey={`alraesy:d13:expected-cards:${companyId}:${user?.id ?? "guest"}`}
         sortKey={sort?.id} sortDirection={sort?.desc ? "desc" : "asc"}
@@ -365,70 +367,20 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
   </div>;
 }
 
-function EditMovement({ movement, companyId, onClose, onSaved, onComplete, busy, completionError }: {
-  movement: ExpectedMovement; companyId: number; onClose: () => void;
-  onSaved: (movement: ExpectedMovement) => void; onComplete: (movement: ExpectedMovement) => Promise<void>; busy: boolean; completionError: string;
-}) {
-  const guard = useScopeGuard(`company:${companyId}:expected-movements:${movement.id}:edit`);
-  const [date, setDate] = useState(movement.date);
-  const [amount, setAmount] = useState(movement.amount);
-  const [description, setDescription] = useState(movement.description);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const inFlight = useRef(false);
-  const dirty = date !== movement.date || amount !== movement.amount || description !== movement.description;
-  const locked = saving || busy;
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (inFlight.current || busy) return;
-    const result = expectedMovementPatchSchema.safeParse({ revision: movement.revision, date, amount, description });
-    if (!result.success) {
-      setError(result.error.issues.map(issue => issue.message).join(" · "));
-      return;
-    }
-    setSaving(true); inFlight.current = true; setError("");
-    try {
-      const response = await api<{ movement: ExpectedMovement }>(`/companies/${companyId}/expected-movements/${movement.id}`, {
-        method: "PATCH", body: result.data, signal: guard.signal,
-      });
-      if (!guard.isCurrent()) return;
-      setDate(response.movement.date); setAmount(response.movement.amount); setDescription(response.movement.description);
-      onSaved(response.movement);
-    } catch (cause) {
-      if (!guard.isCurrent()) return;
-      setError(cause instanceof ApiFailure && cause.status === 409
-        ? `${errorMessage(cause)} أغلق النافذة وحدّث القائمة ثم افتح الحركة لمراجعة آخر تعديل.`
-        : errorMessage(cause));
-    } finally {
-      inFlight.current = false;
-      if (guard.isCurrent()) setSaving(false);
-    }
-  }
-  return <Dialog open title={`تعديل الحركة #${movement.id} — ${movement.accountName}`} onClose={() => { if (!locked) onClose(); }} className="expected-dialog">
-    <form onSubmit={save}>
-      <div className="expected-form-grid">
-        <DateField label="تاريخ الحركة" value={date} onCommit={setDate} required disabled={locked} />
-        <NumericPadField label="مبلغ الحركة" value={amount} onChange={setAmount} allowNegative allowDecimal allowEmpty
-          maxIntegerDigits={22} maxDecimals={6} disabled={locked} />
-        <Field label="بيان الحركة" className="expected-full" value={description} maxLength={2000}
-          onChange={event => setDescription(event.target.value)} disabled={locked} />
-      </div>
-      <details className="expected-help">
-        <summary>القيم الأصلية</summary>
-        <p>المبلغ: {money(movement.originalAmount)} {movement.currencyCode} · الموعد: <bdi>{dateText(movement.originalDate)}</bdi></p>
-        <p>البيان: {movement.originalDescription || "—"}</p>
-      </details>
-      {(error || completionError) && <Notice tone="error">{error || completionError}</Notice>}
-      <div className="form-actions">
-        <Button type="submit" size="compact" disabled={!dirty || locked}>{saving ? "جارٍ الحفظ…" : "حفظ التعديل"}</Button>
-        <Button type="button" size="compact" disabled={dirty || locked}
-          onClick={() => void onComplete(movement)}>إنجاز</Button>
-        <Button type="button" size="compact" variant="secondary" disabled={locked} onClick={onClose}>إغلاق</Button>
-      </div>
-      <small className="expected-note">حفظ التعديل يبقي الحركة «لم يتم». {dirty ? "احفظ التعديل أولًا ليُنجز بالمبلغ الجديد." : "الإنجاز يعتمد المبلغ المحفوظ في هذه الحركة."}</small>
-    </form>
-  </Dialog>;
-}
+type ExpectedInlineField = "date" | "amount" | "description";
+type ExpectedInlineEdit = {
+  movement: ExpectedMovement;
+  field: ExpectedInlineField;
+  initialText: string;
+  draft: string;
+  touched: boolean;
+  scope: string;
+};
+const inlineLabels: Record<ExpectedInlineField, string> = {
+  date: "تاريخ الحركة", amount: "مبلغ الحركة", description: "بيان الحركة",
+};
+const inlineInitialText = (movement: ExpectedMovement, field: ExpectedInlineField) =>
+  field === "amount" ? formatWholeMoney(movement.amount).replace(/,/g, "") : movement[field];
 
 export function ExpectedMovementsPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
@@ -443,13 +395,23 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   const page = directory.data?.find(entry => entry.key === "company.expected-movements");
   const canEdit = !!page?.enabled && !!page.actionAccess.edit;
   const canViewCards = !!directory.data?.find(entry => entry.key === "company.expected-cards" && entry.enabled)?.actionAccess.view;
-  const [editing, setEditing] = useState<ExpectedMovement | null>(null);
+  const [editing, setEditing] = useState<ExpectedInlineEdit | null>(null);
+  const editingRef = useRef<ExpectedInlineEdit | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [busyKind, setBusyKind] = useState<"save" | "complete" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
   const refresh = useExpectedRefresh(companyId);
   const guard = useScopeGuard(`company:${companyId}:expected-movements`);
+  const editScope = params.toString();
+  const editGuard = useScopeGuard(`company:${companyId}:expected-movements:edit:${editScope}`);
+  const currentEditScope = useRef(editScope);
+  currentEditScope.current = editScope;
+  useEffect(() => {
+    editingRef.current = null;
+    setEditing(null);
+  }, [editScope]);
   const filters = new URLSearchParams();
   for (const key of ["cardId", "accountId", "status", "dateFrom", "dateTo", "section"]) {
     if (params.get(key)) filters.set(key, params.get(key)!);
@@ -457,17 +419,30 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   const list = usePagedQuery<ExpectedMovement>(`/companies/${companyId}/expected-movements?${filters}`,
     `company:${companyId}:expected-movements`, "date:asc,id:asc");
   const setFilter = (key: string, value: string) => changeFilter(setParams, key, value);
+  useEffect(() => {
+    const edit = editingRef.current;
+    if (!edit || inFlight.current || list.loading || list.error || !list.data) return;
+    const current = list.data.items.find(movement => movement.id === edit.movement.id);
+    if (!current || current.status !== "pending" || current.revision !== edit.movement.revision) {
+      editingRef.current = null;
+      setEditing(null);
+      setError(!current ? "لم تعد الحركة ضمن النتائج الحالية؛ أُغلق حقل التعديل بعد تحديث القائمة."
+        : current.status !== "pending" ? "أصبحت الحركة منجزة؛ أُغلق حقل التعديل بعد تحديث القائمة."
+          : "تغيّرت الحركة أثناء التعديل؛ أُغلق المحرر لعرض آخر قيمة محفوظة. راجعها قبل تعديلها مجددًا.");
+    }
+    // A fresh revision closes the old draft; never transplant it into a write.
+  }, [list.data, list.loading, list.error, busy]);
 
   async function complete(movement: ExpectedMovement) {
-    if (!canEdit || inFlight.current || movement.status !== "pending") return;
-    inFlight.current = true; setBusy(movement.id); setError(""); setNotice("");
+    if (!canEdit || inFlight.current || editingRef.current || movement.status !== "pending") return;
+    inFlight.current = true; setBusy(movement.id); setBusyKind("complete"); setError(""); setNotice("");
     try {
       const response = await api<{ movement: ExpectedMovement }>(`/companies/${companyId}/expected-movements/${movement.id}/complete`, {
         method: "POST", body: { revision: movement.revision }, signal: guard.signal,
       });
       if (!guard.isCurrent()) return;
       setEditing(null);
-      setNotice(`أُنجزت حركة «${response.movement.accountName}» بمبلغ ${formatMoney(response.movement.completedAmount)}.`);
+      setNotice(`أُنجزت حركة «${response.movement.accountName}» بمبلغ ${formatWholeMoney(response.movement.completedAmount)}.`);
       void refresh();
     } catch (cause) {
       if (!guard.isCurrent()) return;
@@ -478,22 +453,117 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
       void list.refetch();
     } finally {
       inFlight.current = false;
-      if (guard.isCurrent()) setBusy(null);
+      if (guard.isCurrent()) { setBusy(null); setBusyKind(null); }
     }
   }
+  function cancelInline() {
+    // Clear the synchronous ref before unmount/blur can attempt a save.
+    editingRef.current = null;
+    setEditing(null);
+  }
+  function openInline(movement: ExpectedMovement, field: ExpectedInlineField) {
+    if (!canEdit || inFlight.current || editingRef.current || movement.status !== "pending") return;
+    const initialText = inlineInitialText(movement, field);
+    const edit = { movement: { ...movement }, field, initialText, draft: initialText, touched: false, scope: editScope };
+    editingRef.current = edit;
+    setEditing(edit);
+    setError(""); setNotice("");
+  }
+  async function saveInline(input: HTMLInputElement) {
+    const edit = editingRef.current;
+    if (!edit || inFlight.current || edit.scope !== currentEditScope.current || !canEdit) return;
+    const draft = edit.field === "amount" ? numericPadDigits(input.value).trim() : input.value;
+    // Opening a rounded amount, then leaving it untouched (or restoring its
+    // displayed value), must never round the exact amount stored on the server.
+    if (!edit.touched || draft === edit.initialText) { cancelInline(); return; }
+    if (!input.reportValidity()) return;
+    if (edit.field === "amount" && !/^-?\d{1,22}$/.test(draft)) {
+      setError("المبلغ عدد صحيح موجب أو سالب، دون كسور."); return;
+    }
+    const source = edit.movement;
+    const parsed = expectedMovementPatchSchema.safeParse({
+      revision: source.revision,
+      date: edit.field === "date" ? draft : source.date,
+      amount: edit.field === "amount" ? draft : source.amount,
+      description: edit.field === "description" ? draft : source.description,
+    });
+    if (!parsed.success) { setError(parsed.error.issues.map(issue => issue.message).join(" · ")); return; }
+    // Shared with completion: the ref changes before any await or re-render,
+    // so blur + Enter + a completion click cannot send overlapping mutations.
+    inFlight.current = true; setBusy(source.id); setBusyKind("save"); setError(""); setNotice("");
+    try {
+      await api<{ movement: ExpectedMovement }>(`/companies/${companyId}/expected-movements/${source.id}`, {
+        method: "PATCH", body: parsed.data, signal: editGuard.signal,
+      });
+      if (!editGuard.isCurrent()) return;
+      if (editingRef.current === edit) cancelInline();
+      setNotice(`حُفظ ${inlineLabels[edit.field]}، وحالة الحركة ما زالت «لم يتم».`);
+    } catch (cause) {
+      if (!editGuard.isCurrent()) return;
+      if (cause instanceof ApiFailure && cause.status === 409) {
+        cancelInline();
+        setError(`لم يُحفظ التعديل: ${errorMessage(cause)} أُعيد تحميل الحركة؛ راجع قيمتها الحالية قبل تعديلها مجددًا.`);
+      } else if (cause instanceof ApiFailure && cause.status >= 400 && cause.status < 500 && cause.status !== 408) {
+        setError(`لم يُحفظ ${inlineLabels[edit.field]}: ${errorMessage(cause)}`);
+      } else setError(`تعذّر تأكيد حفظ ${inlineLabels[edit.field]}: ${errorMessage(cause)} تُعاد قراءة القائمة للتحقق.`);
+    } finally {
+      try {
+        // Keep editing/completion locked until the refreshed row carries the
+        // newly saved revision. Also reconcile lost responses and view changes.
+        if (guard.isCurrent()) await refresh();
+      } catch {
+        // The list query exposes refresh errors; don't reissue the mutation.
+      } finally {
+        inFlight.current = false;
+        if (guard.isCurrent()) { setBusy(null); setBusyKind(null); }
+      }
+    }
+  }
+  function inlineCell(movement: ExpectedMovement, field: ExpectedInlineField) {
+    const shown = field === "amount" ? money(movement.amount)
+      : field === "date" ? <bdi>{dateText(movement.date)}</bdi> : movement.description || "—";
+    if (!canEdit || movement.status !== "pending") return shown;
+    const current = editing?.movement.id === movement.id && editing.field === field && editing.scope === editScope ? editing : null;
+    if (!current) return <button type="button" className="doctor-inline-trigger expected-inline-trigger"
+      title={`تعديل ${inlineLabels[field]} مباشرة`} aria-label={`تعديل ${inlineLabels[field]} — ${movement.accountName} — الحركة ${movement.id}`}
+      disabled={busy !== null} onClick={() => openInline(movement, field)}>
+      <span className="doctor-inline-value">{shown}</span><Pencil size={13} aria-hidden="true" className="doctor-inline-pencil" />
+    </button>;
+    return <input key={`${movement.id}:${field}:${editScope}`} autoFocus
+      className="doctor-inline-editor expected-inline-editor" aria-label={`${inlineLabels[field]} — الحركة ${movement.id}`}
+      type={field === "date" ? "date" : "text"} defaultValue={current.draft}
+      dir={field === "description" ? "rtl" : "ltr"} disabled={busy !== null}
+      required={field !== "description"} min={field === "date" ? "0001-01-01" : undefined}
+      max={field === "date" ? "9999-12-31" : undefined} maxLength={field === "description" ? 2000 : field === "amount" ? 23 : undefined}
+      pattern={field === "amount" ? "-?[0-9]{1,22}" : undefined}
+      onFocus={event => { if (field !== "date") event.currentTarget.select(); }}
+      onChange={event => {
+        const edit = editingRef.current;
+        if (!edit || edit !== current) return;
+        const value = field === "amount" ? numericPadDigits(event.currentTarget.value) : event.currentTarget.value;
+        if (field === "amount" && !/^-?\d{0,22}$/.test(value)) { event.currentTarget.value = edit.draft; return; }
+        if (field === "amount") event.currentTarget.value = value;
+        edit.draft = value;
+        edit.touched = true;
+      }}
+      onBlur={event => { void saveInline(event.currentTarget); }}
+      onKeyDown={event => {
+        if (event.key === "Escape") { event.preventDefault(); if (!inFlight.current) cancelInline(); }
+        else if (event.key === "Enter") { event.preventDefault(); void saveInline(event.currentTarget); }
+      }} />;
+  }
   const columns: InteractiveTableColumn<ExpectedMovement>[] = [
-    { key: "date", label: "تاريخ الحركة", width: 130, cell: row => <bdi>{dateText(row.date)}</bdi> },
+    { key: "date", label: "تاريخ الحركة", width: 145, scrollText: false, cell: row => inlineCell(row, "date") },
     { key: "accountName", label: "الحساب", width: 230, cell: row => row.accountName },
     { key: "section", label: "القسم", width: 155, cell: row => row.section || "—" },
-    { key: "amount", label: "مبلغ الحركة", width: 120, cell: row => money(row.amount) },
-    { key: "description", label: "بيان الحركة", width: 250, cell: row => row.description || "—" },
+    { key: "amount", label: "مبلغ الحركة", width: 120, scrollText: false, cell: row => inlineCell(row, "amount") },
+    { key: "description", label: "بيان الحركة", width: 250, scrollText: false, cell: row => inlineCell(row, "description") },
     { key: "postedByName", label: "رُحّل بواسطة", width: 140, cell: row => row.postedByName },
     { key: "postedAt", label: "وقت الترحيل — اليمن", width: 170, cell: row => <bdi>{dateTime.format(new Date(row.postedAt))}</bdi> },
     { key: "status", label: "الحالة", width: 90, cell: row => <span className={`expected-status expected-status-${row.status}`}>{row.status === "completed" ? "تم" : "لم يتم"}</span> },
     { key: "actions", label: "الإجراءات", width: 190, sortable: false, scrollText: false, cell: row => <div className="expected-row-actions">
       {canEdit && row.status === "pending" && <>
-        <Button type="button" size="compact" variant="secondary" disabled={busy !== null} onClick={() => { setError(""); setEditing(row); }}>تعديل</Button>
-        <Button type="button" size="compact" disabled={busy !== null} onClick={() => void complete(row)}>{busy === row.id ? "جارٍ الإنجاز…" : "إنجاز"}</Button>
+        <Button type="button" size="compact" disabled={busy !== null || editing !== null} onClick={() => void complete(row)}>{busy === row.id ? busyKind === "save" ? "جارٍ الحفظ…" : "جارٍ الإنجاز…" : "إنجاز"}</Button>
       </>}
       {canViewCards && <Link to={`/companies/${companyId}/expected-cards?cardId=${row.cardId}`}>الكرت</Link>}
     </div> },
@@ -516,38 +586,38 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
       actions={canViewCards && <Link to={`/companies/${companyId}/expected-cards`}>كروت المتوقع</Link>} />
     {notice && <Notice tone="success">{notice}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
+    {canEdit && <small className="expected-note">انقر مبلغ الحركة أو تاريخها أو بيانها للتعديل في السطر. يُحفظ عند الخروج من الحقل أو Enter، ويُلغي Escape التعديل.</small>}
     <Card>
       <div className="table-filters">
-        <Field type="search" label="بحث بالحساب أو البيان" value={list.query} onChange={event => list.setQuery(event.target.value)} />
+        <Field type="search" label="بحث بالحساب أو البيان" value={list.query} disabled={busy !== null} onChange={event => list.setQuery(event.target.value)} />
         <SectionField source="movements" companyId={companyId} value={params.get("section") ?? ""}
-          onChange={value => setFilter("section", value)} filter />
-        <Select label="الحالة" value={params.get("status") ?? ""} onChange={event => setFilter("status", event.target.value)}>
+          onChange={value => setFilter("section", value)} disabled={busy !== null} filter />
+        <Select label="الحالة" value={params.get("status") ?? ""} disabled={busy !== null} onChange={event => setFilter("status", event.target.value)}>
           <option value="">الكل</option><option value="pending">لم يتم</option><option value="completed">تم</option>
         </Select>
-        <DateField label="من تاريخ الحركة" value={params.get("dateFrom") ?? ""} onCommit={value => setFilter("dateFrom", value)} />
-        <DateField label="إلى تاريخ الحركة" value={params.get("dateTo") ?? ""} onCommit={value => setFilter("dateTo", value)} />
-        <Button type="button" size="compact" variant="secondary" onClick={() => void refresh()} disabled={list.loading}>تحديث</Button>
+        <DateField label="من تاريخ الحركة" value={params.get("dateFrom") ?? ""} disabled={busy !== null} onCommit={value => setFilter("dateFrom", value)} />
+        <DateField label="إلى تاريخ الحركة" value={params.get("dateTo") ?? ""} disabled={busy !== null} onCommit={value => setFilter("dateTo", value)} />
+        <Button type="button" size="compact" variant="secondary" onClick={() => void refresh()} disabled={list.loading || busy !== null}>تحديث</Button>
       </div>
       {(params.get("cardId") || params.get("accountId")) && <div className="expected-filter-note">
         <span>{params.get("cardId") ? `حركات الكرت #${params.get("cardId")}` : `حركات الحساب #${params.get("accountId")}`}</span>
-        <Button type="button" size="compact" variant="ghost" onClick={() => setParams(previous => {
+        <Button type="button" size="compact" variant="ghost" disabled={busy !== null} onClick={() => setParams(previous => {
           const next = new URLSearchParams(previous); next.delete("cardId"); next.delete("accountId"); next.delete("page"); return next;
         })}>عرض جميع الحركات</Button>
       </div>}
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
-      <InteractiveColumnsTable columns={columns} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
+      <InteractiveColumnsTable columns={columns.map(column => ({ ...column, sortable: column.sortable !== false }))} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
         visibleColumns={columns.map(column => column.key)} allowColumnVisibility
         storageKey={`alraesy:d13:expected-movements:${companyId}:${user?.id ?? "guest"}`}
         sortKey={sort?.id} sortDirection={sort?.desc ? "desc" : "asc"}
-        onSort={key => list.setSorting([{ id: key, desc: sort?.id === key ? !sort.desc : false }])}
+        onSort={key => {
+          if (editingRef.current || inFlight.current) { setError("احفظ تعديل الحقل بـ Enter أو ألغِه بـ Escape قبل تغيير الفرز."); return; }
+          list.setSorting([{ id: key, desc: sort?.id === key ? !sort.desc : false }]);
+        }}
         dockRowSource={row => ({ companyId, accountId: row.accountId, accountName: row.accountName })}
         ariaLabel="حركة المتوقع" emptyMessage={list.loading ? "جارٍ تحميل الحركات…" : list.error ? "تعذر عرض الحركات." : "لا توجد حركات مطابقة."} />
-      <Pager list={list} label="إجمالي الحركات" />
+      <Pager list={list} label="إجمالي الحركات" disabled={editing !== null || busy !== null} />
       <ExpectedHelp />
     </Card>
-    {editing && <EditMovement key={editing.id} movement={editing} companyId={companyId} busy={busy !== null} completionError={error}
-      onClose={() => setEditing(null)} onComplete={complete} onSaved={movement => {
-        setEditing(movement); setNotice("حُفظ تعديل الحركة، وحالتها ما زالت «لم يتم»."); void refresh();
-      }} />}
   </div>;
 }
