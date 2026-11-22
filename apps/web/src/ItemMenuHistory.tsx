@@ -53,19 +53,19 @@ function StaffWorkPanelMovementTable({rows,footer,purchaseOnly}:{
 }){
   return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
     aria-label={purchaseOnly?"جدول مشتريات الصنف":"جدول حركات بيع وشراء الصنف"}>
-    {!!rows.length&&<table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
+    {!!rows.length&&<table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table work-panel-movement-staff" dir="rtl">
       <thead><tr><th scope="col">النوع</th><th scope="col">الكمية</th><th scope="col">السعر</th><th scope="col">التاريخ</th></tr></thead>
       <tbody>{rows.map(row=>{
         const quantity=formatWorkPanelMovementQuantity(row.quantitySmallest,row.firstUnitMultiplier);
         return <tr key={row.id}>
-          <td><span className="work-panel-movement-kind" data-movement-kind={row.kind}>
+          <td><ScrollableTableCell><span className="work-panel-movement-kind" data-movement-kind={row.kind}>
             <span className="work-panel-movement-kind-dot" aria-hidden="true" />{workPanelMovementKindLabels[row.kind]}
-          </span></td>
+          </span></ScrollableTableCell></td>
           <td className="invoice-item-options-number" title={quantity.exact??"لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
-            <bdi data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
+            <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi></ScrollableTableCell>
           </td>
-          <td className="invoice-item-options-number" title={row.postedUnitPrice??undefined}><bdi>{formatWholeMoney(row.postedUnitPrice)}</bdi></td>
-          <td dir="ltr">{row.documentDate}</td>
+          <td className="invoice-item-options-number" title={row.postedUnitPrice??undefined}><ScrollableTableCell><bdi>{formatWholeMoney(row.postedUnitPrice)}</bdi></ScrollableTableCell></td>
+          <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
         </tr>;
       })}</tbody>
     </table>}
@@ -102,7 +102,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
           const money = (value: string | null | undefined, description: string) => (
             <td className="invoice-item-options-number"
               title={value != null ? `${description} ${value}` : description}>
-              <bdi>{formatWholeMoney(value)}</bdi>
+              <ScrollableTableCell><bdi>{formatWholeMoney(value)}</bdi></ScrollableTableCell>
             </td>
           );
           const reference = !row.invoiceId && row.operationId ? `عملية ${row.operationId}` : null;
@@ -112,16 +112,16 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
             <Fragment key={row.id}>
               <tr>
                 <td title={stockMovementKindLabels[row.kind]}>
-                  <span className="work-panel-movement-kind" data-movement-kind={row.kind}>
+                  <ScrollableTableCell><span className="work-panel-movement-kind" data-movement-kind={row.kind}>
                     <span className="work-panel-movement-kind-dot" aria-hidden="true" />
-                    <span className="work-panel-movement-kind-label">{workPanelMovementKindLabels[row.kind]}</span>
-                  </span>
+                    <span>{workPanelMovementKindLabels[row.kind]}</span>
+                  </span></ScrollableTableCell>
                 </td>
                 <td className="invoice-item-options-number" title={quantity.exact ?? "لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
-                  <bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>
+                  <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi></ScrollableTableCell>
                 </td>
                 {money(invoice?.postedUnitPrice, "سعر الوحدة حسب الفاتورة:")}
-                <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
+                <td title={row.documentDate}><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
                 {money(invoice?.invoiceNet, "صافي الفاتورة:")}
               </tr>
               <tr className="invoice-item-history-details-row">
