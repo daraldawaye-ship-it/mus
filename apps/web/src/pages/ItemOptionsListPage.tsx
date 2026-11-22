@@ -1449,11 +1449,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
         </div>
+      </>}
+      {/* Keep the visit layout, but never show stale rows or controls while the query changes. */}
+      <div hidden={!result}>
         <InteractiveColumnsTable<Row, TableColumn>
           key={columnLayoutStorageKey}
           className="item-options-desktop-table"
           ariaLabel="نتائج الأصناف حسب الخيارات"
-          columns={columns} rows={result.rows} rowKey={row => row.itemId}
+          columns={columns} rows={result?.rows ?? []} rowKey={row => row.itemId}
           visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey} sharedDefaults={savedDefaults} persistLayout={false}
           sortKey={activeSort} sortDirection={activeDirection}
           onSort={column => {
@@ -1465,7 +1468,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           dockRowSource={dockItemSource}
           emptyMessage="لا توجد أصناف تطابق الخيارات الحالية."
         />
-      </>}
+      </div>
       {result && <div className="form-actions">
         <Button variant="secondary" disabled={resultQuery.isFetching || page <= 1}
           onClick={() => change("page", String(page - 1))}>السابق</Button>
