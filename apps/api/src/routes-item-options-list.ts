@@ -599,6 +599,8 @@ export function itemOptionsListRoutes(pool: Pool): Router {
   const draftReviewSchema = z.object({
     includeCoverage: z.boolean().optional().default(false),
     includeCompositionCoverage: z.boolean().optional().default(false),
+    includeCoverageWithRequired: z.boolean().optional().default(false),
+    includeMarketOrderCounts: z.boolean().optional().default(false),
     items: z.array(z.object({
       id: z.number().int().min(1).max(2147483647),
       requiredQuantity: z.string().regex(/^[1-9]\d{0,15}$/).nullable(),
@@ -626,6 +628,10 @@ export function itemOptionsListRoutes(pool: Pool): Router {
       const today = String((await client.query(
         "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today"
       )).rows[0].today);
+      const needsCoverage = input.includeCoverage || input.includeCoverageWithRequired;
+      // The saved draft quantity is in first units, unlike stock and reserve.
+      const projectedAvailable = `greatest(coverage_rate.quantity + r.required_quantity
+        * greatest(i.factor2::numeric*i.factor3::numeric,1) - i.reserve_quantity,0)`;
       const response = await client.query(
         `WITH requested AS (
            SELECT id,required_quantity FROM jsonb_to_recordset($3::jsonb)
@@ -664,6 +670,22 @@ export function itemOptionsListRoutes(pool: Pool): Router {
            i.min_order_quantity::text AS "minOrderQuantity",i.reviewed AS "reviewed",
            i.purchase_price::text AS "purchasePrice",
            currency.code AS "purchaseCurrencyCode",
+           ${input.includeMarketOrderCounts
+             ? 'stock.market_order_days_30d::text'
+             : 'NULL::text'} AS "marketOrder30Days",
+           ${input.includeMarketOrderCounts
+             ? 'stock.market_order_days_after_purchase_30d::text'
+             : 'NULL::text'} AS "marketOrderAfterPurchase30Days",
+           ${input.includeCoverage ? 'coverage.approximate_coverage_days::text' : 'NULL::text'}
+             AS "approximateCoverageDays",
+           ${input.includeCoverage ? 'coverage.coverage_after_reserve_days::text' : 'NULL::text'}
+             AS "coverageAfterReserveDays",
+           ${input.includeCoverageWithRequired ? `(CASE
+             WHEN r.required_quantity IS NULL THEN NULL
+             WHEN coverage_rate.sales <= 0 THEN
+               CASE WHEN ${projectedAvailable} = 0 THEN 0 ELSE 9999 END
+             ELSE round(${projectedAvailable} * coverage_rate.days / coverage_rate.sales,2)
+             END)::text` : 'NULL::text'} AS "coverageWithRequiredDays",
            CASE WHEN r.required_quantity IS NULL THEN NULL
              ELSE round(i.purchase_price * r.required_quantity,4)::text
            END AS "requiredPurchaseValue"
@@ -684,16 +706,12 @@ export function itemOptionsListRoutes(pool: Pool): Router {
                ($2::date-interval '1 month'+interval '1 day')::date AND $2::date
          ) planning_fix ON TRUE
          LEFT JOIN annual_sales ON annual_sales.item_id=i.id
+         ${needsCoverage ? itemCoverageJoin : ""}
          ORDER BY i.id`,
         [companyId, today, JSON.stringify(input.items.map(item => ({
           id:item.id, required_quantity:item.requiredQuantity,
         })))],
       );
-      // Extra metrics are read only when shown or requested for sorting.
-      const coverageRows = input.includeCoverage ? await addItemCoverageToPage(
-        client, companyId, response.rows.map(row => ({ id: Number(row.itemId) })),
-      ) : [];
-      const coverageById = new Map(coverageRows.map(row => [row.id, row]));
       const compositionIds = input.includeCompositionCoverage
         ? [...new Set(response.rows.map(row => row.compositionId)
           .filter((value): value is number => typeof value === "number"))]
@@ -734,16 +752,11 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         Number(row.composition_id), row.coverage_days == null
           ? null : String(row.coverage_days),
       ] as const));
-      return response.rows.map(row => {
-        const coverage = coverageById.get(Number(row.itemId));
-        return {
-          ...row,
-          approximateCoverageDays: coverage?.approximateCoverageDays ?? null,
-          coverageAfterReserveDays: coverage?.coverageAfterReserveDays ?? null,
-          compositionCoverageDays: row.compositionId == null ? "0"
-            : compositionById.get(Number(row.compositionId)) ?? "0",
-        };
-      });
+      return response.rows.map(row => ({
+        ...row,
+        compositionCoverageDays: row.compositionId == null ? "0"
+          : compositionById.get(Number(row.compositionId)) ?? "0",
+      }));
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.json({items:rows});

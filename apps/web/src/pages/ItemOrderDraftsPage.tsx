@@ -30,6 +30,8 @@ type DraftMetrics = {
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
   approximateCoverageDays: string | null; coverageAfterReserveDays: string | null;
   compositionCoverageDays: string | null;
+  coverageWithRequiredDays: string | null;
+  marketOrder30Days: string | null; marketOrderAfterPurchase30Days: string | null;
 };
 type DraftValue = {
   id: number; itemCount: number; pricedCount: number; missingCount: number;
@@ -37,7 +39,8 @@ type DraftValue = {
 };
 type DraftSortKey = "quantity" | "name" | "option" | "stock" | "sold" |
   "month" | "year" | "price" | "value" |
-  "coverage" | "coverageWithReserve" | "compositionCoverage";
+  "coverage" | "coverageWithReserve" | "compositionCoverage" | "coverageWithRequired" |
+  "marketOrder30Days" | "marketOrderAfterPurchase30Days";
 const draftColumnOptions = [
   ["select","اختيار"], ["quantity","الكمية المطلوبة (و1)"], ["name","اسم الصنف"],
   ["details","إظهار التفاصيل ⋯"], ["stock","المتوفر دون المرتجعات (و1)"],
@@ -47,6 +50,9 @@ const draftColumnOptions = [
   ["coverage","الكفاية بدون الاحتياط (يوم)"],
   ["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],
   ["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"],
+  ["coverageWithRequired","الكفاية مع المطلوب (يوم)"],
+  ["marketOrder30Days","مرات الطلب من السوق"],
+  ["marketOrderAfterPurchase30Days","مرات الطلب من السوق بعد آخر شراء"],
 ] as const;
 type DraftColumn = (typeof draftColumnOptions)[number][0];
 // Compact laptop widths. The heading text scrolls inside these widths rather
@@ -56,6 +62,7 @@ const draftColumnWidths: Record<DraftColumn, number> = {
   stock: 89, sold: 88, month: 83, year: 83,
   price: 88, value: 96, action: 72, option: 140,
   coverage: 100, coverageWithReserve: 110, compositionCoverage: 118,
+  coverageWithRequired: 114, marketOrder30Days: 115, marketOrderAfterPurchase30Days: 130,
 };
 const defaultDraftColumns: DraftColumn[] = draftColumnOptions.slice(0, 12).map(([key]) => key);
 function readDraftColumns(key: string): DraftColumn[] {
@@ -164,6 +171,11 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     sortKey === "coverage" || sortKey === "coverageWithReserve";
   const needsCompositionCoverage = visibleColumns.includes("compositionCoverage") ||
     sortKey === "compositionCoverage";
+  const needsCoverageWithRequired = visibleColumns.includes("coverageWithRequired") ||
+    sortKey === "coverageWithRequired";
+  const needsMarketOrderCounts = visibleColumns.includes("marketOrder30Days") ||
+    visibleColumns.includes("marketOrderAfterPurchase30Days") ||
+    sortKey === "marketOrder30Days" || sortKey === "marketOrderAfterPurchase30Days";
   // Sorting is captured once on load or after an explicit header/mobile sort.
   // Saving a review flag or a required quantity must not move the edited row.
   const [sortVersion, setSortVersion] = useState(0);
@@ -309,11 +321,13 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const metricResults = useQueries({
     queries: metricBatches.map(items => ({
       queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items),
-        needsItemCoverage, needsCompositionCoverage],
+        needsItemCoverage, needsCompositionCoverage, needsCoverageWithRequired, needsMarketOrderCounts],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         api<{ items: DraftMetrics[] }>("/companies/" + companyId + "/item-options-list/draft-review",
           { method: "POST", body: { items, includeCoverage: needsItemCoverage,
-            includeCompositionCoverage: needsCompositionCoverage }, signal }),
+            includeCompositionCoverage: needsCompositionCoverage,
+            includeCoverageWithRequired: needsCoverageWithRequired,
+            includeMarketOrderCounts: needsMarketOrderCounts }, signal }),
       enabled: !!user && items.length > 0,
       staleTime: 30_000,
     })),
@@ -416,6 +430,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       case "coverage": return info?.approximateCoverageDays ?? "0";
       case "coverageWithReserve": return info?.coverageAfterReserveDays ?? "0";
       case "compositionCoverage": return info?.compositionCoverageDays ?? "0";
+      case "coverageWithRequired": return info?.coverageWithRequiredDays ?? null;
+      case "marketOrder30Days": return info?.marketOrder30Days ?? null;
+      case "marketOrderAfterPurchase30Days": return info?.marketOrderAfterPurchase30Days ?? null;
       default: return "";
     }
   };
@@ -427,6 +444,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     const orderedItemIds = [...rows].sort((left, right) => {
       if (!sortKey) return 0; // Explicitly restore the original draft order.
       const a = sortValue(left), b = sortValue(right);
+      // Missing measurements stay last in either direction; verified zero is sortable.
+      if (a == null || b == null)
+        return a == null && b == null ? left.item.id - right.item.id : a == null ? 1 : -1;
       const result = sortKey === "name" || sortKey === "option"
         ? a.localeCompare(b, "ar", { numeric: true }) : compareNumeric(a, b);
       return (sortDir === "asc" ? 1 : -1) * result || left.item.id - right.item.id;
@@ -556,7 +576,10 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       case "option": return <>{optionName(row)}</>;
       case "coverage": return <><bdi>{formatNumber(info?.approximateCoverageDays)}</bdi></>;
       case "coverageWithReserve": return <><bdi>{formatNumber(info?.coverageAfterReserveDays)}</bdi></>;
-      case "compositionCoverage": return <><bdi>{formatNumber(info?.compositionCoverageDays)}</bdi></>;
+      case "compositionCoverage": return <bdi>{formatNumber(info?.compositionCoverageDays)}</bdi>;
+      case "coverageWithRequired": return <bdi>{formatNumber(info?.coverageWithRequiredDays)}</bdi>;
+      case "marketOrder30Days": return <bdi title="آخر 30 يومًا، مرة واحدة لكل يوم">{formatNumber(info?.marketOrder30Days)}</bdi>;
+      case "marketOrderAfterPurchase30Days": return <bdi title="آخر 30 يومًا بعد آخر شراء، مرة واحدة لكل يوم">{formatNumber(info?.marketOrderAfterPurchase30Days)}</bdi>;
     }
   };
   const desktopDraftColumns:InteractiveTableColumn<DraftRow,DraftColumn>[]=
@@ -733,6 +756,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
             <option value="coverage">الكفاية بدون الاحتياط (يوم)</option>
             <option value="coverageWithReserve">الكفاية مع الاحتياط (يوم)</option>
             <option value="compositionCoverage">الكفاية التقريبية للتركيب (يوم)</option>
+            <option value="coverageWithRequired">الكفاية مع المطلوب (يوم)</option>
+            <option value="marketOrder30Days">مرات الطلب من السوق</option>
+            <option value="marketOrderAfterPurchase30Days">مرات الطلب من السوق بعد آخر شراء</option>
           </select>
         </label>
         <Button variant="secondary" disabled={!sortKey}
@@ -860,6 +886,15 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               </span>
               <span title="الكفاية التقريبية للتركيب (يوم)" style={columnStyle("compositionCoverage")}>
                 <small>كفاية التركيب</small><bdi>{formatNumber(info?.compositionCoverageDays)}</bdi>
+              </span>
+              <span title="الكفاية مع المطلوب (يوم)" style={columnStyle("coverageWithRequired")}>
+                <small>كفاية مع المطلوب</small><bdi>{formatNumber(info?.coverageWithRequiredDays)}</bdi>
+              </span>
+              <span title="مرات الطلب من السوق في آخر 30 يومًا" style={columnStyle("marketOrder30Days")}>
+                <small>طلبات السوق</small><bdi>{formatNumber(info?.marketOrder30Days)}</bdi>
+              </span>
+              <span title="مرات الطلب من السوق في آخر 30 يومًا بعد آخر شراء" style={columnStyle("marketOrderAfterPurchase30Days")}>
+                <small>طلبات بعد الشراء</small><bdi>{formatNumber(info?.marketOrderAfterPurchase30Days)}</bdi>
               </span>
             </div>
             {expandedItemId === row.item.id &&
