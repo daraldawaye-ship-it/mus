@@ -16,8 +16,43 @@ import {productLinkBatchSchema} from "../market/product-market-link.ts";
 import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput, aiTaskCadenceInput } from "../routes-ai-tasks.ts";
 
 import { inquiryTaskNameSchema, shortenCashboxQuestionSchema } from "../routes-inquiries.ts";
+import {
+  expectedCardCreateSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema,
+} from "../../../../packages/contracts/src/expected.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "GET /companies/:companyId/expected-cards": {
+    source: "routes-expected.ts", pathParams: ["companyId"],
+    queryFields: ["page", "pageSize", "q", "sort", "accountId", "section"],
+  },
+  "POST /companies/:companyId/expected-cards": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: [],
+    bodyContract: "expectedCardCreateSchema", bodySchema: z.toJSONSchema(expectedCardCreateSchema, { io: "input" }),
+  },
+  "GET /companies/:companyId/expected-cards/:id": {
+    source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
+  },
+  "GET /companies/:companyId/expected-sections": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["q"],
+  },
+  "GET /companies/:companyId/expected-movements/sections": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["q"],
+  },
+  "GET /companies/:companyId/expected-accounts": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["page", "pageSize", "q", "sort"],
+  },
+  "GET /companies/:companyId/expected-movements": {
+    source: "routes-expected.ts", pathParams: ["companyId"],
+    queryFields: ["page", "pageSize", "q", "sort", "cardId", "accountId", "section", "status", "dateFrom", "dateTo"],
+  },
+  "PATCH /companies/:companyId/expected-movements/:id": {
+    source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
+    bodyContract: "expectedMovementPatchSchema", bodySchema: z.toJSONSchema(expectedMovementPatchSchema, { io: "input" }),
+  },
+  "POST /companies/:companyId/expected-movements/:id/complete": {
+    source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
+    bodyContract: "expectedMovementCompleteSchema", bodySchema: z.toJSONSchema(expectedMovementCompleteSchema),
+  },
   "PATCH /companies/:companyId/inquiries/:inquiryId/shorten-cashbox-question": {
     source: "routes-inquiries.ts", queryFields: [], pathParams: ["companyId", "inquiryId"],
     bodyContract: "shortenCashboxQuestionSchema", bodySchema: z.toJSONSchema(shortenCashboxQuestionSchema),

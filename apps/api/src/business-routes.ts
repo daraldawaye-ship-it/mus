@@ -28,6 +28,7 @@ import { legalCaseRoutes } from "./routes-legal-cases.ts";
 import { archiveRoutes } from "./routes-archive.ts";
 import { explanationRoutes } from "./routes-explanations.ts";
 import { financeRoutes } from "./routes-finance.ts";
+import { expectedRoutes } from "./routes-expected.ts";
 import { financialReportsRoutes } from "./routes-financial-reports.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
@@ -109,6 +110,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     archiveRoutes(pool),
     explanationRoutes(pool),
     financeRoutes(pool),
+    expectedRoutes(pool),
     slipReceiptRoutes(pool),
     financialReportsRoutes(pool),
     itemRoutes(pool),

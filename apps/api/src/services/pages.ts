@@ -544,6 +544,10 @@ export async function requestPageKeys(
     "letterhead": "letterhead",
     audit: "audit",
     "financial-options": "financial-documents",
+    "expected-cards": "expected-cards",
+    "expected-movements": "expected-movements",
+    "expected-sections": "expected-cards",
+    "expected-accounts": "expected-cards",
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];

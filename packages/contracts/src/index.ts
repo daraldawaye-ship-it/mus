@@ -2,6 +2,7 @@ import { z } from "zod";
 import { employeePositionListSchema, type EmployeePosition } from "./employee-positions.ts";
 export * from "./employee-positions.ts";
 export * from "./sale-customers.ts";
+export * from "./expected.ts";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
 import { itemCatalog } from "./items.ts";
@@ -199,6 +200,10 @@ export const auditActionLabels = {
   "generalTable.duplicate": "تكرار سجلات الجدول العام",
   "generalTable.update": "تعديل سجل عام",
   "financialDocument.create": "إنشاء مسودة مالية",
+  "expected.card.create": "إنشاء كرت المتوقع ومواعيده",
+  "expected.movement.update": "تعديل حركة المتوقع",
+  "expected.movement.complete": "إنجاز حركة المتوقع",
+  "expected.midnight": "معالجة حركة المتوقع عند بداية اليوم",
   "financialDocument.update": "تعديل مسودة مالية",
   "financialDocument.post": "ترحيل مستند مالي",
   "directMedicalPayment.post": "سند صرف قصاصات أو عمولات مباشر من صندوق أمين الصندوق",
@@ -355,6 +360,10 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "expected.card.create",
+  "expected.movement.update",
+  "expected.movement.complete",
+  "expected.midnight",
   "item.options-preset.create",
   "item.options-preset.delete",
   "item.options-preset-group.create",

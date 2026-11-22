@@ -126,6 +126,8 @@ const AccountStatisticsReportPage = lazy(() =>
     default: module.AccountStatisticsReportPage,
   })),
 );
+const ExpectedCardsPage = lazy(() => import("./pages/ExpectedPages").then(m => ({ default: m.ExpectedCardsPage })));
+const ExpectedMovementsPage = lazy(() => import("./pages/ExpectedPages").then(m => ({ default: m.ExpectedMovementsPage })));
 const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage").then(m=>({default:m.LegacySalesImportPage})));
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
 const ArchivePage = lazy(() => import("./pages/ArchivePage").then(module => ({default:module.ArchivePage})));
@@ -412,6 +414,8 @@ const companySections = [
   "financial-document",
   "journals",
   "journal-lines",
+  "expected-cards",
+  "expected-movements",
   "receipts",
   "payments",
   "account-balances",
@@ -561,6 +565,8 @@ function Navigation({
     "company.financial-documents": <FileText size={17} />,
     "company.journals": <BookOpen size={17} />,
     "company.journal-lines": <BookOpen size={17} />,
+    "company.expected-cards": <FileClock size={17} />,
+    "company.expected-movements": <ListChecks size={17} />,
     "company.receipts": <HandCoins size={17} />,
     "company.payments": <Wallet size={17} />,
     "company.account-balances": <Landmark size={17} />,
@@ -1053,6 +1059,10 @@ function CompanyContent({
       );
     case "journal-lines":
       return <Suspense fallback={<Notice>جارٍ تحميل القيود بالسطور…</Notice>}><JournalLinesPage key={context.company.id} context={context} /></Suspense>;
+    case "expected-cards":
+      return <Suspense fallback={<Notice>جارٍ تحميل كروت المتوقع…</Notice>}><ExpectedCardsPage key={context.company.id} context={context} /></Suspense>;
+    case "expected-movements":
+      return <Suspense fallback={<Notice>جارٍ تحميل حركة المتوقع…</Notice>}><ExpectedMovementsPage key={context.company.id} context={context} /></Suspense>;
     case "financial-documents":
     case "journals":
     case "receipts":

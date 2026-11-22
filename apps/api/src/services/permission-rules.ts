@@ -143,11 +143,16 @@ export async function requestPermissionTargets(
     control: "company.control",
     "configuration-foundation": "company.configuration",
     "financial-options": "company.financial-documents",
+    "expected-cards": "company.expected-cards",
+    "expected-movements": "company.expected-movements",
+    "expected-sections": "company.expected-cards",
+    "expected-accounts": "company.expected-cards",
     "purchase-history": "company.purchases",
     "commerce-options": "company.sales",
     "inventory-options": "company.stock-operations",
   };
   if (resource === "notifications" && verb === "POST") action = "edit";
+  if (resource === "expected-movements" && verb === "POST" && segments[2] === "complete") action = "edit";
   if (resource === "employees" && segments[2] === "attendance-settings")
     return [
       pagePermissionAliases("company.attendance", "view"),

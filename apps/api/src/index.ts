@@ -15,6 +15,7 @@ import { startItemClearanceNotifications } from "./services/item-clearance-notif
 import { provisionExistingDarAldawaInvoiceShortcuts } from "./services/company2-invoice-shortcut-defaults.ts";
 import { OCTOBER_2026_SALES_RUN_ID, prepareOctober2026SalesRecovery } from "./services/october-2026-sales-recovery.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
+import { startExpectedMidnightWorker } from "./services/expected.ts";
 
 // Private previews fail closed unless public access is explicitly configured.
 const previewGate = process.env.NODE_ENV === "production" &&
@@ -136,6 +137,7 @@ const stopPush = AUTOMATIONS_PAUSED ? noWorker : startPushNotifications(applicat
 const stopItemSaleRankings = AUTOMATIONS_PAUSED ? noWorker : startItemSaleRankings(application.pool);
 const stopInvoiceFollowups = AUTOMATIONS_PAUSED ? noWorker : startInvoicePostFollowups(application.pool);
 const stopItemClearanceNotifications = AUTOMATIONS_PAUSED ? noWorker : startItemClearanceNotifications(application.pool);
+const stopExpectedMidnight = AUTOMATIONS_PAUSED ? noWorker : startExpectedMidnightWorker(application.pool);
 // Explicit 2026-10-27 restoration: all recorded workers are enabled again.
 // Invoice posting stays scoped to the authorized run and its persisted status.
 const stopLegacyImport = startLegacyImportWorker(application.pool, {
@@ -159,6 +161,7 @@ async function shutdown(): Promise<void> {
   await stopItemSaleRankings();
   await stopInvoiceFollowups();
   await stopItemClearanceNotifications();
+  await stopExpectedMidnight();
   await importStopped;
   await vite?.close();
   await application.close();

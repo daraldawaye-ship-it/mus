@@ -963,6 +963,22 @@ page(
   "كل القيود والسندات ومسوداتها وحالتها.",
 );
 page(
+  "company.expected-cards",
+  "كروت المتوقع",
+  "المتوقع",
+  "/companies/:companyId/expected-cards",
+  { view: permission("finance.view"), create: permission("finance.manage") },
+  "المبالغ والبيانات الأصلية المتوقعة للحسابات، وأقسامها ومواعيدها وخيار المعالجة اليومية.",
+);
+page(
+  "company.expected-movements",
+  "حركة المتوقع",
+  "المتوقع",
+  "/companies/:companyId/expected-movements",
+  { view: permission("finance.view"), edit: permission("finance.manage") },
+  "متابعة كل موعد وتعديل تاريخه ومبلغه وبيانه وإنجازه، مع التصفية بالقسم ودون أثر محاسبي.",
+);
+page(
   "company.journals",
   "قيود اليومية",
   "المحاسبة",

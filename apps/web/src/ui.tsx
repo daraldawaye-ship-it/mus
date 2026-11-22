@@ -176,12 +176,14 @@ export function Field({
   );
 }
 
-export function DateField({ label, value, onCommit, required, disabled }: {
+export function DateField({ label, value, onCommit, required, disabled, min = "0001-01-01", max = "9999-12-31" }: {
   label: string;
   value: string;
   onCommit?: (value: string) => void;
   required?: boolean;
   disabled?: boolean;
+  min?: string;
+  max?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -200,8 +202,8 @@ export function DateField({ label, value, onCommit, required, disabled }: {
       <input
         ref={inputRef}
         type="date"
-        min="0001-01-01"
-        max="9999-12-31"
+        min={min}
+        max={max}
         required={required}
         disabled={disabled}
         defaultValue={value}
