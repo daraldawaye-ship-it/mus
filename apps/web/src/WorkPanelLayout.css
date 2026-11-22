@@ -171,17 +171,27 @@
   z-index: 1;
   background: var(--table-head);
 }
-.work-panel-tools .work-panel-movement-table { min-width: 320px; }
-.work-panel-movement-table th:nth-child(1) { width: 21%; }
+.work-panel-tools .work-panel-movement-table {
+  width: min(100%, 270px);
+  min-width: 238px;
+}
+.work-panel-tools .work-panel-movement-table.work-panel-movement-staff {
+  width: min(100%, 220px);
+  min-width: 198px;
+}
+.work-panel-movement-table th:nth-child(1) { width: 16%; }
+.work-panel-movement-table th:nth-child(2) { width: 16%; }
+.work-panel-movement-table th:nth-child(3) { width: 17%; }
+.work-panel-movement-table th:nth-child(4) { width: 25%; }
+.work-panel-movement-table.work-panel-movement-staff th:nth-child(1),
+.work-panel-movement-table.work-panel-movement-staff th:nth-child(2) { width: 21%; }
+.work-panel-movement-table.work-panel-movement-staff th:nth-child(3) { width: 23%; }
+.work-panel-movement-table.work-panel-movement-staff th:nth-child(4) { width: 35%; }
 .work-panel-movement-kind {
   display: flex;
   align-items: center;
   gap: 4px;
   min-inline-size: 0;
-}
-.work-panel-movement-kind-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .work-panel-movement-kind-dot {
   display: none;
@@ -206,7 +216,6 @@
   display: block;
   background: #a267d4;
 }
-.work-panel-movement-table th:nth-child(4) { width: 22%; }
 .work-panel-movement-table [data-work-panel-quantity="positive"] {
   color: var(--success-text, #92e7bb);
   color: light-dark(#11734a, #86e5b0);
@@ -224,6 +233,7 @@
   border-bottom-color: color-mix(in srgb, var(--text) 45%, var(--border));
 }
 .work-panel-movement-details {
+  max-inline-size: 100%;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface);
