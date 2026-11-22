@@ -71,3 +71,7 @@
   outline: 2px solid var(--accent, #7eb9ff);
   outline-offset: 1px;
 }
+
+.accounts-directory-layout .interactive-columns-grid tbody tr.accounts-directory-selected {
+  --interactive-row-bg: color-mix(in srgb, var(--primary) 18%, var(--surface));
+}
