@@ -39,6 +39,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultCompanyBranch, useDefaultYerCurrency } from "../phase2";
 import { useControls } from "../control";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { formatMoney } from "../format-money";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { useEmployeeCashbox } from "../employee-cashbox";
@@ -1577,6 +1578,7 @@ export function AccountBalancesPage({ context }: { context: CompanyContext }) {
 }
 function BalancesContent({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
   for (const key of ["dateFrom", "dateTo"])
@@ -1585,54 +1587,31 @@ function BalancesContent({ context }: { context: CompanyContext }) {
     `/companies/${companyId}/account-balances?${filters}`,
     `company:${companyId}:finance:balances`,
   );
-  const columns = useMemo<ColumnDef<AccountBalance, unknown>[]>(
-    () => [
-      { accessorKey: "accountCode", header: "كود الحساب" },
-      {
-        accessorKey: "accountName",
-        header: "الحساب",
-        size: 250,
-        cell: ({ row }) => <ValueCell>{row.original.accountName}</ValueCell>,
-      },
-      {
-        accessorKey: "debit",
-        header: "إجمالي المدين",
-        size: 180,
-        cell: ({ row }) => money(row.original.debit),
-      },
-      {
-        accessorKey: "credit",
-        header: "إجمالي الدائن",
-        size: 180,
-        cell: ({ row }) => money(row.original.credit),
-      },
-      {
-        accessorKey: "balance",
-        header: params.get("dateFrom") ? "صافي الحركة خلال الفترة" : "الرصيد",
-        size: 200,
-        cell: ({ row }) => <bdi>{balanceText(row.original.balance)}</bdi>,
-      },
-      {
-        accessorKey: "baseCurrencyCode",
-        header: "الأساسية",
-        enableSorting: false,
-        size: 90,
-      },
-      {
-        id: "ledger",
-        header: "كشف الحساب",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Link
-            to={`/companies/${companyId}/account-ledger?accountId=${row.original.accountId}`}
-          >
-            عرض الكشف
-          </Link>
-        ),
-      },
-    ],
-    [companyId, params.get("dateFrom")],
-  );
+  const hasDateFrom = Boolean(params.get("dateFrom"));
+  const columns = useMemo<InteractiveTableColumn<AccountBalance>[]>(() => [
+    { key: "accountCode", label: "كود الحساب", width: 135, cell: row => <bdi>{row.accountCode}</bdi> },
+    { key: "accountName", label: "الحساب", width: 250, cell: row => row.accountName },
+    { key: "debit", label: "إجمالي المدين", width: 180, cell: row => money(row.debit) },
+    { key: "credit", label: "إجمالي الدائن", width: 180, cell: row => money(row.credit) },
+    {
+      key: "balance",
+      label: hasDateFrom ? "صافي الحركة خلال الفترة" : "الرصيد",
+      width: 200,
+      cell: row => <bdi>{balanceText(row.balance)}</bdi>,
+    },
+    { key: "baseCurrencyCode", label: "الأساسية", width: 90, sortable: false, cell: row => row.baseCurrencyCode },
+    {
+      key: "ledger", label: "كشف الحساب", width: 115, sortable: false,
+      cell: row => (
+        <Link to={`/companies/${companyId}/account-ledger?accountId=${row.accountId}`}>
+          عرض الكشف
+        </Link>
+      ),
+    },
+  ], [companyId, hasDateFrom]);
+  const sort = list.sorting[0];
+  const total = list.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / list.pageSize));
   return (
     <>
       <PageHeader
@@ -1669,19 +1648,30 @@ function BalancesContent({ context }: { context: CompanyContext }) {
           />
         </div>
         {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
-        <DataTable
+        <InteractiveColumnsTable
           columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          page={list.page}
-          pageSize={list.pageSize}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading}
+          rows={list.data?.items ?? []}
+          rowKey={row => row.accountId}
+          visibleColumns={columns.map(column => column.key)}
+          allowColumnVisibility
+          storageKey={`alraesy:d13:account-balances:${companyId}:${user?.id ?? "guest"}`}
+          sortKey={sort?.id}
+          sortDirection={sort?.desc ? "desc" : "asc"}
+          onSort={key => list.setSorting([{ id: key, desc: sort?.id === key ? !sort.desc : false }])}
+          dockRowSource={row => ({ companyId, accountId: row.accountId, accountName: row.accountName })}
           ariaLabel="أرصدة الحسابات"
+          emptyMessage={list.loading ? "جارٍ التحميل…" : "لا توجد نتائج."}
         />
+        <div className="table-filters">
+          <label>حجم الصفحة <select value={list.pageSize} onChange={event => list.setPageSize(Number(event.target.value))}>
+            {[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+          </select></label>
+          <small>إجمالي الأرصدة: {total} · الصفحة {list.page} من {totalPages}</small>
+          <Button type="button" size="compact" variant="secondary" disabled={list.page <= 1}
+            onClick={() => list.setPage(list.page - 1)}>السابق</Button>
+          <Button type="button" size="compact" variant="secondary" disabled={list.page >= totalPages}
+            onClick={() => list.setPage(list.page + 1)}>التالي</Button>
+        </div>
       </Card>
     </>
   );
