@@ -8,6 +8,10 @@ import { errorMessage } from "../phase2";
 import { Button, Card, DateField, Field, Notice, PageHeader, Select } from "../ui";
 
 const defaultSort = "documentDate:desc,number:desc,id:asc";
+const postedDateTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone:"Asia/Aden", year:"numeric", month:"2-digit", day:"2-digit",
+  hour:"2-digit", minute:"2-digit", second:"2-digit", hourCycle:"h23",
+});
 
 export default function JournalLinesPage({ context }: {context:CompanyContext}) {
   const companyId = context.company.id;
@@ -28,8 +32,12 @@ export default function JournalLinesPage({ context }: {context:CompanyContext}) 
   });
   const columns:InteractiveTableColumn<JournalLine>[]=[
     {key:"number",label:"رقم القيد",width:145,cell:r=><bdi>{r.number}</bdi>},
-    {key:"documentDate",label:"التاريخ",width:128,cell:r=><bdi>{r.documentDate}</bdi>},
+    {key:"documentDate",label:"التاريخ المكتوب",width:135,cell:r=><bdi>{r.documentDate}</bdi>},
     {key:"accountName",label:"اسم الحساب",width:245,cell:r=>r.accountName},
+    {key:"postedAt",label:"الترحيل الفعلي (عدن)",width:190,cell:r=>r.postedAt
+      ? <bdi>{postedDateTime.format(new Date(r.postedAt))}</bdi>
+      : (r.status==="draft"?"لم يُرحّل":"—")},
+    {key:"documentDescription",label:"بيان القيد",width:270,sortable:false,cell:r=>r.documentDescription||"—"},
     {key:"accountCode",label:"كود الحساب",width:130,cell:r=><bdi>{r.accountCode}</bdi>},
     {key:"debit",label:"مدين",width:115,cell:r=><bdi>{formatMoney(r.debit)}</bdi>},
     {key:"credit",label:"دائن",width:115,cell:r=><bdi>{formatMoney(r.credit)}</bdi>},
@@ -50,9 +58,9 @@ export default function JournalLinesPage({ context }: {context:CompanyContext}) 
       <div className="table-filters">
         <Field type="search" label="بحث في القيود والحسابات" placeholder="رقم القيد أو الحساب أو البيان"
           value={list.query} onChange={event=>list.setQuery(event.target.value)} />
-        <DateField label="من تاريخ" value={filters.get("dateFrom")??""}
+        <DateField label="من التاريخ المكتوب" value={filters.get("dateFrom")??""}
           onCommit={value=>setFilter("dateFrom",value)} />
-        <DateField label="إلى تاريخ" value={filters.get("dateTo")??""}
+        <DateField label="إلى التاريخ المكتوب" value={filters.get("dateTo")??""}
           onCommit={value=>setFilter("dateTo",value)} />
         <Select label="الحالة" value={filters.get("status")??""} onChange={event=>setFilter("status",event.target.value)}>
           <option value="">الكل</option>

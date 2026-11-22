@@ -487,8 +487,8 @@ export function financeRoutes(pool: Pool): Router {
         const accountCode = "COALESCE(l.account_code,a.code)";
         const query = listQuery(req.query, {
           id: "l.id", number: "d.number", documentDate: "d.document_date",
-          accountName, accountCode, debit: "l.debit", credit: "l.credit",
-        }, "documentDate:desc,number:desc,id:asc");
+          postedAt: "d.posted_at", accountName, accountCode, debit: "l.debit", credit: "l.credit",
+        }, "documentDate:desc,number:desc,id:asc", new Set(["postedAt"]));
         const dates = dateFilters(req);
         const params: unknown[] = [companyId];
         let where = "d.company_id=$1 AND d.kind='journal'";
@@ -516,7 +516,9 @@ export function financeRoutes(pool: Pool): Router {
           `SELECT count(*)::integer AS total ${lines} ${query.q ? accountJoin : ""} WHERE ${where}`, params,
         );
         const rows = await client.query<JournalLine>(`SELECT l.id,d.id AS "documentId",l.line_number AS "lineNumber",
-          d.number,d.document_date::text AS "documentDate",d.status,l.account_id AS "accountId",
+          d.number,d.document_date::text AS "documentDate",
+          to_char(d.posted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "postedAt",
+          d.description AS "documentDescription",d.status,l.account_id AS "accountId",
           ${accountCode} AS "accountCode",${accountName} AS "accountName",
           l.debit::text,l.credit::text,COALESCE(d.currency_code,c.code) AS "currencyCode",l.description
           ${from} ORDER BY ${query.order} LIMIT $${params.length+1} OFFSET $${params.length+2}`,

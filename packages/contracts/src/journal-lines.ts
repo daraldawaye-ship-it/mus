@@ -6,6 +6,8 @@ export interface JournalLine {
   lineNumber: number;
   number: string;
   documentDate: string;
+  postedAt: string | null;
+  documentDescription: string;
   status: FinancialDocumentStatus;
   accountId: number;
   accountCode: string;
