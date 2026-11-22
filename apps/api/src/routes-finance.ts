@@ -1137,6 +1137,24 @@ export function financeRoutes(pool: Pool): Router {
       res.json({ recorded: true });
     }),
   );
+  // The statement picker belongs to account-ledger, not the accounting
+  // documents or accounts-management pages. Expose only display identifiers.
+  router.get(
+    `${base}/account-ledger/accounts`,
+    handler(async (req, res) => {
+      res.set("Cache-Control", "private, no-store");
+      res.json(await readFinance(pool, req, async (client, companyId) => {
+        const query = listQuery(req.query, { id:"a.id", code:"a.code", name:"a.name" }, "code:asc");
+        const from = "FROM accounts a WHERE a.company_id=$1 AND a.kind='posting' AND (a.code ILIKE $2 OR a.name ILIKE $2)";
+        const params = [companyId, searchPattern(query.q)];
+        const count = await client.query<{total:number}>(`SELECT count(*)::integer AS total ${from}`,params);
+        const rows = await client.query<{id:number;code:string;name:string}>(
+          `SELECT a.id,a.code,a.name ${from} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,
+          [...params,query.pageSize,query.offset]);
+        return { items:rows.rows, total:count.rows[0]!.total, page:query.page, pageSize:query.pageSize };
+      }));
+    }),
+  );
   router.get(
     `${base}/account-ledger`,
     handler(async (req, res) => {

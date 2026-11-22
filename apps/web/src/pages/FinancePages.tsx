@@ -1948,7 +1948,9 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           <div className="field">
             <ServerLookup<PickAccount>
               companyId={companyId}
-              resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting`}
+              resource={pledge
+                ? `/companies/${companyId}/financial-options?type=accounts&kind=posting`
+                : `/companies/${companyId}/account-ledger/accounts`}
               onSearchChange={pledge ? undefined : setLedgerSearchText}
               onSelect={pledge ? undefined : (item, queryText) => {
                 setLedgerSearchText("");
