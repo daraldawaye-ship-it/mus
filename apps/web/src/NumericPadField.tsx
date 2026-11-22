@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type InputHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { Calculator, Check, Delete, X } from "lucide-react";
 import "./NumericPadField.css";
 
@@ -54,33 +55,31 @@ export type NumericPadFieldProps = {
   className?: string;
 };
 
-/** A reusable field. Clicking the numeric field or its desktop icon opens a draft;
- * cancel/backdrop/Escape do not commit anything to the external field. */
-export function NumericPadField({
-  label, value, onChange, id, placeholder = "0", disabled = false,
-  readOnly = false, allowNegative = true, allowDecimal = true, allowEmpty = false,
-  maxIntegerDigits = 18, maxDecimals = 4, confirmText = "موافق",
-  openButtonLabel = "فتح لوحة الأرقام", className = "",
-}: NumericPadFieldProps) {
-  const generatedId = useId();
-  const fieldId = id ?? generatedId;
+type PadDialogOptions = Pick<NumericPadFieldProps,"label"|"value"|"onChange"|"disabled"|"readOnly"|
+  "allowNegative"|"allowDecimal"|"allowEmpty"|"maxIntegerDigits"|"maxDecimals"|"confirmText">;
+
+const compactPhoneQuery = "(max-width: 680px), (hover: none) and (pointer: coarse)";
+export function useMobileQuantityPad(query = compactPhoneQuery) {
+  const [matches,setMatches] = useState(()=>typeof window!=="undefined"&&window.matchMedia(query).matches);
+  useEffect(()=>{
+    const media=window.matchMedia(query);
+    const update=()=>setMatches(media.matches);
+    update();
+    media.addEventListener("change",update);
+    return ()=>media.removeEventListener("change",update);
+  },[query]);
+  return matches;
+}
+
+function useNumericPadDialog({
+  label,value,onChange,disabled=false,readOnly=false,allowNegative=true,allowDecimal=true,
+  allowEmpty=false,maxIntegerDigits=18,maxDecimals=4,confirmText="موافق",fieldId,isolateClicks=false,
+}:PadDialogOptions & {fieldId:string;isolateClicks?:boolean}) {
   const modal = useRef<HTMLDialogElement>(null);
   const lastTrigger = useRef<HTMLInputElement | HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("0");
   const [error, setError] = useState("");
-  const [mobileViewport, setMobileViewport] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches,
-  );
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 640px)");
-    const update = () => setMobileViewport(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
   useEffect(() => {
     const dialog = modal.current;
     if (!dialog) return;
@@ -134,37 +133,14 @@ export function NumericPadField({
     close();
   };
 
-  return <div className={`numeric-pad-field ${className}`} dir="rtl">
-    <label htmlFor={fieldId} className="numeric-pad-label">{label}</label>
-    <div className="numeric-pad-input-row">
-      <input id={fieldId} type="text" dir="ltr"
-        inputMode={allowDecimal ? "decimal" : "numeric"}
-        value={value} placeholder={placeholder} disabled={disabled} readOnly={readOnly || mobileViewport}
-        autoComplete="off" spellCheck={false}
-        aria-haspopup="dialog" aria-expanded={open} aria-controls={`${fieldId}-dialog`}
-        onClick={event => launch(event.currentTarget)}
-        onKeyDown={event => {
-          if (event.key === "Enter" || (mobileViewport && event.key === " ")) {
-            event.preventDefault();
-            launch(event.currentTarget);
-          }
-        }}
-        onChange={event => {
-          const next = numericPadDigits(event.target.value);
-          if (numericPadValid(next, allowDecimal, allowNegative, maxIntegerDigits, maxDecimals))
-            onChange(next);
-        }}/>
-      <button type="button" className="numeric-pad-open"
-        disabled={disabled || readOnly} onClick={event => launch(event.currentTarget)} title={openButtonLabel}
-        aria-label={openButtonLabel} aria-haspopup="dialog" aria-expanded={open}>
-        <Calculator size={17} aria-hidden="true"/>
-      </button>
-    </div>
-    <dialog ref={modal} id={`${fieldId}-dialog`} className="numeric-pad-dialog" dir="rtl"
+  const dialog = (open||!isolateClicks) ? <dialog ref={modal} id={`${fieldId}-dialog`} className="numeric-pad-dialog" dir="rtl"
       aria-label={`لوحة الأرقام — ${label}`}
       onCancel={event => { event.preventDefault(); close(); }}
       onClose={() => setOpen(false)}
-      onClick={event => { if (event.target === event.currentTarget) close(); }}>
+      onClick={event => {
+        if (event.target === event.currentTarget) close();
+        if (isolateClicks) event.stopPropagation();
+      }}>
       <div className="numeric-pad-shell">
         <div className="numeric-pad-display" dir="ltr" aria-live="polite">
           <button type="button" className="numeric-pad-clear"
@@ -193,6 +169,82 @@ export function NumericPadField({
           <button type="button" className="numeric-pad-confirm" onClick={accept}><Check size={17}/>{confirmText}</button>
         </div>
       </div>
-    </dialog>
+    </dialog> : null;
+  return {dialog,launch,open};
+}
+
+/** A reusable field. Clicking the numeric field or its desktop icon opens a draft;
+ * cancel/backdrop/Escape do not commit anything to the external field. */
+export function NumericPadField({
+  label, value, onChange, id, placeholder = "0", disabled = false,
+  readOnly = false, allowNegative = true, allowDecimal = true, allowEmpty = false,
+  maxIntegerDigits = 18, maxDecimals = 4, confirmText = "موافق",
+  openButtonLabel = "فتح لوحة الأرقام", className = "",
+}: NumericPadFieldProps) {
+  const generatedId = useId();
+  const fieldId = id ?? generatedId;
+  const mobileViewport = useMobileQuantityPad("(max-width: 640px)");
+  const {dialog,launch,open}=useNumericPadDialog({
+    fieldId,label,value,onChange,disabled,readOnly,allowNegative,allowDecimal,allowEmpty,maxIntegerDigits,maxDecimals,confirmText,
+  });
+  return <div className={`numeric-pad-field ${className}`} dir="rtl">
+    <label htmlFor={fieldId} className="numeric-pad-label">{label}</label>
+    <div className="numeric-pad-input-row">
+      <input id={fieldId} type="text" dir="ltr"
+        inputMode={allowDecimal ? "decimal" : "numeric"}
+        value={value} placeholder={placeholder} disabled={disabled} readOnly={readOnly || mobileViewport}
+        autoComplete="off" spellCheck={false}
+        aria-haspopup="dialog" aria-expanded={open} aria-controls={`${fieldId}-dialog`}
+        onClick={event => launch(event.currentTarget)}
+        onKeyDown={event => {
+          if (event.key === "Enter" || (mobileViewport && event.key === " ")) {
+            event.preventDefault();
+            launch(event.currentTarget);
+          }
+        }}
+        onChange={event => {
+          const next = numericPadDigits(event.target.value);
+          if (numericPadValid(next, allowDecimal, allowNegative, maxIntegerDigits, maxDecimals))
+            onChange(next);
+        }}/>
+      <button type="button" className="numeric-pad-open"
+        disabled={disabled || readOnly} onClick={event => launch(event.currentTarget)} title={openButtonLabel}
+        aria-label={openButtonLabel} aria-haspopup="dialog" aria-expanded={open}>
+        <Calculator size={17} aria-hidden="true"/>
+      </button>
+    </div>
+    {dialog}
   </div>;
+}
+
+/** Keep existing steppers and desktop input behavior; render the pad only for the active phone field. */
+export function MobileNumericPadInput({
+  mobile,label,value,onConfirm,disabled,maxIntegerDigits,allowEmpty=false,
+  onBlur,onKeyDown,onClick,id,...input
+}: Omit<InputHTMLAttributes<HTMLInputElement>,"value"|"type"> & {
+  mobile:boolean;label:string;value:string;onConfirm:(value:string)=>void;
+  maxIntegerDigits:number;allowEmpty?:boolean;
+}) {
+  const generated=useId();
+  const fieldId=id??generated;
+  const {dialog,launch,open}=useNumericPadDialog({
+    fieldId,label,value,onChange:onConfirm,disabled,allowDecimal:false,allowNegative:false,
+    allowEmpty,maxIntegerDigits,maxDecimals:0,isolateClicks:true,
+  });
+  return <>
+    <input {...input} id={fieldId} type="text" value={value} disabled={disabled}
+      inputMode={mobile?"none":input.inputMode} readOnly={mobile||input.readOnly}
+      aria-label={input["aria-label"]??label}
+      aria-haspopup={mobile?"dialog":undefined} aria-expanded={mobile?open:undefined}
+      aria-controls={open?`${fieldId}-dialog`:undefined}
+      onClick={event=>{if(mobile){event.stopPropagation();launch(event.currentTarget);}else onClick?.(event);}}
+      onBlur={event=>{if(!mobile)onBlur?.(event);}}
+      onKeyDown={event=>{
+        if(!mobile){onKeyDown?.(event);return;}
+        if(event.key==="Enter"||event.key===" "){
+          event.preventDefault();event.stopPropagation();launch(event.currentTarget);
+        }
+      }}/>
+    {open&&createPortal(dialog,document.body)}
+  </>;
 }

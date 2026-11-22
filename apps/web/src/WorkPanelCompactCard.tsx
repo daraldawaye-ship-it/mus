@@ -4,6 +4,7 @@ import type { Item } from "../../../packages/contracts/src/index";
 import { api, ApiFailure, sessionRequiresLogin, useScopeGuard } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { Notice } from "./ui";
+import { MobileNumericPadInput,useMobileQuantityPad } from "./NumericPadField";
 import { ItemOrderStopQuickActions } from "./ItemSpecialOrderQuickActions";
 import { errorMessage } from "./phase2";
 import { compactItemDraft, compactItemSingleFieldPatch, compactNumericFields, createCompactItemAutosave,
@@ -32,6 +33,7 @@ export function WorkPanelCompactCard(props:Props) {
 
 function CompactItemEditor({userId,companyId,itemId,canEdit,canStopOrder,online,initial,reload}:
     Props & {initial:Item;reload:()=>Promise<Item>}) {
+  const mobilePad=useMobileQuantityPad();
   const baseline=useRef(initial);
   const current=useRef(compactItemDraft(initial));
   const revisions=useRef<Partial<Record<CompactItemField,number>>>({});
@@ -159,7 +161,7 @@ function CompactItemEditor({userId,companyId,itemId,canEdit,canStopOrder,online,
   };
   return <section className="work-panel-compact-card" aria-label="كرت الصنف المختصر">
     <div className="work-panel-compact-fields">
-      {compactNumericFields.map(({key,label,hint})=>{
+      {compactNumericFields.map(({key,label,hint,max})=>{
         const fieldId=id+"-"+key;
         const unavailable=disabled||!!errors[key]?.conflict||reloadField===key;
         const step=(direction:-1|1)=>stepCompactItemValue(key,draft[key],direction);
@@ -172,12 +174,16 @@ function CompactItemEditor({userId,companyId,itemId,canEdit,canStopOrder,online,
           <div className="work-panel-compact-stepper" dir="ltr" onBlur={event=>{
             // Moving focus to this same field's step buttons is not an edit
             // commit; the button will send its final value directly.
+            if (mobilePad) return;
             if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) commit(key);
           }}>
             <label className="work-panel-compact-label" dir="rtl" htmlFor={fieldId} title={hint}>{label}</label>
             <button type="button" disabled={unavailable||step(-1)===draft[key]}
               aria-label={`نقص ${label}`} onClick={()=>apply(-1)}>−</button>
-            <input id={fieldId} inputMode="numeric" maxLength={22} value={draft[key]} disabled={unavailable}
+            <MobileNumericPadInput id={fieldId} label={label} mobile={mobilePad}
+              inputMode="numeric" maxLength={22} maxIntegerDigits={max.toString().length}
+              allowEmpty={key==="orderAlertQuantity"} value={draft[key]} disabled={unavailable}
+              onConfirm={value=>{if(!unavailable){setValue(key,value);commit(key,value);}}}
               autoComplete="off" title={hint} onChange={event=>setValue(key,event.target.value)}
               onKeyDown={event=>onEnter(event,key)}/>
             <button type="button" disabled={unavailable||step(1)===draft[key]}

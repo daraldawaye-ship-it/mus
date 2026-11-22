@@ -1,3 +1,4 @@
+import {MobileNumericPadInput,useMobileQuantityPad} from "../NumericPadField";
 import InteractiveColumnsTable,{type InteractiveTableColumn} from "../InteractiveColumnsTable";
 import { formatNumber, formatStockSaleQuantity } from "../order-draft-quantities";
 import { useEffect, useMemo, useState } from "react";
@@ -83,8 +84,8 @@ type PresetGroupRun = {
   stages: Array<{ presetId: number; name: string; items: OrderDraftItem[] }>;
 };
 
-function DraftQuantityInput({ item, factor, onSave }: {
-  item: OrderDraftItem; factor: number | undefined;
+function DraftQuantityInput({ item, factor, onSave, mobilePad }: {
+  item: OrderDraftItem; factor: number | undefined; mobilePad:boolean;
   onSave: (quantity: string) => boolean;
 }) {
   const [value, setValue] = useState(item.requiredQuantity ?? "");
@@ -92,8 +93,8 @@ function DraftQuantityInput({ item, factor, onSave }: {
   useEffect(() => { setValue(item.requiredQuantity ?? ""); setError(""); },
     [item.id, item.requiredQuantity]);
   const lot = Number.isSafeInteger(factor) && (factor ?? 0) > 0 ? BigInt(factor!) : null;
-  const save = () => {
-    const normalized = normalizeDigits(value.trim());
+  const save = (draft:string) => {
+    const normalized = normalizeDigits(draft.trim());
     if (!normalized && !item.requiredQuantity) { setError(""); return; }
     if (normalized === item.requiredQuantity) { setError(""); return; }
     if (!/^[1-9]\d{0,15}$/.test(normalized)) {
@@ -122,10 +123,11 @@ function DraftQuantityInput({ item, factor, onSave }: {
       <button type="button" title={"− " + (factor ?? "—")}
         aria-label={"نقص كمية " + item.name + " بمقدار عامل وحدة الشراء"}
         disabled={!!item.deleted || !lot} onClick={() => step(-1)}>−</button>
-      <input aria-label={"الكمية المطلوبة للصنف " + item.name} inputMode="numeric"
+      <MobileNumericPadInput label={"الكمية المطلوبة للصنف " + item.name} inputMode="numeric"
+        mobile={mobilePad} maxIntegerDigits={16} onConfirm={save}
         value={value} disabled={!!item.deleted} onChange={event => {
           setValue(event.target.value); setError("");
-        }} onBlur={save} onKeyDown={event => {
+        }} onBlur={()=>save(value)} onKeyDown={event => {
           if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
         }} placeholder="—" />
       <button type="button" title={"+ " + (factor ?? "—")}
@@ -138,6 +140,7 @@ function DraftQuantityInput({ item, factor, onSave }: {
 
 export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const mobilePad = useMobileQuantityPad();
   const { user } = useSession();
   const drafts = useNumberedOrderDrafts(companyId, user?.id);
   const directory = usePageDirectory(companyId);
@@ -564,7 +567,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                   onChange={event => {
                   selectItem(row.item.id, event.target.checked);
                 }} /></>;
-      case "quantity": return <><DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+      case "quantity": return <><DraftQuantityInput mobilePad={mobilePad} item={row.item} factor={info?.purchaseFactor}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} /></>;
       case "name": return <><span className="company-item-label">{row.item.deleted?<s>{row.item.name}</s>:row.item.name}</span>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}</>;
@@ -860,7 +863,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                   selectItem(row.item.id, event.target.checked);
                 }} />
               <div className="item-order-drafts-mobile-quantity" style={columnStyle("quantity")}>
-                <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                <DraftQuantityInput mobilePad={mobilePad} item={row.item} factor={info?.purchaseFactor}
                   onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
               </div>
               <span className="item-order-drafts-mobile-name" style={columnStyle("name")}>
