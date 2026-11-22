@@ -60,6 +60,9 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const accountAccess=dockAccountAccess(context,pages);
   const canEditAccount=!!context&&accountAccess.card&&moduleAccess(context,"accounts",true);
   const access = workPanelItemActionAccess(context,pages);
+  const itemOptionsPage = pages?.find(page => page.key === "company.item-options-list");
+  // Match the existing order stop action: authorized item-card readers who can edit the item list.
+  const canStopOrder = reads.card && !!itemOptionsPage?.enabled && !!itemOptionsPage.actionAccess.edit;
   const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
 
   function refreshInventory(itemId: number) {
@@ -142,7 +145,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && reads.card && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
-                        canEdit={user.owner&&access.edit} online={online} />
+                        canEdit={user.owner&&access.edit} canStopOrder={canStopOrder} online={online} />
                     ) : <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}

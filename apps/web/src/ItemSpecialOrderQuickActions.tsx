@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { normalizeDigits } from "../../../packages/contracts/src/index";
-import { api } from "./api";
+import { api, sessionRequiresLogin, useScopeGuard } from "./api";
+import { isOfflineNow } from "./connection-mode";
 import { errorMessage } from "./phase2";
 
 const validQuantity = (value: string | null) =>
@@ -171,12 +172,13 @@ const THREE_DAY_PERIOD = { key:"three-days", label:"إيقاف 3 أيام", desc
 type OrderStopPeriod = typeof PERIODS[number] | typeof THREE_DAY_PERIOD;
 
 export function ItemOrderStopQuickActions({
-  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false, inlineStatus = false,
+  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false, inlineStatus = false, compact = false,
 }: {
   companyId:number; itemId:number; itemName:string; revision:number;
-  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean; inlineStatus?:boolean;
+  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean; inlineStatus?:boolean; compact?:boolean;
 }) {
   const queryClient = useQueryClient();
+  const guard=useScopeGuard(`item-order-stop:${companyId}:${itemId}`);
   const currentRevision = useRef(revision);
   const [busy, setBusy] = useState(false);
   const [savedDate, setSavedDate] = useState<string | null>(null);
@@ -185,7 +187,7 @@ export function ItemOrderStopQuickActions({
     [revision,itemId]);
 
   async function stop(period: OrderStopPeriod) {
-    if (!canEdit || busy) return;
+    if (!canEdit || busy || (compact && (!guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()))) return;
     const confirmed = window.confirm(
       "هل تؤكد إيقاف طلب الصنف «" + itemName + "» لمدة " + period.description +
       " من اليوم؟\nسيُحفظ تاريخ انتهاء الإيقاف في كرت الصنف." +
@@ -201,20 +203,32 @@ export function ItemOrderStopQuickActions({
       }>("/companies/" + companyId + "/items/" + itemId + "/order-stop-period", {
         method: "PATCH",
         body: { revision: currentRevision.current, period: period.key },
+        ...(compact ? {signal:guard.signal} : {}),
       });
+      if (compact && !guard.isCurrent()) return;
       currentRevision.current = response.result.revision;
       setSavedDate(response.result.orderStoppedUntil);
       void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
       void queryClient.invalidateQueries({ queryKey: ["item-options-list"] });
       void queryClient.invalidateQueries({ queryKey: ["items"] });
+      if (compact) void queryClient.invalidateQueries({queryKey:["work-panel-compact-card"]});
     } catch (cause) {
+      if (compact && !guard.isCurrent()) return;
       setError(errorMessage(cause));
       void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
+      if (compact) void queryClient.invalidateQueries({queryKey:["work-panel-compact-card"]});
     } finally {
-      setBusy(false);
+      if (!compact || guard.isCurrent()) setBusy(false);
     }
   }
   const stopDate = savedDate ?? orderStoppedUntil;
+  if (compact) return <div className="work-panel-compact-stop">
+    <button type="button" className="button button-secondary button-compact" disabled={!canEdit||busy}
+      title={stopDate? `موقوف حتى ${stopDate}` : "إيقاف طلب الصنف"}
+      onClick={() => void stop(PERIODS[0])}>{busy?"جارٍ الحفظ…":PERIODS[0].label}</button>
+    {savedDate && <small role="status">حتى <bdi>{savedDate}</bdi></small>}
+    {error && <small className="text-error" role="alert">{error}</small>}
+  </div>;
   return <div className={inlineStatus ? "item-order-draft-stop-actions item-options-inline-stop" : "item-order-draft-stop-actions"}>
     <div className="item-order-draft-stop-buttons">
       {(includeThreeDays ? [...PERIODS, THREE_DAY_PERIOD] : PERIODS).map(period =>

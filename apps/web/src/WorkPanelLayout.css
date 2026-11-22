@@ -367,7 +367,8 @@
 .work-panel-compact-fields {
   display: grid;
   gap: 4px 6px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 114px), 1fr));
+  /* Cap at three fields; keep three on a 320px handset when the card has room. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(78px, calc((100% - 12px) / 3))), 1fr));
 }
 .work-panel-compact-field { min-width: 0; display: grid; gap: 2px; }
 .work-panel-compact-stepper {
@@ -401,6 +402,11 @@
 .work-panel-compact-stepper > :focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: -2px; }
 .work-panel-compact-actions { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11px; }
 .work-panel-compact-actions .check-label { margin-inline-end: 2px; min-height: 24px; }
+.work-panel-compact-stop { display: grid; gap: 2px; align-content: center; width: 100%; }
+.work-panel-compact-stop button { justify-self: stretch; white-space: normal; }
+@media screen and (max-width: 680px) {
+  .work-panel-compact-stepper { grid-template-columns: 20px minmax(0, 1fr) 20px; }
+}
 
 /* Scope dynamic keyboard geometry to the mobile screen; print keeps its rules. */
 @media screen and (max-width: 680px) {

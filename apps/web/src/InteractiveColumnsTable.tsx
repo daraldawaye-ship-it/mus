@@ -17,6 +17,8 @@ type Props<Row, Key extends string> = {
   rowClassName?: (row: Row) => string | undefined; onRowClick?: (row: Row) => void;
   ariaLabel: string; emptyMessage?: string; className?: string;
   sharedDefaults?: readonly TableColumnDefault[];
+  /** Only order/width are temporary when false; visibility keeps its own lifecycle. */
+  persistLayout?: boolean;
   dockRowSource?:(row:Row)=>unknown; renderRowDetails?:(row:Row)=>ReactNode; allowColumnVisibility?:boolean;
 };
 type Layout<Key extends string> = { order: Key[]; widths: Record<Key, number> };
@@ -60,13 +62,13 @@ function readLayout<Row, Key extends string>(columns: readonly InteractiveTableC
 
 /** A scope change remounts local layout without saving the previous user's state into the new scope. */
 export default function InteractiveColumnsTable<Row, Key extends string = string>(props: Props<Row, Key>) {
-  const scope = JSON.stringify([props.storageKey, props.columns.map(column => [column.key, column.width])]);
+  const scope = JSON.stringify([props.storageKey, props.columns.map(column => [column.key, column.width]), props.persistLayout !== false]);
   return <InteractiveColumnsTableState key={scope} {...props} />;
 }
 
 function InteractiveColumnsTableState<Row, Key extends string>({
   columns, rows, rowKey, visibleColumns:availableColumns, storageKey, sortKey, sortDirection, onSort,
-  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className, dockRowSource,renderRowDetails,allowColumnVisibility,sharedDefaults,
+  rowClassName, onRowClick, ariaLabel, emptyMessage = "لا توجد نتائج.", className, dockRowSource,renderRowDetails,allowColumnVisibility,sharedDefaults,persistLayout=true,
 }: Props<Row, Key>) {
   const updateDock=useDockTableUpdate();
   const [hiddenOverride,setHidden]=useState<Key[] | null>(()=>{
@@ -87,7 +89,7 @@ function InteractiveColumnsTableState<Row, Key extends string>({
     setHidden(next);
     try{window.localStorage.setItem(storageKey+":hidden",JSON.stringify(next));}catch{/* optional */}
   };
-  const [layout, setLayout] = useState(() => readLayout(columns, storageKey, sharedDefaults));
+  const [layout, setLayout] = useState(() => persistLayout ? readLayout(columns, storageKey, sharedDefaults) : defaultLayout(columns, sharedDefaults));
   const [resizing, setResizing] = useState<Key | null>(null);
   const [preview, setPreview] = useState<Preview<Key> | null>(null);
   const [message, setMessage] = useState("");
@@ -101,15 +103,17 @@ function InteractiveColumnsTableState<Row, Key extends string>({
   const localOverride = useRef<Layout<Key> | null>(null);
   useEffect(() => {
     if (drag.current || resize.current || localOverride.current) return;
-    const next = readLayout(columnsRef.current, storageKey, sharedDefaults);
+    const next = persistLayout ? readLayout(columnsRef.current, storageKey, sharedDefaults)
+      : defaultLayout(columnsRef.current, sharedDefaults);
     layoutRef.current = next;
     setLayout(next);
-  }, [sharedDefaults, storageKey, resizing, preview !== null]);
+  }, [sharedDefaults, storageKey, persistLayout, resizing, preview !== null]);
   layoutRef.current = layout; visibleRef.current = visibleColumns; columnsRef.current = columns;
   const label = (key: Key) => columnsRef.current.find(column => column.key === key)?.label ?? key;
 
   function save(next: Layout<Key>) {
     localOverride.current = next;
+    if (!persistLayout) return;
     try { window.localStorage.setItem(storageKey, JSON.stringify(next)); }
     catch { /* Storage restrictions do not block table interaction. */ }
   }
@@ -311,12 +315,14 @@ function InteractiveColumnsTableState<Row, Key extends string>({
           }}>إظهار أعمدة الشركة الافتراضية</button>}
       </details>}
       <details className="interactive-columns-help"><summary>طريقة تحريك الأعمدة</summary>
-        <p id={helpId}>اسحب عنوان العمود لتغيير ترتيبه، أو الفاصل الأيسر لتغيير عرضه. انقر العنوان للفرز، واسحب النص الطويل داخل الخلية لقراءة بقيته. تُحفظ العروض والترتيب على هذا الجهاز.</p>
+        <p id={helpId}>اسحب عنوان العمود لتغيير ترتيبه، أو الفاصل الأيسر لتغيير عرضه. انقر العنوان للفرز، واسحب النص الطويل داخل الخلية لقراءة بقيته. {persistLayout ? "تُحفظ العروض والترتيب على هذا الجهاز." : "يبقى ترتيب الأعمدة وعرضها حتى تغادر الصفحة أو تعيد تحميلها."}</p>
         <p>بلوحة المفاتيح: <bdi>Alt + ← / →</bdi> على العنوان لنقله، والأسهم على الفاصل لتغيير العرض. <bdi>Esc</bdi> يلغي السحب الجاري.</p>
       </details>
       <button type="button" className="button button-secondary interactive-columns-reset" disabled={isDefault} onClick={() => {
         finishDrag(true); finishResize(true); layoutRef.current = defaults; setLayout(defaults);
-        if (sharedDefaults !== undefined) {
+        if (!persistLayout) {
+          localOverride.current = null;
+        } else if (sharedDefaults !== undefined) {
           localOverride.current = null;
           try { window.localStorage.removeItem(storageKey); } catch {/* optional */}
         } else save(defaults);

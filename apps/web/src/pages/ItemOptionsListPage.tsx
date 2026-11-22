@@ -1454,7 +1454,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           className="item-options-desktop-table"
           ariaLabel="نتائج الأصناف حسب الخيارات"
           columns={columns} rows={result.rows} rowKey={row => row.itemId}
-          visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey} sharedDefaults={savedDefaults}
+          visibleColumns={visibleColumns} storageKey={columnLayoutStorageKey} sharedDefaults={savedDefaults} persistLayout={false}
           sortKey={activeSort} sortDirection={activeDirection}
           onSort={column => {
             const option = sortOptions.find(([key]) => key === column);

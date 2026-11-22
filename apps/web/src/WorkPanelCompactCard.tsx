@@ -4,11 +4,12 @@ import type { Item } from "../../../packages/contracts/src/index";
 import { api, ApiFailure, sessionRequiresLogin, useScopeGuard } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { Notice } from "./ui";
+import { ItemOrderStopQuickActions } from "./ItemSpecialOrderQuickActions";
 import { errorMessage } from "./phase2";
 import { compactItemDraft, compactItemSingleFieldPatch, compactNumericFields, createCompactItemAutosave,
   stepCompactItemValue, type CompactItemDraft, type CompactItemField, type CompactItemValue } from "./work-panel-compact-card";
 
-type Props = { userId:number; companyId:number; itemId:number; canEdit:boolean; online:boolean };
+type Props = { userId:number; companyId:number; itemId:number; canEdit:boolean; canStopOrder:boolean; online:boolean };
 export function WorkPanelCompactCard(props:Props) {
   const {userId,companyId,itemId}=props;
   const query=useQuery({
@@ -29,7 +30,7 @@ export function WorkPanelCompactCard(props:Props) {
     }}/>;
 }
 
-function CompactItemEditor({userId,companyId,itemId,canEdit,online,initial,reload}:
+function CompactItemEditor({userId,companyId,itemId,canEdit,canStopOrder,online,initial,reload}:
     Props & {initial:Item;reload:()=>Promise<Item>}) {
   const baseline=useRef(initial);
   const current=useRef(compactItemDraft(initial));
@@ -185,12 +186,18 @@ function CompactItemEditor({userId,companyId,itemId,canEdit,online,initial,reloa
           {status(key,label)}
         </div>;
       })}
-    </div>
-    <div className="work-panel-compact-actions">
-      <label className="check-label"><input type="checkbox" checked={draft.reviewed}
-        disabled={disabled||!!errors.reviewed?.conflict||reloadField==="reviewed"}
-        onChange={event=>{setValue("reviewed",event.target.checked);commit("reviewed",event.target.checked);}}/>مراجع</label>
-      {status("reviewed","مراجع")}
+      <div className="work-panel-compact-field work-panel-compact-actions">
+        <label className="check-label"><input type="checkbox" checked={draft.reviewed}
+          disabled={disabled||!!errors.reviewed?.conflict||reloadField==="reviewed"}
+          onChange={event=>{setValue("reviewed",event.target.checked);commit("reviewed",event.target.checked);}}/>مراجع</label>
+        {status("reviewed","مراجع")}
+      </div>
+      <div className="work-panel-compact-field work-panel-compact-actions">
+        <ItemOrderStopQuickActions compact companyId={companyId} itemId={itemId} itemName={initial.name}
+          revision={Math.max(initial.revision, ...Object.values(revisions.current).map(value => value ?? 0))}
+          orderStoppedUntil={initial.orderStoppedUntil}
+          canEdit={canStopOrder&&online&&!Object.values(pending).some(Boolean)} />
+      </div>
     </div>
     {Object.values(pending).some(Boolean)&&<small>انتظر اكتمال الحفظ قبل الانتقال إلى صنف آخر.</small>}
   </section>;

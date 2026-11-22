@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {readFile} from "node:fs/promises";
+import {transform} from "esbuild";
+test("compact grid shows reviewed and the single audited native stop action, with original full actions retained", async ()=>{
+  const read = file=>readFile(new URL(`../apps/web/src/${file}`,import.meta.url),"utf8");
+  const layout=await read("WorkPanelLayout.css");
+  assert.match(layout,/max\(78px, calc\(\(100% - 12px\) \/ 3\)\)/);
+  assert.match(layout,/resizable-work-panel-scroll-thumb/);
+  const compact=await read("WorkPanelCompactCard.tsx");
+  assert.match(compact,/work-panel-compact-fields[\s\S]*compactNumericFields\.map[\s\S]*>مراجع<\/label>[\s\S]*<ItemOrderStopQuickActions compact/);
+  assert.match(compact,/canEdit=\{canStopOrder&&online/);
+  const controls=await read("WorkPanelTools.tsx");
+  assert.match(controls,/canStopOrder = reads\.card && !!itemOptionsPage\?\.enabled && !!itemOptionsPage\.actionAccess\.edit/);
+  const shared=await read("ItemSpecialOrderQuickActions.tsx");
+  assert.match(shared,/key:"ten-years", label:"إيقاف"/);
+  assert.match(shared,/\/order-stop-period[\s\S]*revision: currentRevision\.current, period: period\.key/);
+  assert.match(shared,/if \(compact\) return[\s\S]*void stop\(PERIODS\[0\]\)/);
+  assert.match(shared,/includeThreeDays \? \[\.\.\.PERIODS, THREE_DAY_PERIOD\] : PERIODS/);
+  for (const text of [compact,controls,shared]) await transform(text,{loader:"tsx"});
+});
