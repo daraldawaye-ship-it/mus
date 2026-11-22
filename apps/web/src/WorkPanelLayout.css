@@ -415,6 +415,11 @@
   .workspace-body:has(> .resizable-work-panel-layout.is-enabled) > .topbar {
     flex-shrink: 0;
   }
+  /* Absolute descendants (including visually hidden labels) must belong to
+     this scrollport, or they can expand the outer document past the dock. */
+  .resizable-work-panel-layout.is-enabled > .resizable-work-panel-page {
+    position: relative;
+  }
   .resizable-work-panel-layout.is-enabled {
     flex: 0 1 auto;
     height: var(--work-panel-visible-height, calc(100dvh - var(--work-panel-top)));
