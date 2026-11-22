@@ -404,7 +404,19 @@
 
 /* Scope dynamic keyboard geometry to the mobile screen; print keeps its rules. */
 @media screen and (max-width: 680px) {
+  .workspace:has(> .workspace-body > .resizable-work-panel-layout.is-enabled) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .workspace-body:has(> .resizable-work-panel-layout.is-enabled) {
+    min-height: 0;
+  }
+  .workspace-body:has(> .resizable-work-panel-layout.is-enabled) > .topbar {
+    flex-shrink: 0;
+  }
   .resizable-work-panel-layout.is-enabled {
+    flex: 0 1 auto;
     height: var(--work-panel-visible-height, calc(100dvh - var(--work-panel-top)));
     max-height: var(--work-panel-visible-height, calc(100dvh - var(--work-panel-top)));
   }

@@ -1,4 +1,6 @@
-.interactive-columns-table { min-width:0; max-width:100%; color:var(--text); }
+/* Keep the clipped live region inside the table's scrollable page. An absolute
+   region anchored to the document can create outer scrolling on mobile. */
+.interactive-columns-table { position:relative; min-width:0; max-width:100%; color:var(--text); }
 .interactive-columns-table .interactive-columns-toolbar { display:flex; justify-content:space-between; align-items:flex-start; gap:6px 10px; flex-wrap:wrap; margin-bottom:5px; font-size:11px; }
 .interactive-columns-table .interactive-columns-reset { min-height:26px; padding:3px 7px; gap:4px; font-size:11px; }
 .interactive-columns-table .interactive-columns-help { min-width:0; max-width:100%; }
@@ -37,7 +39,7 @@
 .interactive-columns-table .interactive-column-ghost svg { flex:none; }
 .interactive-columns-table .interactive-column-insertion { position:absolute; z-index:4; width:3px; transform:translateX(-1px); border-radius:2px; background:var(--primary); pointer-events:none; }
 .interactive-columns-table .interactive-column-insertion::before { content:""; position:absolute; top:-3px; left:-2px; width:7px; height:7px; border-radius:50%; background:var(--primary); }
-.interactive-columns-table .interactive-columns-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.interactive-columns-table .interactive-columns-status { position:absolute; inset-block-start:0; inset-inline-start:0; width:1px; height:1px; padding:0; margin:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 @media (pointer:coarse) {
   .interactive-columns-table .interactive-column-resizer { width:18px; }
   .interactive-columns-table .interactive-column-handle { padding-inline-end:22px; }
