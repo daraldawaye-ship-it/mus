@@ -216,13 +216,11 @@
 }
 .work-panel-movement-kind:is([data-movement-kind="sale"], [data-movement-kind="sales_return"]) .work-panel-movement-kind-dot {
   display: block;
-  background: #1766bf;
-  background: light-dark(#1766bf, #6daaff);
+  background: #001eff;
 }
 .work-panel-movement-kind:is([data-movement-kind="purchase"], [data-movement-kind="purchase_return"]) .work-panel-movement-kind-dot {
   display: block;
-  background: #147549;
-  background: light-dark(#147549, #58da9a);
+  background: #00ff1e;
 }
 .work-panel-movement-kind:is([data-movement-kind="transfer_in"], [data-movement-kind="transfer_out"]) .work-panel-movement-kind-dot {
   display: block;
