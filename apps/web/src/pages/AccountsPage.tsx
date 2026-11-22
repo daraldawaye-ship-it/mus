@@ -38,8 +38,7 @@ import {
   AccountStatisticsCard,
   usePendingAccountStatisticsActions,
 } from "../AccountStatisticsCard";
-import { formatMoney } from "../format-money";
-import { financeAccess } from "./FinancePages";
+import { formatMoney, formatWholeMoney } from "../format-money";
 import "./AccountsPage.css";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
@@ -144,12 +143,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       page.enabled &&
       page.actionAccess.view,
   );
-  const canViewLedger = financeAccess(context) && !!directory.data?.some(
-    (page) =>
-      page.key === "company.account-ledger" &&
-      page.enabled &&
-      page.actionAccess.view,
-  );
   const pendingStatisticsAccounts =
     usePendingAccountStatisticsActions(companyId);
   const [params, setParams] = useSearchParams();
@@ -199,18 +192,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const [editor, setEditor] = useState<{ account: Account | null } | null>(
     null,
   );
-  const [sidePanel, setSidePanel] = useState<{
-    account: Account;
-    view: "ledger" | "statistics";
-  } | null>(null);
-  useEffect(() => {
-    if (sidePanel && window.matchMedia("(max-width: 900px)").matches) {
-      document.getElementById("accounts-detail-pane")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  }, [sidePanel]);
+  const [statisticsAccount, setStatisticsAccount] = useState<Account | null>(null);
   const [linkEditor, setLinkEditor] = useState<{
     link: AccountLink;
     account: Account | null;
@@ -326,7 +308,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             <ValueCell>{row.original.name}</ValueCell>
             {(canManage ||
               (row.original.kind === "posting" &&
-                (canViewLedger || canViewStatistics ||
+                (canViewStatistics ||
                   pendingStatisticsAccounts.includes(row.original.id)))) && (
               <select
                 className="accounts-action-select"
@@ -337,13 +319,10 @@ function AccountsManager({ context }: { context: CompanyContext }) {
                 onChange={(event) => {
                   const action = event.target.value;
                   if (action === "edit") void edit(row.original);
-                  if (action === "ledger" || action === "statistics")
-                    setSidePanel({ account: row.original, view: action });
+                  if (action === "statistics") setStatisticsAccount(row.original);
                 }}
               >
                 <option value="" disabled>⋮</option>
-                {canViewLedger && row.original.kind === "posting" &&
-                  <option value="ledger">كشف الحساب</option>}
                 {(canViewStatistics || pendingStatisticsAccounts.includes(row.original.id)) &&
                   row.original.kind === "posting" &&
                   <option value="statistics">إحصاءات الحساب</option>}
@@ -364,8 +343,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           if (direction === "zero") return "صفر";
           return (
             <ValueCell value={formatMoney(amount)}>
-              <bdi>{formatMoney(amount)}</bdi> {direction === "credit" ? "له" : "عليه"}
-              {list.data?.baseCurrencyCode ? ` (${list.data.baseCurrencyCode})` : ""}
+              <bdi>{formatWholeMoney(amount)}</bdi> {direction === "credit" ? "له" : "عليه"}
             </ValueCell>
           );
         },
@@ -468,13 +446,11 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     [
       canManage,
       savingInline,
-      canViewLedger,
       canViewStatistics,
       pendingStatisticsAccounts,
       loadingDetail,
       companyId,
       list.data?.optionDefinitions,
-      list.data?.baseCurrencyCode,
     ],
   );
   return (
@@ -515,7 +491,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {presence.error && (
         <Notice tone="error">{errorMessage(presence.error)}</Notice>
       )}
-      <div className="accounts-split-layout">
+      <div className="accounts-directory-layout">
         <Card title="الحسابات">
         <div className="table-filters">
           <Field
@@ -620,39 +596,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           }}
         />
         </Card>
-        <aside id="accounts-detail-pane" className="accounts-detail-pane" aria-live="polite">
-          {sidePanel && (
-            <>
-              <div className="accounts-pane-heading">
-                <strong>{sidePanel.account.name}</strong>
-                <button
-                  type="button"
-                  className="accounts-pane-close"
-                  aria-label="إغلاق تفاصيل الحساب"
-                  onClick={() => setSidePanel(null)}
-                >
-                  إغلاق ×
-                </button>
-              </div>
-              {sidePanel.view === "ledger" && canViewLedger && (
-                <AccountLedgerPreview
-                  key={sidePanel.account.id}
-                  companyId={companyId}
-                  account={sidePanel.account}
-                />
-              )}
-              {sidePanel.view === "statistics" &&
-                (canViewStatistics ||
-                  pendingStatisticsAccounts.includes(sidePanel.account.id)) && (
-                <AccountStatisticsCard
-                  key={sidePanel.account.id}
-                  companyId={companyId}
-                  account={sidePanel.account}
-                />
-              )}
-            </>
-          )}
-        </aside>
       </div>
       <Card
         title="ربط الحسابات النظامية"
@@ -700,6 +643,16 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           onSaved={(account) => void saved(account)}
         />
       )}
+      {statisticsAccount &&
+        (canViewStatistics || pendingStatisticsAccounts.includes(statisticsAccount.id)) && (
+          <Dialog open title={statisticsAccount.name} onClose={() => setStatisticsAccount(null)}>
+            <AccountStatisticsCard
+              key={statisticsAccount.id}
+              companyId={companyId}
+              account={statisticsAccount}
+            />
+          </Dialog>
+        )}
       {canManage && initializing && (
         <InitializeAccounts
           companyId={companyId}
