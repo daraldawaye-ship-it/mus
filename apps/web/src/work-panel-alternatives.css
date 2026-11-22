@@ -1,0 +1,36 @@
+.work-panel-tools .work-panel-movement-scroll.work-panel-alternatives-scroll {
+  --alternatives-row: 1.7rem;
+  max-block-size: calc(7 * var(--alternatives-row));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.work-panel-alternatives-scroll table {
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+  text-align: start;
+}
+.work-panel-alternatives-scroll :is(th, td) {
+  box-sizing: border-box;
+  height: var(--alternatives-row);
+  padding: 2px 5px;
+  border-bottom: 1px solid var(--border, #d5d9df);
+  line-height: 1.1;
+  text-align: start;
+}
+.work-panel-alternatives-scroll th {
+  position: sticky;
+  top: 0;
+  background: var(--soft, var(--surface, white));
+}
+.work-panel-alternatives-scroll :is(th, td):last-child {
+  text-align: center;
+  width: 4.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.work-panel-alternatives-scroll td:first-child span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

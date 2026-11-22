@@ -37,7 +37,9 @@ export async function readItemCompositionPeers(
    [companyId,composition.id,itemId],
  );
  result.total=count.rows[0]?.total??0;
- const stockCol=canViewStock?"s.stock_total::text AS stock_smallest":"NULL::text AS stock_smallest";
+ const stockCol=canViewStock
+   ?"s.stock_total::text AS stock_smallest, (COALESCE(s.stock_showroom,0)+COALESCE(s.stock_warehouse,0))::text AS stock_available_smallest"
+   :"NULL::text AS stock_smallest, NULL::text AS stock_available_smallest";
  const stockJoin=canViewStock
    ?"LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id":"";
  // Sort across the entire set before paging, comparing real unit-1 quantities,
@@ -58,6 +60,7 @@ export async function readItemCompositionPeers(
    smallestUnitName:r.factor3>1?r.unit3_name:r.factor2>1?r.unit2_name:r.unit1_name,
    unit1Name:r.unit1_name,factor2:r.factor2,factor3:r.factor3,
    stockSmallest:r.stock_smallest??(canViewStock?"0":null),
+   stockAvailableSmallest:r.stock_available_smallest??null,
  }));
  return result;
 }

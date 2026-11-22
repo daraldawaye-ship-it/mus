@@ -700,5 +700,7 @@ export interface ItemCompositionPeers {
    factor2: number;
    factor3: number;
    stockSmallest: string | null;
+   /** Available showroom and warehouse stock only, in this item’s smallest unit. */
+   stockAvailableSmallest?: string | null;
  }>;
 }

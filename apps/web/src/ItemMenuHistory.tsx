@@ -8,6 +8,7 @@ import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
 import ScrollableTableCell from "./ScrollableTableCell";
+import "./work-panel-alternatives.css";
 
 type ItemMenuView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
 export type ItemMenuQuickAction = "adjustment" | "transfer" | "memo" | "memo-return";
@@ -140,6 +141,28 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
       {footer && <div className="work-panel-movement-footer">{footer}</div>}
     </div>
   );
+}
+
+function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
+  if (!result.peers.length) return null;
+  return <div className="invoice-item-options-scroll work-panel-movement-scroll work-panel-alternatives-scroll" tabIndex={0} role="region" aria-label="جدول بدائل الصنف">
+    <table dir="rtl">
+      <thead><tr><th scope="col">الاسم</th><th scope="col">الكمية</th></tr></thead>
+      <tbody>{result.peers.map(peer=>{
+        const quantity = result.canViewStock && peer.stockAvailableSmallest != null
+          && Number.isSafeInteger(peer.factor2) && peer.factor2>0
+          && Number.isSafeInteger(peer.factor3) && peer.factor3>0
+          ? formatWorkPanelMovementQuantity(
+              peer.stockAvailableSmallest,(BigInt(peer.factor2)*BigInt(peer.factor3)).toString(),
+            ).text.replace(/^\+/,"")
+          : "—";
+        return <tr key={peer.id}>
+          <td><span title={peer.name} dir="auto">{peer.name}</span></td>
+          <td><bdi dir="ltr">{quantity}</bdi></td>
+        </tr>;
+      })}</tbody>
+    </table>
+  </div>;
 }
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
@@ -293,6 +316,7 @@ export function ItemMenuHistory({
   const selectedLabel = fixedView === "alternatives"
     ? "بدائل الصنف" : actions.find(action => action.key === view)?.label;
   const isAlternatives = view === "alternatives";
+  const dockAlternatives = fixedView === "alternatives";
   const isMovement = view === "movement";
   const isInvoice = view === "purchase" || view === "sale";
   const waiting = isAlternatives ? alternatives.isPending :
@@ -364,7 +388,7 @@ export function ItemMenuHistory({
           {failed && <p className="user-menu-entity-hint">{staffDockMovement?"تعذّر تحميل حركة الصنف. أعد المحاولة.":"تعذر تحميل البيانات؛ تحقق من صلاحيات عرض الفواتير أو المخزون أو الأصناف."}</p>}
           {isAlternatives && peers && !peers.composition &&
             <p className="user-menu-entity-hint">لا يوجد تركيب مرتبط بهذا الصنف.</p>}
-          {isAlternatives && peers?.composition && (
+          {isAlternatives && peers?.composition && (!dockAlternatives || peers.relation !== "sameComposition") && (
             <p className="user-menu-entity-hint">
               {peers.relation === "identicalAlternative" ? "بدائل مطابقة بحسب كرت التركيب" :
                peers.relation === "nonInterchangeable" ? "تنبيه: غير قابلة للتبديل" :
@@ -373,7 +397,9 @@ export function ItemMenuHistory({
           )}
           {!waiting && !failed && rows?.length === 0 &&
             <p className="user-menu-entity-hint">لا توجد نتائج لهذا الصنف.</p>}
-          {isAlternatives ? peers?.peers.map(peer => (
+          {isAlternatives ? (dockAlternatives
+            ? (!failed && peers && <WorkPanelAlternativesTable result={peers} />)
+            : peers?.peers.map(peer => (
             <div key={peer.id} className="user-menu-item-history-row">
               <strong title={peer.name}>{peer.name}</strong>
               <div className="user-menu-item-history-meta">
@@ -382,7 +408,7 @@ export function ItemMenuHistory({
                   <span>الرصيد: <bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}</span>}
               </div>
             </div>
-          )) : isMovement && workPanelMovement ? (
+          ))) : isMovement && workPanelMovement ? (
             staffDockMovement ? <StaffWorkPanelMovementTable rows={failed?[]:staffMovement.data?.items??[]} purchaseOnly={purchaseOnly}
               footer={!waiting&&!failed?controls:undefined} /> :
             <WorkPanelMovementTable key={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`}
