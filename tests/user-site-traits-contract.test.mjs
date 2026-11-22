@@ -9,7 +9,7 @@ test("traits remain an independent owner editor and use a strict revisioned cont
   const {code} = await transform(file, {loader:"ts",format:"esm"});
   const zod = import.meta.resolve("zod");
   const schemas = await import("data:text/javascript;base64," + Buffer.from(code.replace('"zod"', JSON.stringify(zod))).toString("base64"));
-  assert.deepEqual(Object.values(schemas.userSiteTraitLabels), ["اداري1","موظف في شركه","محرر","مشرف في السوق","عضو","مسموح في الدردشه","مانح صلاحيات الدردشة","طفل","مسموح في القضايا","معتمد","معروف شخصيا"]);
+  assert.deepEqual(Object.values(schemas.userSiteTraitLabels), ["اداري1","موظف في شركه","محرر","مشرف في السوق","عضو","مسموح في الدردشه","مانح صلاحيات الدردشة","طفل","مسموح في القضايا","معتمد","معروف شخصيا","مراقب"]);
   const patch = schemas.userSiteTraitsPatchSchema;
   for (const traits of [[],["member"],[...schemas.userSiteTraits]]) assert.equal(patch.safeParse({traits,expectedRevision:1}).success,true);
   for (const input of [

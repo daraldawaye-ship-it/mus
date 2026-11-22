@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const userSiteTraits = [
   "admin1", "companyEmployee", "editor", "marketSupervisor", "member",
-  "chatAllowed", "chatGrantor", "child", "legalCasesAllowed", "approved", "personallyKnown",
+  "chatAllowed", "chatGrantor", "child", "legalCasesAllowed", "approved", "personallyKnown", "monitor",
 ] as const;
 
 export type UserSiteTrait = (typeof userSiteTraits)[number];
@@ -19,6 +19,7 @@ export const userSiteTraitLabels: Record<UserSiteTrait, string> = {
   legalCasesAllowed: "مسموح في القضايا",
   approved: "معتمد",
   personallyKnown: "معروف شخصيا",
+  monitor: "مراقب",
 };
 
 const traits = z.array(z.enum(userSiteTraits)).max(userSiteTraits.length)
