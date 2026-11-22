@@ -6,6 +6,7 @@ import { accountChoices, accountChoiceLabels, type AccountChoice, type CompanyCo
 import { api, useSession } from "../api";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { formatMoney } from "../format-money";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -17,6 +18,7 @@ type BalanceRow = Figures & {
   id: number; parentId: number | null; code: string; name: string;
   kind: string; category: string; accountChoice: AccountChoice | null; hasMovement: boolean;
 };
+type TrialColumn = keyof Figures | "code" | "name" | "accountChoice";
 type TrialResponse = {
   dateFrom: string | null; dateTo: string | null; currencyCode: string;
   items: BalanceRow[]; totals: Figures; balanced: boolean;
@@ -117,7 +119,7 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   // Empty exclusions = all account choices checked when the report opens.
   const [excludedAccountChoices, setExcludedAccountChoices] = useState<string[]>([]);
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: keyof Figures | "code" | "name" | "accountChoice"; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
+  const [sort, setSort] = useState<{ key: TrialColumn; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
   const companyId = context.company.id;
   const report = useQuery({
     queryKey: ["owner-trial-balance", user?.id, companyId, query.toString()],
@@ -150,11 +152,30 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   const shown = sortedItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   if (!user?.owner) return <Notice tone="error">ميزان المراجعة متاح لمالك المنصة فقط.</Notice>;
   const headings = ["رقم الحساب", "اسم الحساب", "خيار الحساب", "افتتاحي مدين", "افتتاحي دائن", "حركة مدين", "حركة دائن", "فارق الحركة", "ختامي مدين", "ختامي دائن"];
-  const sortKeys: (keyof Figures | "code" | "name" | "accountChoice")[] = ["code", "name", "accountChoice", "openingDebit", "openingCredit", "debit", "credit", "movementNet", "closingDebit", "closingCredit"];
-  const changeSort = (key: keyof Figures | "code" | "name" | "accountChoice") => {
+  const sortKeys: TrialColumn[] = ["code", "name", "accountChoice", "openingDebit", "openingCredit", "debit", "credit", "movementNet", "closingDebit", "closingCredit"];
+  const changeSort = (key: TrialColumn) => {
     setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
     setPage(1);
   };
+  const accountName = (row: BalanceRow) => row.kind === "posting"
+    ? <Link to={"/companies/" + companyId + "/account-ledger?accountId=" + row.id + "&dateFrom=" + dateFrom + "&dateTo=" + dateTo}>{row.name}</Link>
+    : <strong>{row.name}</strong>;
+  const cells = (row: BalanceRow, key:TrialColumn) => {
+    if(key==="code")return <bdi>{row.code}</bdi>;
+    if(key==="name")return accountName(row);
+    if(key==="accountChoice")return accountChoiceName(row.accountChoice);
+    return key==="movementNet"?signedMoney(row[key]):money(row[key]);
+  };
+  const columns: InteractiveTableColumn<BalanceRow,TrialColumn>[] = sortKeys.map((key,index)=>({
+    key,label:headings[index],width:key==="name"?215:key==="accountChoice"?146:110,sortable:true,
+    cell:row=>cells(row,key),
+  }));
+  const figureColumns=sortKeys.filter((key):key is keyof Figures =>
+    key!=="code"&&key!=="name"&&key!=="accountChoice");
+  const totalLabel="إجمالي الحسابات الحركية (جميع الحسابات قبل الفلاتر)";
+  const totalCells=(totals:Figures)=>figureColumns.map(key=><td key={key}>
+    {key==="movementNet"?signedMoney(totals[key]):money(totals[key])}
+  </td>);
   const exportData = () => downloadCsv("ميزان-المراجعة-" + dateFrom + "-" + dateTo, headings,
     sortedItems.map((row) => [row.code, row.name, accountChoiceName(row.accountChoice), row.openingDebit, row.openingCredit,
       row.debit, row.credit, row.movementNet, row.closingDebit, row.closingCredit]));
@@ -215,27 +236,27 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
         {!report.data.balanced &&
           <Notice tone="warning">يوجد فرق بين إجماليات القيود أو أرصدة الحسابات؛ يلزم مراجعة الترحيلات قبل الاعتماد.</Notice>}
         <p>الحسابات المطابقة: {items.length} — الصفحة {currentPage} من {Math.max(1, Math.ceil(items.length / pageSize))}</p>
-        <div className="table-scroll"><table>
-          <thead><tr>{headings.map((heading, index) => <th key={heading} aria-sort={sort.key === sortKeys[index] ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}><button type="button" onClick={() => changeSort(sortKeys[index])} title={"ترتيب حسب " + heading} style={{ all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, font: "inherit", color: "inherit" }}>{heading} <span aria-hidden="true">{sort.key === sortKeys[index] ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>)}</tr></thead>
-          <tbody>
-            {shown.map((row) => <tr key={row.id}>
-              <td>{row.code}</td>
-              <td>{row.kind === "posting" ?
-                <Link to={"/companies/" + companyId + "/account-ledger?accountId=" + row.id + "&dateFrom=" + dateFrom + "&dateTo=" + dateTo}>{row.name}</Link>
-                : <strong>{row.name}</strong>}</td>
-              <td>{accountChoiceName(row.accountChoice)}</td>
-              <td>{money(row.openingDebit)}</td><td>{money(row.openingCredit)}</td>
-              <td>{money(row.debit)}</td><td>{money(row.credit)}</td><td>{signedMoney(row.movementNet)}</td>
-              <td>{money(row.closingDebit)}</td><td>{money(row.closingCredit)}</td>
-            </tr>)}
-            {!shown.length && <tr><td colSpan={10}>لا توجد حسابات مطابقة.</td></tr>}
-          </tbody>
-          <tfoot><tr><th colSpan={3}>إجمالي الحسابات الحركية (جميع الحسابات قبل الفلاتر)</th>
-            <th>{money(report.data.totals.openingDebit)}</th><th>{money(report.data.totals.openingCredit)}</th>
-            <th>{money(report.data.totals.debit)}</th><th>{money(report.data.totals.credit)}</th>
-            <th>{signedMoney(report.data.totals.movementNet)}</th>
-            <th>{money(report.data.totals.closingDebit)}</th><th>{money(report.data.totals.closingCredit)}</th>
-          </tr></tfoot>
+        <div className="ledger-screen-only">
+          <InteractiveColumnsTable<BalanceRow,TrialColumn>
+            columns={columns} rows={shown} rowKey={row=>row.id} visibleColumns={sortKeys} allowColumnVisibility
+            storageKey={`alraesy:trial-balance:d13:v1:${user.id}:${companyId}`}
+            sortKey={sort.key} sortDirection={sort.direction} onSort={changeSort}
+            dockRowSource={row=>({companyId,accountId:row.id,accountName:row.name})}
+            ariaLabel="ميزان المراجعة" emptyMessage="لا توجد حسابات مطابقة." />
+          <div className="table-scroll" role="region" aria-label={totalLabel} tabIndex={0}>
+            <table>
+              <caption>{totalLabel}</caption>
+              <thead><tr>{figureColumns.map(key=><th key={key} scope="col">{headings[sortKeys.indexOf(key)]}</th>)}</tr></thead>
+              <tbody><tr>{totalCells(report.data.totals)}</tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div className="ledger-print-all"><table>
+          <thead><tr>{headings.map(heading=><th key={heading} scope="col">{heading}</th>)}</tr></thead>
+          <tbody>{shown.map(row=><tr key={row.id}>
+            {sortKeys.map(key=><td key={key}>{cells(row,key)}</td>)}
+          </tr>)}{!shown.length&&<tr><td colSpan={10}>لا توجد حسابات مطابقة.</td></tr>}</tbody>
+          <tfoot><tr><th colSpan={3}>{totalLabel}</th>{totalCells(report.data.totals)}</tr></tfoot>
         </table></div>
         <div className="form-actions">
           <Button variant="secondary" disabled={currentPage <= 1}
