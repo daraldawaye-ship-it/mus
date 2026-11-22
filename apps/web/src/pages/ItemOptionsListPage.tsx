@@ -227,7 +227,7 @@ const tableColumnWidths: Record<TableColumn, number> = {
   purchaseFactor: 116,
   minOrderQuantity: 140,
   orderAlertQuantity: 140,
-  orderStoppedUntil: 140,
+  orderStoppedUntil: 405,
   reviewed: 140,
   month: 67,
   marketOrder30Days: 67,
@@ -891,7 +891,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                  purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></>,
     minOrderQuantity: row => <><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></>,
     orderAlertQuantity: row => <><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></>,
-    orderStoppedUntil: row => <><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></>,
+    orderStoppedUntil: row => <><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} inlineStatus /></>,
     reviewed: row => <><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></>,
     month: row => <><bdi>{row.saleTimesMonth}</bdi></>,
     marketOrder30Days: row => <><bdi>{row.marketOrder30Days}</bdi></>,
@@ -900,8 +900,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     allTime: row => <><bdi>{row.saleTimesAllTime}</bdi></>,
     previousYear: row => <><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></>,
     requiredPurchaseQuantity: row => <><bdi>{row.requiredPurchaseQuantity}</bdi></>,
-    purchasePrice: row => <><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
-    requiredPurchaseValue: row => <><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    purchasePrice: row => <><bdi>{row.purchasePrice}</bdi>{row.purchaseCurrencyCode !== "YER" && <small className="item-options-currency">{row.purchaseCurrencyCode}</small>}</>,
+    requiredPurchaseValue: row => <><bdi>{row.requiredPurchaseValue}</bdi>{row.purchaseCurrencyCode !== "YER" && <small className="item-options-currency">{row.purchaseCurrencyCode}</small>}</>,
     purchaseNotes: row => <>{renderPurchaseNote(row, true)}</>,
     coverage: row => <><bdi>{row.approximateCoverageDays ?? "—"}</bdi></>,
     coverageWithReserve: row => <><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi></>,
@@ -912,9 +912,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     compositionStock: row => <><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi></>,
     compositionCoverage: row => <><bdi>{row.compositionCoverageDays ?? "0"}</bdi></>,
     adjustmentQtySinceDisplay: row => <bdi>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>,
-    adjustmentValueSinceDisplay: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    adjustmentValueSinceDisplay: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)}</bdi>{row.purchaseCurrencyCode !== "YER" && <small className="item-options-currency">{row.purchaseCurrencyCode}</small>}</>,
     adjustmentQtySinceApproval: row => <bdi>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>,
-    adjustmentValueSinceApproval: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></>,
+    adjustmentValueSinceApproval: row => <><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)}</bdi>{row.purchaseCurrencyCode !== "YER" && <small className="item-options-currency">{row.purchaseCurrencyCode}</small>}</>,
   };
   const columns: InteractiveTableColumn<Row, TableColumn>[] = tableColumnOptions.map(([key, label]) => ({
     key, label, width: tableColumnWidths[key], cell: columnCells[key],
@@ -1353,10 +1353,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchasePrice")} className="item-options-mobile-stat">
-                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice} {row.purchaseCurrencyCode}</bdi>
+                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-mobile-stat">
-                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue} {row.purchaseCurrencyCode}</bdi>
+                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchaseNotes")} className="item-options-mobile-stat item-options-mobile-purchase-notes">
                 <span>ملاحظات عند الشراء</span>{renderPurchaseNote(row)}
@@ -1375,7 +1375,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </div>
               <div style={hiddenColumnStyle("minOrderQuantity")} className="item-options-mobile-stat"><span>أقل كمية طلب</span><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></div>
 <div style={hiddenColumnStyle("orderAlertQuantity")} className="item-options-mobile-stat"><span>كمية الطلب</span><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></div>
-<div style={hiddenColumnStyle("orderStoppedUntil")} className="item-options-mobile-stat"><span>إيقاف</span><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></div>
+<div style={hiddenColumnStyle("orderStoppedUntil")} className="item-options-mobile-stat"><span>إيقاف</span><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} inlineStatus /></div>
 <div style={hiddenColumnStyle("reviewed")} className="item-options-mobile-stat"><span>مراجع</span><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></div>
 <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
@@ -1423,13 +1423,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>صافي كمية العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentQtySinceDisplay)}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentValueSinceDisplay")} className="item-options-mobile-stat">
-                <span>صافي قيمة العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)} {row.purchaseCurrencyCode}</bdi>
+                <span>صافي قيمة العجز والزيادة منذ آخر عرض</span><bdi>{formatSignedAmount(row.adjustmentValueSinceDisplay)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentQtySinceApproval")} className="item-options-mobile-stat">
                 <span>صافي كمية العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentQtySinceApproval)}</bdi>
               </div>
               <div style={hiddenColumnStyle("adjustmentValueSinceApproval")} className="item-options-mobile-stat">
-                <span>صافي قيمة العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)} {row.purchaseCurrencyCode}</bdi>
+                <span>صافي قيمة العجز والزيادة منذ آخر اعتماد</span><bdi>{formatSignedAmount(row.adjustmentValueSinceApproval)}{row.purchaseCurrencyCode !== "YER" && ` ${row.purchaseCurrencyCode}`}</bdi>
               </div>
                       </div>
           </article>)}

@@ -8,6 +8,7 @@ import {
   isOperatorSearchAllowed, normalizeOperatorSearchText, operatorActivityDetailLabels,
 } from "../../../packages/contracts/src/operator-activity.ts";
 import { pageByKey } from "../../../packages/contracts/src/pages.ts";
+import { deny } from "./errors.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 
 const interestAction = z.enum(["page_view", "click", "card_open", "search"]);
@@ -72,6 +73,61 @@ async function pruneOldEvents(pool: Pool): Promise<void> {
     console.error("INTEREST_EVENT_RETENTION_ERROR", error instanceof Error ? error.name : "unknown");
   }
 }
+
+const activityQuerySchema=z.object({
+  employee:z.string().trim().max(100).default(""),
+  user:z.string().trim().max(100).default(""),
+  event:z.string().trim().max(120).default(""),
+  from:z.iso.date().refine(s=>s>="1900-01-01"&&s<="9998-12-31").optional(),
+  to:z.iso.date().refine(s=>s>="1900-01-01"&&s<="9998-12-31").optional(),
+  cursorAt:z.iso.datetime().optional(),
+  cursorId:z.string().regex(/^[1-9][0-9]{0,18}$/)
+    .refine(s=>BigInt(s)<=9223372036854775807n).optional(),
+}).strict().refine(q=>!q.from||!q.to||q.from<=q.to,"تاريخ البداية يجب ألا يكون بعد النهاية")
+  .refine(q=>Boolean(q.cursorAt)===Boolean(q.cursorId),"مؤشر الصفحة غير مكتمل");
+
+const activityLabels={
+  page_view:"فتح صفحة",click:"نقر",card_open:"فتح كرت",search:"بحث",
+  operator_activity:"نشاط المشغل",
+};
+const activityPageSize=30;
+export const interestActivitySql=`
+  WITH evidence AS (
+    SELECT e.id,e.occurred_at,e.actor_id,e.action,e.target_type,e.target_id,
+           e.dimension_text,e.label,e.pathname,
+           CASE WHEN e.action='operator_activity' THEN e.label::jsonb ELSE NULL END AS context
+      FROM interest_events e
+     WHERE ($1::date IS NULL OR e.occurred_at >= ($1::timestamp AT TIME ZONE 'Asia/Aden'))
+       AND ($2::date IS NULL OR e.occurred_at < (($2::date+1)::timestamp AT TIME ZONE 'Asia/Aden'))
+       AND ($6::timestamptz IS NULL OR (e.occurred_at,e.id)<($6::timestamptz,$7::bigint))
+  ), identified AS (
+    SELECT i.*,employee.name AS employee_name,
+           COALESCE(NULLIF(u.display_name,''),u.name) AS actor_name,
+           CASE WHEN i.action='operator_activity' THEN
+                  COALESCE($9::jsonb->>(i.context->>'detailKey'),
+                           CASE WHEN i.target_type='operator_search' THEN 'بحث المشغل' ELSE 'نشاط المشغل' END)
+                ELSE COALESCE($8::jsonb->>i.action,i.action) END AS action_label
+      FROM evidence i
+      LEFT JOIN users u ON u.id=i.actor_id
+      LEFT JOIN employees employee ON i.action='operator_activity' AND employee.company_id=i.target_id
+        AND employee.id=(i.context->>'employeeId')::integer
+  )
+  SELECT id::text,
+         to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "occurredAt",
+         actor_name AS "actorName",actor_id IS NULL AS anonymous,
+         employee_name AS "employeeName",context->>'employeeId' AS "employeeId",
+         action_label AS "actionLabel",pathname,
+         CASE WHEN action='operator_activity' THEN COALESCE(context->>'searchText',context->>'detailKey',dimension_text)
+              ELSE COALESCE(NULLIF(label,''),NULLIF(dimension_text,''),NULLIF(target_type,'')) END AS "eventDetail",
+         CASE WHEN action='operator_activity' THEN 'operator' ELSE 'general' END AS source
+    FROM identified
+   WHERE ($3::text='' OR strpos(lower(COALESCE(employee_name,'')),lower($3::text))>0)
+     AND ($4::text='' OR strpos(lower(COALESCE(actor_name,'')),lower($4::text))>0)
+     AND ($5::text='' OR strpos(lower(concat_ws(' ',action_label,action,target_type,
+        dimension_text,CASE WHEN action<>'operator_activity' THEN label END,
+        context->>'detailKey',context->>'searchText')),lower($5::text))>0)
+   ORDER BY identified.occurred_at DESC,identified.id DESC
+   LIMIT $10`;
 
 /** Public visitor/event ingestion plus a strictly owner-only analytics report.
  * The only accepted identity of a logged-in user is the server session. */
@@ -169,6 +225,22 @@ export function interestEventRoutes(pool: Pool): Router {
     });
     res.status(202).json({ saved });
     void pruneOldEvents(pool);
+  }));
+
+  router.get("/interest-events/activity",handler(async(req,res)=>{
+    if(req.get("X-Alraesy-Employee-Preview")!==undefined)deny();
+    const user=await currentActor(pool,actor(req));
+    ownerOnly(user);
+    const q=parse(activityQuerySchema,req.query);
+    const rows=(await pool.query(interestActivitySql,[
+      q.from??null,q.to??null,q.employee,q.user,q.event,q.cursorAt??null,q.cursorId??null,
+      JSON.stringify(activityLabels),JSON.stringify(operatorActivityDetailLabels),activityPageSize+1,
+    ])).rows;
+    const items=rows.slice(0,activityPageSize);
+    const last=items.at(-1);
+    res.set("Cache-Control","private, no-store").json({
+      items,nextCursor:rows.length>activityPageSize&&last?{at:last.occurredAt,id:last.id}:null,
+    });
   }));
 
   router.get("/interest-events/report",handler(async(req,res)=>{

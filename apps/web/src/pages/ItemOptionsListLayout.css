@@ -30,3 +30,20 @@
     white-space: normal;
   }
 }
+
+/* Keep the stop controls and their normal status together without affecting the draft view. */
+.item-options-inline-stop {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+.item-options-inline-stop .item-order-draft-stop-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  white-space: nowrap;
+  width: max-content;
+}
+.item-options-inline-stop .item-order-draft-stop-buttons > * {
+  flex: 0 0 auto;
+}

@@ -1,17 +1,22 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
 type ActionCount = {action:string;total:string;visitors:number};
 type UserCount = {subject_key:string;name:string;total:string};
 type CardCount = {target_type:string;target_id:number;label:string;total:string;visitors:number};
 type SearchCount = {term:string;total:string;visitors:number};
-type RecentEvent = {occurred_at:string;action:string;target_type:string;target_id:number;
-  pathname:string;label:string;dimension_text:string;subject_key:string;name:string};
 type Report = {days:number;retentionDays:number;firstEventsRetained:number;
- actions:ActionCount[];users:UserCount[];cards:CardCount[];searches:SearchCount[];recent:RecentEvent[]};
+ actions:ActionCount[];users:UserCount[];cards:CardCount[];searches:SearchCount[]};
+type ActivityCursor={at:string;id:string};
+type ActivityRow={id:string;occurredAt:string;actorName:string|null;anonymous:boolean;
+ employeeName:string|null;employeeId:string|null;actionLabel:string;pathname:string;
+ eventDetail:string|null;source:"operator"|"general"};
+type ActivityPage={items:ActivityRow[];nextCursor:ActivityCursor|null};
+type ActivityFilters={employee:string;user:string;event:string;from:string;to:string};
+const emptyActivityFilters:ActivityFilters={employee:"",user:"",event:"",from:"",to:""};
 const formats: Record<string,string>={page_view:"فتح صفحة",click:"نقر",card_open:"فتح كرت",search:"بحث"};
 const number=(n:number|string)=>new Intl.NumberFormat("ar-YE").format(Number(n)||0);
 const cell={border:"1px solid var(--border-color, #8b98a7)",padding:"5px 8px",textAlign:"start" as const};
@@ -38,6 +43,79 @@ function SectionTable({headers,rows}:{headers:string[];rows:React.ReactNode[][]}
    </Button>
   </div>}
  </>;
+}
+
+function RecordedInterestActivity(){
+ const {user}=useSession();
+ const queryClient=useQueryClient();
+ const [draft,setDraft]=useState<ActivityFilters>(emptyActivityFilters);
+ const [filters,setFilters]=useState<ActivityFilters>(emptyActivityFilters);
+ const [cursors,setCursors]=useState<(ActivityCursor|null)[]>([null]);
+ const cursor=cursors.at(-1)??null;
+ const invalid=!!(draft.from&&draft.to&&draft.from>draft.to);
+ const params=new URLSearchParams();
+ Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,value);});
+ if(cursor){params.set("cursorAt",cursor.at);params.set("cursorId",cursor.id);}
+ const activity=useQuery({queryKey:["interest-events-activity",user?.id,params.toString()],
+  queryFn:({signal})=>api<ActivityPage>("/interest-events/activity?"+params,{signal}),
+  enabled:!!user?.owner,refetchOnWindowFocus:false,staleTime:15000,retry:false});
+ const update=(key:keyof ActivityFilters,value:string)=>setDraft(old=>({...old,[key]:value}));
+ const next=activity.data?.nextCursor;
+ const refresh=()=>{
+  if(cursors.length===1){void activity.refetch();return;}
+  // Reset to the newest page; invalidate only this owner activity query family.
+  void queryClient.invalidateQueries({queryKey:["interest-events-activity",user?.id],refetchType:"none"});
+  setCursors([null]);
+ };
+ return <Card title="سجل الحركات المسجلة"
+  description="يعرض الأحداث العامة وأحداث المشغّل المحتفظ بها، بترتيب الأحدث. التواريخ تشمل يوم النهاية بتوقيت عدن.">
+  <form className="table-filters" onSubmit={event=>{
+   event.preventDefault();if(invalid)return;
+   setCursors([null]);setFilters({employee:draft.employee.trim(),user:draft.user.trim(),
+    event:draft.event.trim(),from:draft.from,to:draft.to});
+  }}>
+   <label className="field">اسم الموظف<input type="search" maxLength={100} value={draft.employee}
+    onChange={e=>update("employee",e.currentTarget.value)} /></label>
+   <label className="field">اسم حساب المستخدم<input type="search" maxLength={100} value={draft.user}
+    onChange={e=>update("user",e.currentTarget.value)} /></label>
+   <label className="field">الحدث أو نصه<input type="search" maxLength={120} value={draft.event}
+    onChange={e=>update("event",e.currentTarget.value)} /></label>
+   <label className="field">من<input type="date" value={draft.from} min="1900-01-01" max="9998-12-31" aria-label="من تاريخ"
+    onChange={e=>update("from",e.currentTarget.value)} /></label>
+   <label className="field">إلى<input type="date" value={draft.to} min="1900-01-01" max="9998-12-31" aria-label="إلى تاريخ"
+    onChange={e=>update("to",e.currentTarget.value)} /></label>
+   <Button type="submit" size="compact" disabled={invalid}>تطبيق</Button>
+   <Button type="button" size="compact" variant="secondary" disabled={activity.isFetching} onClick={refresh}>تحديث</Button>
+   <Button type="button" size="compact" variant="secondary" onClick={()=>{
+    setDraft(emptyActivityFilters);setFilters(emptyActivityFilters);setCursors([null]);
+   }}>مسح الفلاتر</Button>
+  </form>
+  <small>إذا لم تُسجَّل هوية الموظف لحظة الحدث، ابحث باسم حساب المستخدم. يظهر اسم الموظف الحالي عند توفره لمعرّف الموظف المسجّل.</small>
+  {invalid&&<Notice tone="error">تاريخ البداية يجب ألا يكون بعد النهاية.</Notice>}
+  {activity.isPending&&<Notice>جارٍ تحميل سجل الحركات…</Notice>}
+  {activity.isError&&<Notice tone="error">تعذر تحميل سجل الحركات: {(activity.error as Error).message}</Notice>}
+  {!activity.isError&&activity.data&&<div style={{overflowX:"auto"}}>
+   <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}} aria-label="سجل الحركات المسجلة">
+    <thead><tr>{["الوقت","النوع","الموظف","المستخدم أو الزائر","الحدث","الهدف أو البحث","الصفحة"].map(h=>
+     <th key={h} scope="col" style={cell}>{h}</th>)}</tr></thead>
+    <tbody>{activity.data.items.map(row=><tr key={row.id}>
+     <td style={cell}>{formatDate(row.occurredAt)}</td>
+     <td style={cell}>{row.source==="operator"?"المشغّل":"عام"}</td>
+     <td style={cell}>{row.employeeName??(row.employeeId?"موظف #"+row.employeeId:"—")}</td>
+     <td style={cell}>{row.actorName??(row.anonymous?"زائر غير مسجل":"مستخدم مسجل")}</td>
+     <td style={cell}>{row.actionLabel}</td><td style={cell}>{row.eventDetail??"—"}</td>
+     <td style={cell}>{row.pathname||"—"}</td>
+    </tr>)}{!activity.data.items.length&&<tr><td colSpan={7} style={cell}>لا توجد أحداث مطابقة.</td></tr>}</tbody>
+   </table>
+  </div>}
+  <div className="form-actions">
+   <Button type="button" size="compact" variant="secondary" disabled={cursors.length===1||activity.isFetching}
+    onClick={()=>setCursors(old=>old.slice(0,-1))}>السابق</Button>
+   <span>الصفحة {number(cursors.length)}</span>
+   <Button type="button" size="compact" variant="secondary" disabled={!next||activity.isFetching||activity.isError}
+    onClick={()=>{if(next)setCursors(old=>[...old,next]);}}>التالي</Button>
+  </div>
+ </Card>;
 }
 
 export function InterestStatisticsPage(){
@@ -84,12 +162,6 @@ export function InterestStatisticsPage(){
     <SectionTable key={days} headers={["المستخدم / الزائر","عدد التفاعلات"]} rows={data.users.map(u=>
       [actorLabel(u.subject_key,u.name),number(u.total)])} />
    </Card>
-   <Card title="أحدث 100 حركة مسجلة">
-    <SectionTable key={days} headers={["الوقت","المستخدم أو الزائر","الحدث","الهدف أو البحث","الصفحة"]} rows={data.recent.map(e=>
-      [formatDate(e.occurred_at),actorLabel(e.subject_key,e.name),formats[e.action]??e.action,
-       e.action==="search"?e.dimension_text:e.label||e.target_type+(e.target_id?" #"+e.target_id:""),
-       e.pathname])} />
-   </Card>
    <p style={{fontSize:12,opacity:.8}}>
     تُحذف التفاصيل الأقدم من {data.retentionDays} يومًا على دفعات،
     بعد حفظ الإجماليات الدائمة وأول سجل لكل حدث ومستخدم وهدف.
@@ -97,5 +169,6 @@ export function InterestStatisticsPage(){
     لا تُجمع كلمات المرور أو محتويات النماذج أو حركات المؤشر.
    </p>
   </>}
+  <RecordedInterestActivity />
  </section>;
 }

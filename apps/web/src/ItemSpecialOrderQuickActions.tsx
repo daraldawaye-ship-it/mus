@@ -171,10 +171,10 @@ const THREE_DAY_PERIOD = { key:"three-days", label:"إيقاف 3 أيام", desc
 type OrderStopPeriod = typeof PERIODS[number] | typeof THREE_DAY_PERIOD;
 
 export function ItemOrderStopQuickActions({
-  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false,
+  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false, inlineStatus = false,
 }: {
   companyId:number; itemId:number; itemName:string; revision:number;
-  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean;
+  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean; inlineStatus?:boolean;
 }) {
   const queryClient = useQueryClient();
   const currentRevision = useRef(revision);
@@ -214,15 +214,17 @@ export function ItemOrderStopQuickActions({
       setBusy(false);
     }
   }
-  return <div className="item-order-draft-stop-actions">
+  const stopDate = savedDate ?? orderStoppedUntil;
+  return <div className={inlineStatus ? "item-order-draft-stop-actions item-options-inline-stop" : "item-order-draft-stop-actions"}>
     <div className="item-order-draft-stop-buttons">
       {(includeThreeDays ? [...PERIODS, THREE_DAY_PERIOD] : PERIODS).map(period =>
         <button key={period.key} type="button" className="button button-secondary"
           disabled={!canEdit || busy} onClick={() => void stop(period)}>
           {period.label}
         </button>)}
+      {inlineStatus && <small className="muted">{stopDate ? <>حتى <bdi>{stopDate}</bdi></> : "غير موقوف"}</small>}
     </div>
-    <small className="muted">موقوف حتى: {savedDate ?? orderStoppedUntil ?? "غير موقوف"}</small>
+    {!inlineStatus && <small className="muted">موقوف حتى: {stopDate ?? "غير موقوف"}</small>}
     {error && <small className="text-error" role="alert">{error}</small>}
   </div>;
 }
