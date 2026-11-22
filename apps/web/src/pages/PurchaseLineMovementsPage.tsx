@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index";
 import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
+import { isDockEntityId } from "../dock-card-access";
 import { errorMessage } from "../phase2";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 
 type PurchaseLine = {
   id: number;
@@ -13,6 +15,7 @@ type PurchaseLine = {
   invoiceNumber: string;
   createdAt: string;
   documentDate: string;
+  itemId: number | null;
   itemName: string;
   quantity: string;
   bonusQuantity: string;
@@ -61,12 +64,25 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? value : d.toLocaleString("ar-YE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
-  const sortHeader = (label: string, key: SortKey) => (
-    <button type="button" className="purchase-movement-sort"
-      onClick={() => { setPage(1); setSort(current => ({ key, desc: current.key === key ? !current.desc : key === "createdAt" })); }}>
-      {label}{sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}
-    </button>
-  );
+  type ColumnKey = SortKey | "bonusQuantity" | "invoice";
+  const number = (value: string) => <bdi className="purchase-movement-number">{value}</bdi>;
+  const columns: InteractiveTableColumn<PurchaseLine, ColumnKey>[] = [
+    { key: "itemName", label: "الصنف", width: 230, scrollText: true,
+      cell: row => <span className="company-item-label" title={row.itemName}>{row.itemName}</span> },
+    { key: "quantity", label: "الكمية", width: 90, cell: row => number(row.quantity) },
+    { key: "price", label: "السعر", width: 90, cell: row => number(money(row.price)) },
+    { key: "lineTotal", label: "إجمالي السعر", width: 115, cell: row => number(money(row.lineTotal)) },
+    { key: "bonusQuantity", label: "البونص", width: 85, sortable: false, cell: row => number(row.bonusQuantity) },
+    { key: "netQuantity", label: "صافي الكمية", width: 110, cell: row => number(money(row.netQuantity)) },
+    { key: "netPrice", label: "سعر الشراء الصافي", width: 145,
+      cell: row => row.netPrice === null ? "—" : number(money(row.netPrice)) },
+    { key: "invoiceNet", label: "صافي الفاتورة", width: 125, cell: row => number(money(row.invoiceNet)) },
+    { key: "supplier", label: "المورد", width: 150, scrollText: true, cell: row => row.supplier || "—" },
+    { key: "createdAt", label: "التاريخ والوقت", width: 150,
+      cell: row => <span className="purchase-movement-date" title={`تاريخ الفاتورة: ${row.documentDate}`}>{dateTime(row.createdAt)}</span> },
+    { key: "invoice", label: "الفاتورة", width: 105, sortable: false,
+      cell: row => <Link to={`/companies/${companyId}/invoices/${row.invoiceId}`}>{row.invoiceNumber || "فتح الفاتورة"}</Link> },
+  ];
   const totalPages = Math.max(1, Math.ceil((movements.data?.total ?? 0) / 50));
   return (
     <section className="purchase-movement-page">
@@ -91,30 +107,20 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
         {movements.isError && <Notice tone="error">{errorMessage(movements.error)}</Notice>}
         {movements.isLoading && <Notice>جارٍ تحميل الحركة…</Notice>}
         {movements.data && <>
-          <div className="purchase-movement-table-wrap" role="region" tabIndex={0} aria-label="جدول حركة أصناف المشتريات">
-            <table className="data-table purchase-movement-table" dir="rtl">
-              <thead><tr>
-                <th>{sortHeader("الصنف", "itemName")}</th><th>{sortHeader("الكمية", "quantity")}</th><th>{sortHeader("السعر", "price")}</th><th>{sortHeader("إجمالي السعر", "lineTotal")}</th>
-                <th>البونص</th><th>{sortHeader("صافي الكمية", "netQuantity")}</th><th>{sortHeader("سعر الشراء الصافي", "netPrice")}</th>
-                <th>{sortHeader("صافي الفاتورة", "invoiceNet")}</th><th>{sortHeader("المورد", "supplier")}</th><th>{sortHeader("التاريخ والوقت", "createdAt")}</th>
-              </tr></thead>
-              <tbody>
-                {movements.data.items.map(item => <tr key={item.id}>
-                  <td><Link to={`/companies/${companyId}/invoices/${item.invoiceId}`}>{item.itemName}</Link></td>
-                  <td className="purchase-movement-number" dir="ltr">{item.quantity}</td>
-                  <td className="purchase-movement-number" dir="ltr">{money(item.price)}</td>
-                  <td className="purchase-movement-number" dir="ltr">{money(item.lineTotal)}</td>
-                  <td className="purchase-movement-number" dir="ltr">{item.bonusQuantity}</td>
-                  <td className="purchase-movement-number" dir="ltr">{money(item.netQuantity)}</td>
-                  <td className="purchase-movement-number" dir="ltr">{item.netPrice === null ? "—" : money(item.netPrice)}</td>
-                  <td className="purchase-movement-number" dir="ltr">{money(item.invoiceNet)}</td>
-                  <td>{item.supplier || "—"}</td>
-                  <td className="purchase-movement-date" title={"تاريخ الفاتورة: " + item.documentDate}>{dateTime(item.createdAt)}</td>
-                </tr>)}
-              </tbody>
-            </table>
-          </div>
-          {movements.data.items.length === 0 && <Notice>لا توجد أصناف مطابقة.</Notice>}
+          <InteractiveColumnsTable<PurchaseLine, ColumnKey>
+            className="purchase-movement-d13" columns={columns} rows={movements.data.items} rowKey={row => row.id}
+            visibleColumns={columns.map(column => column.key)} allowColumnVisibility
+            storageKey={`alraesy:d13:purchase-line-movements:${companyId}:${user?.id ?? "guest"}`}
+            sortKey={sort.key} sortDirection={sort.desc ? "desc" : "asc"}
+            onSort={key => {
+              if (key === "bonusQuantity" || key === "invoice") return;
+              setPage(1);
+              setSort(current => ({ key, desc: current.key === key ? !current.desc : key === "createdAt" }));
+            }}
+            dockRowSource={row => isDockEntityId(row.itemId)
+              ? { companyId, itemId: row.itemId, itemName: row.itemName } : undefined}
+            ariaLabel="جدول حركة أصناف المشتريات" emptyMessage="لا توجد أصناف مطابقة."
+          />
           <div className="purchase-movement-pagination">
             <small>عدد السطور: {movements.data.total} — الصفحة {page} من {totalPages}</small>
             <div style={{ display: "flex", gap: 6 }}>

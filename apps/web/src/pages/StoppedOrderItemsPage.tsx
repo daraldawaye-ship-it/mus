@@ -5,6 +5,7 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index.ts
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Notice, PageHeader } from "../ui";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import "./item-order-levels.css";
 
 type Row = {
@@ -16,6 +17,19 @@ type Report = {
   summary:{currentCount:number;endedCount:number};items:Row[];
 };
 type Sort = "stopDate"|"name"|"code";
+type Column = Sort|"quantity"|"status";
+const columns: InteractiveTableColumn<Row,Column>[] = [
+  {key:"name",label:"الصنف",width:230,sortable:true,
+    cell: row=><span className="company-item-label">{row.name}</span>},
+  {key:"code",label:"الكود",width:105,sortable:true,cell: row=><bdi>{row.code}</bdi>},
+  {key:"stopDate",label:"توقف الطلب حتى",width:155,sortable:true,
+    cell: row=><bdi>{row.orderStoppedUntil??"—"}</bdi>},
+  {key:"quantity",label:"كمية الطلب",width:110,cell: row=><bdi>{row.orderAlertQuantity??"فارغ"}</bdi>},
+  {key:"status",label:"حالة الإيقاف",width:158,cell: row=><span>
+    {!row.active?"الصنف مؤرشف — ":""}{row.currentlyStopped?"الإيقاف سارٍ":row.orderStoppedUntil?"انتهى الإيقاف":"لم يعد متوقفًا"}
+  </span>},
+];
+const visibleColumns=columns.map(column=>column.key);
 const format = (value:number)=>value.toLocaleString("en-US");
 
 export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
@@ -59,12 +73,7 @@ export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
   });
   const data=report.data;
   const pages=Math.max(1,Math.ceil((data?.total??0)/pageSize));
-  const sort=(key:Sort,label:string)=><th aria-sort={sortBy===key?
-    (sortDir==="asc"?"ascending":"descending"):undefined}>
-    <button type="button" onClick={()=>update({sortBy:key,sortDir:sortBy===key&&sortDir==="asc"?"desc":"asc",page:""})}>
-      {label} <span aria-hidden="true">{sortBy===key?(sortDir==="asc"?"▲":"▼"):"⇵"}</span>
-    </button>
-  </th>;
+  const tableScope=`alraesy:stopped-order-items:d13:v1:${user?.id??"guest"}:${companyId}`;
   return <div className="item-order-levels-page">
     <PageHeader title="الأصناف المتوقف طلبها"
       description="الأصناف التي أُوقف طلبها من كرت الصنف، حسب تاريخ الإيقاف بتوقيت اليمن. الصفحة للمتابعة فقط ولا تعدل الطلب أو المخزون."
@@ -109,27 +118,15 @@ export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
         <div className="item-order-levels-results">
           <span>المطابق: <strong>{format(data.total)}</strong> صنف</span>
         </div>
-        <div className="table-scroll item-order-levels-scroll" role="region" aria-label="الأصناف المتوقف طلبها">
-          <table dir="rtl">
-            <thead><tr>
-              {sort("name","الصنف")}
-              {sort("code","الكود")}
-              {sort("stopDate","توقف الطلب حتى")}
-              <th>كمية الطلب</th>
-              <th>حالة الإيقاف</th>
-            </tr></thead>
-            <tbody>
-              {data.items.map(row=><tr key={row.itemId}>
-                <td><span className="company-item-label">{row.name}</span></td>
-                <td><bdi>{row.code}</bdi></td>
-                <td><bdi>{row.orderStoppedUntil??"—"}</bdi></td>
-                <td><bdi>{row.orderAlertQuantity??"فارغ"}</bdi></td>
-                <td>{!row.active?"الصنف مؤرشف — ":""}{row.currentlyStopped?"الإيقاف سارٍ":row.orderStoppedUntil?"انتهى الإيقاف":"لم يعد متوقفًا"}</td>
-              </tr>)}
-              {!data.items.length&&<tr><td colSpan={5}>لا توجد أصناف مطابقة.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <InteractiveColumnsTable<Row,Column>
+          key={tableScope} storageKey={tableScope} allowColumnVisibility visibleColumns={visibleColumns}
+          ariaLabel="الأصناف المتوقف طلبها" emptyMessage="لا توجد أصناف مطابقة."
+          columns={columns} rows={data.items} rowKey={row=>row.itemId}
+          dockRowSource={row=>({itemId:row.itemId,itemName:row.name})}
+          sortKey={sortBy} sortDirection={sortDir} onSort={key=>{
+            if(key==="quantity"||key==="status")return;
+            update({sortBy:key,sortDir:sortBy===key&&sortDir==="asc"?"desc":"asc",page:""});
+          }} />
         <div className="form-actions item-order-levels-pages">
           <Button variant="secondary" disabled={page<=1} onClick={()=>update({page:String(page-1)})}>السابق</Button>
           <span>صفحة {page} من {pages}</span>

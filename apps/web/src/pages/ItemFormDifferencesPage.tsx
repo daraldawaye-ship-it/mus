@@ -11,11 +11,15 @@ import "../doctor-inline-cells.css";
 import { api, ApiFailure, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { rememberRecentEntity } from "../recent-entities";
 
 const InvoiceItemEditor=lazy(()=>import("./ItemsPages").then(m=>({default:m.InvoiceItemEditor})));
 const CompositionEditorSheet=lazy(()=>import("./ItemCompositionsPage").then(m=>({default:m.CompositionEditorSheet})));
 type SortKey="itemName"|"itemForm"|"compositionName"|"compositionForm"|"saleTimesYear"|"availableAlternatives"|"availableUnit1";
+type TableColumn=SortKey|"selection"|"actions";
+const visibleColumns:TableColumn[]=["selection","itemName","itemForm","compositionName","compositionForm",
+  "saleTimesYear","availableAlternatives","availableUnit1","actions"];
 const sortLabels:Record<SortKey,string>={
   itemName:"اسم الصنف",itemForm:"شكل الصنف",
   compositionName:"اسم التركيب",compositionForm:"شكل التركيب",
@@ -264,16 +268,6 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
       return next;
     });
   }
-  function header(key:SortKey){
-    const active=sort===key;
-    return <th scope="col" aria-sort={!active?"none":direction==="asc"?"ascending":"descending"}>
-      <button type="button" className="form-differences-sort"
-        onClick={()=>orderBy(key)}
-        aria-label={`ترتيب حسب ${sortLabels[key]} ${active&&direction==="asc"?"تنازليًا":"تصاعديًا"}`}>
-        {sortLabels[key]} <span aria-hidden="true">{active?(direction==="asc"?"▲":"▼"):"↕"}</span>
-      </button>
-    </th>;
-  }
   const [pageSize] = useState(50);
   useEffect(()=>setSearch(q),[q,companyId]);
   useEffect(()=>{setOpened(null);setItemSaving(false);setInlineError("");},[companyId]);
@@ -297,7 +291,8 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
     ),
     enabled:!!user,
     staleTime:15000,
-    placeholderData:previous=>previous,
+    placeholderData:(previous,query)=>query?.queryKey[1]===user?.id &&
+      query?.queryKey[2]===companyId ? previous : undefined,
   });
   const rows=result.data?.items??[];
   const close=()=>setOpened(null);
@@ -324,6 +319,46 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
             key[2]===companyId)
         )});
     }}/>;
+  const tableScope=`alraesy:item-form-differences:d13:v1:${user?.id??"guest"}:${companyId}`;
+  const columns:InteractiveTableColumn<Difference,TableColumn>[]=[
+    {key:"selection",label:"اختيار",width:84,
+      header:<label><input type="checkbox" aria-label="اختيار جميع أصناف الصفحة"
+                  disabled={!canEdit||bulkBusy||bulkUnknown||!rows.length}
+                  checked={!!rows.length&&rows.every(row=>selected.has(row.itemId))}
+                  onChange={event=>{
+                    const checked=event.target.checked;
+                    if(checked&&new Set([...selected.keys(),...rows.map(row=>row.itemId)]).size>500){
+                      setInlineError("الحد الأقصى 500 صنف في عملية الحفظ الواحدة.");return;
+                    }
+                    setSelected(previous=>{
+                      const next=new Map(previous);
+                      for(const row of rows)if(checked)next.set(row.itemId,row);else next.delete(row.itemId);
+                      return next;
+                    });
+                  }}/></label>,
+      cell:row=><input type="checkbox" aria-label={`اختيار ${row.itemName}`}
+        disabled={!canEdit||bulkBusy||bulkUnknown} checked={selected.has(row.itemId)}
+        onChange={event=>toggle(row,event.target.checked)}/>},
+    {key:"itemName",label:sortLabels.itemName,width:192,sortable:true,
+      cell:row=><>{inline(row,"itemName")}{!row.itemActive?" (مؤرشف)":""}</>},
+    {key:"itemForm",label:sortLabels.itemForm,width:112,sortable:true,cell:row=>inline(row,"itemForm")},
+    {key:"compositionName",label:sortLabels.compositionName,width:206,sortable:true,
+      cell:row=><>{inline(row,"compositionName")}{!row.compositionActive?" (مؤرشف)":""}</>},
+    {key:"compositionForm",label:sortLabels.compositionForm,width:115,sortable:true,cell:row=>inline(row,"compositionForm")},
+    {key:"saleTimesYear",label:sortLabels.saleTimesYear,width:106,sortable:true,cell:row=><bdi dir="ltr">{statsNumber(row.saleTimesYear,0)}</bdi>},
+    {key:"availableAlternatives",label:sortLabels.availableAlternatives,width:106,sortable:true,cell:row=><bdi dir="ltr">{statsNumber(row.availableAlternatives,0)}</bdi>},
+    {key:"availableUnit1",label:sortLabels.availableUnit1,width:116,sortable:true,cell:row=><bdi dir="ltr">{statsNumber(row.availableUnit1,3)}</bdi>},
+    {key:"actions",label:"الإجراء",width:168,cell:row=><div className="form-differences-inline-actions">
+                    <Button variant="secondary" size="compact"
+                      onClick={()=>{
+                        if (user) rememberRecentEntity(user.id, companyId, "item",
+                          {id:row.itemId,name:row.itemName});
+                        setOpened({type:"item",id:row.itemId});
+                      }}>كرت الصنف</Button>
+                    <Button variant="secondary" size="compact"
+                      onClick={()=>setOpened({type:"composition",id:row.compositionId})}>كرت التركيب</Button>
+                  </div>},
+  ];
   return <>
     <PageHeader title="متابعة اختلاف شكل الصنف والتركيب"
       description="اضغط على اسم الصنف أو التركيب أو الشكل لتعديله مباشرة. تحفظ الأسماء عند الخروج أو Enter، والأشكال عند الاختيار؛ Esc للإلغاء."/>
@@ -391,76 +426,14 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
       <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح. الإحصائيات مجموع التركيب بأكمله من الجداول المنفصلة، وتظهر «—» عند عدم توفر صلاحية الاطلاع.</p>
       {inlineError&&<Notice tone="error">{inlineError}</Notice>}
       {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
-      <div className="table-scroll" role="region" tabIndex={0} aria-label="مراجعة اختلاف الشكل">
-        <table className="data-table form-differences-table">
-          <colgroup>
-            <col style={{width:"4%"}} />
-            <col style={{width:"18%"}} />
-            <col style={{width:"10%"}} />
-            <col style={{width:"22%"}} />
-            <col style={{width:"9%"}} />
-            <col style={{width:"7%"}} />
-            <col style={{width:"7%"}} />
-            <col style={{width:"9%"}} />
-            <col style={{width:"14%"}} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">
-                <label>اختيار <input type="checkbox" aria-label="اختيار جميع أصناف الصفحة"
-                  disabled={!canEdit||bulkBusy||bulkUnknown||!rows.length}
-                  checked={!!rows.length&&rows.every(row=>selected.has(row.itemId))}
-                  onChange={event=>{
-                    const checked=event.target.checked;
-                    if(checked&&new Set([...selected.keys(),...rows.map(row=>row.itemId)]).size>500){
-                      setInlineError("الحد الأقصى 500 صنف في عملية الحفظ الواحدة.");return;
-                    }
-                    setSelected(previous=>{
-                      const next=new Map(previous);
-                      for(const row of rows)if(checked)next.set(row.itemId,row);else next.delete(row.itemId);
-                      return next;
-                    });
-                  }}/></label>
-              </th>
-              {header("itemName")}{header("itemForm")}
-              {header("compositionName")}{header("compositionForm")}
-              {header("saleTimesYear")}
-              {header("availableAlternatives")}
-              {header("availableUnit1")}
-              <th>الإجراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(row=>{
-              return <tr key={row.itemId}>
-                <td><input type="checkbox" aria-label={`اختيار ${row.itemName}`}
-                  disabled={!canEdit||bulkBusy||bulkUnknown} checked={selected.has(row.itemId)}
-                  onChange={event=>toggle(row,event.target.checked)}/></td>
-                <td>{inline(row,"itemName")}{!row.itemActive?" (مؤرشف)":""}</td>
-                <td>{inline(row,"itemForm")}</td>
-                <td>{inline(row,"compositionName")}{!row.compositionActive?" (مؤرشف)":""}</td>
-                <td>{inline(row,"compositionForm")}</td>
-                <td dir="ltr"><bdi>{statsNumber(row.saleTimesYear,0)}</bdi></td>
-                <td dir="ltr"><bdi>{statsNumber(row.availableAlternatives,0)}</bdi></td>
-                <td dir="ltr"><bdi>{statsNumber(row.availableUnit1,3)}</bdi></td>
-                <td>
-                  <div className="form-differences-inline-actions">
-                    <Button variant="secondary" size="compact"
-                      onClick={()=>{
-                        if (user) rememberRecentEntity(user.id, companyId, "item",
-                          {id:row.itemId,name:row.itemName});
-                        setOpened({type:"item",id:row.itemId});
-                      }}>كرت الصنف</Button>
-                    <Button variant="secondary" size="compact"
-                      onClick={()=>setOpened({type:"composition",id:row.compositionId})}>كرت التركيب</Button>
-                  </div>
-                </td>
-              </tr>;
-            })}
-            {!rows.length&&!result.isFetching&&<tr><td colSpan={9}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <InteractiveColumnsTable<Difference,TableColumn>
+        key={tableScope} storageKey={tableScope} allowColumnVisibility visibleColumns={visibleColumns}
+        ariaLabel="مراجعة اختلاف الشكل" emptyMessage={result.isFetching?"جارٍ تحميل الأصناف…":"لا توجد أصناف مطابقة للتصفية المختارة."}
+        rows={rows} rowKey={row=>row.itemId}
+        dockRowSource={result.isPlaceholderData?undefined:row=>({itemId:row.itemId,itemName:row.itemName})}
+        sortKey={sort??undefined} sortDirection={direction} onSort={key=>{
+          if(key!=="selection"&&key!=="actions")orderBy(key);
+        }} columns={columns} />
       <div className="form-actions">
         <Button variant="secondary" disabled={page===1||result.isFetching}
           onClick={()=>setParams(previous=>{const next=new URLSearchParams(previous);next.set("page",String(page-1));return next;})}>السابق</Button>

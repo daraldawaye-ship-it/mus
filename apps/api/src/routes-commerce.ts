@@ -573,7 +573,7 @@ export function commerceRoutes(pool: Pool): Router {
         `SELECT count(*)::int AS total FROM invoices i JOIN invoice_lines l
           ON l.company_id=i.company_id AND l.invoice_id=i.id WHERE ${conditions}`, params);
       const rows = await client.query(
-        `SELECT l.id, i.id AS "invoiceId", i.number AS "invoiceNumber",
+        `SELECT l.id, l.item_id AS "itemId", i.id AS "invoiceId", i.number AS "invoiceNumber",
           i.created_at::text AS "createdAt", i.document_date::text AS "documentDate",
           l.item_name AS "itemName", l.quantity::text AS quantity,
           l.bonus_quantity::text AS "bonusQuantity",

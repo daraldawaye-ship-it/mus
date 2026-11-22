@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import type { ColumnDef } from "@tanstack/react-table";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import type { CompanyContext, Item } from "../../../../packages/contracts/src/index";
-import { api, usePagedQuery } from "../api";
+import { api, usePagedQuery, useSession } from "../api";
 import { formatMoney } from "../format-money";
-import { Button, Card, DataTable, Dialog, Field, Notice, PageHeader } from "../ui";
+import { Button, Card, Dialog, Field, Notice, PageHeader } from "../ui";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
 
 interface SettlementFollowUpRow {
@@ -21,6 +21,7 @@ interface SettlementFollowUpRow {
 
 export function SettlementFollowUpPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const [params, setParams] = useSearchParams();
   // Omitted filter defaults to the items that need stock-taking.
   // An explicit dueOnly=0 is the only way to see every item.
@@ -46,70 +47,73 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
     `company:${companyId}:settlement-follow-up`,
     "monthlySales:desc,name:asc",
   );
-  const columns = useMemo<ColumnDef<SettlementFollowUpRow, unknown>[]>(
+  const columns = useMemo<InteractiveTableColumn<SettlementFollowUpRow>[]>(
     () => [
       {
-        id: "adjustment",
-        header: "تسوية",
-        size: 105,
-        enableSorting: false,
-        cell: ({ row }) => (
+        key: "adjustment",
+        label: "تسوية",
+        width: 105,
+        sortable: false,
+        cell: row => (
           <Button variant="secondary" disabled={!canAdjust}
             title={canAdjust ? "فتح تسوية الصنف داخل نافذة" : "التسوية تتطلب صلاحية ترحيل المخزون والمالية"}
-            onClick={() => setSelectedItemId(row.original.id)}>
+            onClick={() => setSelectedItemId(row.id)}>
             تسوية
           </Button>
         ),
       },
       {
-        accessorKey: "name",
-        header: "اسم الصنف",
-        size: 280,
-        cell: ({ row }) => (
-          <span className="company-item-label" title={row.original.name}>
-            {row.original.name}
+        key: "name",
+        label: "اسم الصنف",
+        width: 280,
+        cell: row => (
+          <span className="company-item-label" title={row.name}>
+            {row.name}
           </span>
         ),
       },
       {
-        accessorKey: "monthlySales",
-        header: "المبيعات مرات في شهر",
-        size: 170,
-        cell: ({ row }) => (
-          <bdi>{BigInt(row.original.monthlySales).toLocaleString("en-US")}</bdi>
+        key: "monthlySales",
+        label: "المبيعات مرات في شهر",
+        width: 170,
+        cell: row => (
+          <bdi>{BigInt(row.monthlySales).toLocaleString("en-US")}</bdi>
         ),
       },
       {
-        accessorKey: "purchasePrice",
-        header: "سعر الشراء الافتراضي",
-        size: 190,
-        cell: ({ row }) => (
+        key: "purchasePrice",
+        label: "سعر الشراء الافتراضي",
+        width: 190,
+        cell: row => (
           <bdi>
-            {formatMoney(row.original.purchasePrice)} {row.original.currencyCode}
+            {formatMoney(row.purchasePrice)} {row.currencyCode}
           </bdi>
         ),
       },
       {
-        accessorKey: "nearestExpiryDate",
-        header: "أقرب تاريخ انتهاء",
-        size: 155,
-        cell: ({ row }) => <bdi>{row.original.nearestExpiryDate ?? "—"}</bdi>,
+        key: "nearestExpiryDate",
+        label: "أقرب تاريخ انتهاء",
+        width: 155,
+        cell: row => <bdi>{row.nearestExpiryDate ?? "—"}</bdi>,
       },
       {
-        accessorKey: "lastAdjustmentDate",
-        header: "آخر تسوية بتاريخ",
-        size: 160,
-        cell: ({ row }) => <bdi>{row.original.lastAdjustmentDate ?? "—"}</bdi>,
+        key: "lastAdjustmentDate",
+        label: "آخر تسوية بتاريخ",
+        width: 160,
+        cell: row => <bdi>{row.lastAdjustmentDate ?? "—"}</bdi>,
       },
       {
-        accessorKey: "countLimit",
-        header: "الجرد لا يزيد عن",
-        size: 175,
-        cell: ({ row }) => <bdi>{row.original.countLimit}</bdi>,
+        key: "countLimit",
+        label: "الجرد لا يزيد عن",
+        width: 175,
+        cell: row => <bdi>{row.countLimit}</bdi>,
       },
     ],
-    [companyId, canAdjust],
+    [canAdjust],
   );
+  const activeSort = list.sorting[0];
+  const total = list.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / list.pageSize));
   return (
     <>
       <PageHeader title="متابعة التسويات للأصناف" />
@@ -172,19 +176,26 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
           </label>
         </div>
         {list.error && <Notice tone="error">{list.error.message}</Notice>}
-        <DataTable
-          columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          page={list.page}
-          pageSize={list.pageSize}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading}
-          ariaLabel="متابعة التسويات للأصناف"
+        {list.loading && <Notice>جارٍ تحميل الأصناف…</Notice>}
+        <InteractiveColumnsTable
+          columns={columns} rows={list.data?.items ?? []} rowKey={row => row.id}
+          visibleColumns={columns.map(column => column.key)} allowColumnVisibility
+          storageKey={`alraesy:d13:settlement-follow-up:${companyId}:${user?.id ?? "guest"}`}
+          sortKey={activeSort?.id} sortDirection={activeSort?.desc ? "desc" : "asc"}
+          onSort={key => list.setSorting([{ id: key, desc: activeSort?.id === key ? !activeSort.desc : false }])}
+          dockRowSource={row => ({ companyId, itemId: row.id, itemName: row.name })}
+          ariaLabel="متابعة التسويات للأصناف" emptyMessage={list.loading ? "جارٍ التحميل…" : "لا توجد أصناف مطابقة."}
         />
+        <div className="table-filters" style={{ marginTop: 8 }}>
+          <label>حجم الصفحة <select value={list.pageSize} onChange={event => list.setPageSize(Number(event.target.value))}>
+            {[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+          </select></label>
+          <small>إجمالي الأصناف: {total} — الصفحة {list.page} من {totalPages}</small>
+          <Button type="button" size="compact" variant="secondary" disabled={list.page <= 1}
+            onClick={() => list.setPage(list.page - 1)}>السابق</Button>
+          <Button type="button" size="compact" variant="secondary" disabled={list.page >= totalPages}
+            onClick={() => list.setPage(list.page + 1)}>التالي</Button>
+        </div>
       </Card>
     </>
   );

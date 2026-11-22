@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { connectionSnapshot, subscribeConnection } from "../connection-mode";
-import type { ColumnDef } from "@tanstack/react-table";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import {
   convertItemQuantity,
   type Account,
@@ -48,7 +49,6 @@ import { adenInvoiceToday } from "../invoice-save-date";
 import {
   Button,
   Card,
-  DataTable,
   Dialog,
   Field,
   Notice,
@@ -416,6 +416,125 @@ export function InventoryBalancesPage({
     ? <BalancesList key={`${user?.id}:${context.company.id}:lots`} context={context} />
     : <BalancesSummaryList key={`${user?.id}:${context.company.id}:summary`} context={context}/>;
 }
+type InventoryColumn<Row> = (
+  | { accessorKey: Extract<keyof Row, string>; id?: never }
+  | { id: string; accessorKey?: never }
+) & {
+  header: string;
+  size: number;
+  enableSorting?: false;
+  sortable?: true;
+  cell?: (context: { row: { original: Row } }) => ReactNode;
+};
+
+const balancePageSizes = [20, 50, 100] as const;
+const movementPageSizes = [10, 20, 50, 100] as const;
+const balanceSummaryKey = (row: BalanceSummaryRow) => row.itemId;
+const balanceKey = (row: StockBalance) => row.id;
+const movementKey = (row: StockMovement) => row.id;
+
+// Only the row's explicit company-scoped identity reaches the WorkPanel.
+const summaryDockSource = (companyId: number, row: BalanceSummaryRow) => ({
+  companyId, itemId: row.itemId, itemName: row.itemName,
+});
+const balanceDockSource = (row: StockBalance) => ({
+  companyId: row.companyId, itemId: row.itemId, itemName: row.itemName,
+});
+const movementDockSource = (row: StockMovement) => ({
+  companyId: row.companyId, itemId: row.itemId, itemName: row.itemName,
+  ...(row.supplierInferenceSource === "invoice" ? {
+    supplierAccountId: row.supplierAccountId,
+    supplierAccountName: row.supplierAccountName,
+    supplierInferenceSource: row.supplierInferenceSource,
+  } : {}),
+});
+
+function InventoryD13<Row>({
+  columns, list, rowKey, dockRowSource, storageKey, pageSizes, ariaLabel,
+}: {
+  columns: readonly InventoryColumn<Row>[];
+  list: ReturnType<typeof usePagedQuery<Row>>;
+  rowKey: (row: Row) => string | number;
+  dockRowSource: (row: Row) => unknown;
+  storageKey: string;
+  pageSizes: readonly number[];
+  ariaLabel: string;
+}) {
+  const extendSort = useRef(false);
+  const d13Columns = useMemo<InteractiveTableColumn<Row>[]>(() => columns.map(column => ({
+    key: column.accessorKey ?? column.id!,
+    label: column.header,
+    width: column.size,
+    sortable: column.accessorKey !== undefined ? column.enableSorting !== false : column.sortable === true,
+    cell: row => column.cell
+      ? column.cell({ row: { original: row } })
+      : String(column.accessorKey === undefined ? "" : row[column.accessorKey] ?? ""),
+  })), [columns]);
+  const visibleColumns = useMemo(() => d13Columns.map(column => column.key), [d13Columns]);
+  const total = list.data?.total ?? 0;
+  const primarySort = list.sorting[0];
+
+  function sortBy(key: string) {
+    const multi = extendSort.current;
+    extendSort.current = false;
+    // Delegate to the original server-backed URL sort, including its existing
+    // three-state cycle, page reset, and Shift support for multiple sort keys.
+    list.setSorting(previous => {
+      const index = previous.findIndex(entry => entry.id === key);
+      const nextEntry = index < 0 ? { id: key, desc: false }
+        : previous[index].desc ? null : { id: key, desc: true };
+      if (!multi) return nextEntry ? [nextEntry] : [];
+      const next = [...previous];
+      if (index < 0 && nextEntry) next.push(nextEntry);
+      else if (nextEntry) next[index] = nextEntry;
+      else if (index >= 0) next.splice(index, 1);
+      return next;
+    });
+  }
+  return (
+    <div className="data-table" aria-busy={list.loading || undefined}
+      onClickCapture={event => { extendSort.current = event.shiftKey; }}>
+      <div className="table-tools">
+        <span>{list.dataLoaded ? `${total.toLocaleString("ar")} سجل` : "جارٍ حساب العدد…"}</span>
+        <span className="muted">Shift لإضافة ترتيب آخر</span>
+      </div>
+      <InteractiveColumnsTable<Row>
+        columns={d13Columns}
+        rows={list.data?.items ?? []}
+        rowKey={rowKey}
+        dockRowSource={dockRowSource}
+        storageKey={storageKey}
+        visibleColumns={visibleColumns}
+        sortKey={primarySort?.id}
+        sortDirection={primarySort ? (primarySort.desc ? "desc" : "asc") : undefined}
+        onSort={sortBy}
+        ariaLabel={ariaLabel}
+        emptyMessage={list.loading ? "جارٍ تحميل السجلات…" : "لا توجد سجلات تطابق البحث"}
+        allowColumnVisibility
+      />
+      <div className="pagination">
+        <label>سجلات الصفحة{" "}
+          <Select aria-label="عدد سجلات الصفحة" value={list.pageSize}
+            onChange={event => list.setPageSize(Number(event.target.value))}>
+            {pageSizes.map(size => <option key={size} value={size}>{size}</option>)}
+          </Select>
+        </label>
+        <span>{list.dataLoaded
+          ? `الإجمالي: ${total.toLocaleString("ar")} سجل · صفحة ${list.page.toLocaleString("ar")} من ${Math.max(1, Math.ceil(total / list.pageSize)).toLocaleString("ar")}`
+          : "جارٍ حساب إجمالي السجلات…"}</span>
+        <div>
+          <Button type="button" variant="secondary" size="compact" aria-label="الصفحة السابقة"
+            disabled={!list.dataLoaded || list.page <= 1 || list.loading}
+            onClick={() => list.setPage(list.page - 1)}><ChevronRight size={16} /></Button>
+          <Button type="button" variant="secondary" size="compact" aria-label="الصفحة التالية"
+            disabled={!list.dataLoaded || list.page * list.pageSize >= total || list.loading}
+            onClick={() => list.setPage(list.page + 1)}><ChevronLeft size={16} /></Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type BalanceSummaryRow = {
   itemId: number;itemCode: string;itemName: string;
   nearestExpiryDate: string|null;unit1Name: string;
@@ -424,6 +543,7 @@ type BalanceSummaryRow = {
 };
 function BalancesSummaryList({context}: {context: CompanyContext}) {
   const companyId=context.company.id;
+  const { user } = useSession();
   const [params]=useSearchParams();
   const filters=new URLSearchParams();
   for(const key of ["itemId","locationId"])
@@ -432,13 +552,13 @@ function BalancesSummaryList({context}: {context: CompanyContext}) {
     `/companies/${companyId}/stock-balances/summary?${filters}`,
     `company:${companyId}:inventory:balances:summary`,
     "itemCode:asc",
-    {pageSizes:[20,50,100],staleTime:60_000},
+    {pageSizes:balancePageSizes,staleTime:60_000},
   );
-  const columns=useMemo<ColumnDef<BalanceSummaryRow,unknown>[]>(()=>[
+  const columns=useMemo<InventoryColumn<BalanceSummaryRow>[]>(()=>[
     {accessorKey:"itemCode",header:"رمز الصنف",size:110,
       cell:({row})=>exact(row.original.itemCode)},
     {accessorKey:"itemName",header:"الصنف",size:220,
-      cell:({row})=><ValueCell>{row.original.itemName}</ValueCell>},
+      cell:({row})=><span className="company-item-label">{row.original.itemName}</span>},
     {accessorKey:"quantityUnit1",header:"صافي الرصيد بالوحدة الأولى",size:205,
       cell:({row})=><ValueCell><bdi>{row.original.quantityUnit1}</bdi> {row.original.unit1Name}</ValueCell>},
     {accessorKey:"quantitySmallest",header:"الصافي بأصغر جزء",size:145,
@@ -476,18 +596,16 @@ function BalancesSummaryList({context}: {context: CompanyContext}) {
       {list.error&&<Notice tone="error">{errorMessage(list.error)}
         <Button variant="ghost" onClick={()=>void list.refetch()}>إعادة المحاولة</Button>
       </Notice>}
-      <DataTable columns={columns} data={list.data?.items??[]}
-        total={list.data?.total??0} totalKnown={list.dataLoaded}
-        page={list.page} pageSize={list.pageSize}
-        pageSizeOptions={[20,50,100]}
-        onPageChange={list.setPage} onPageSizeChange={list.setPageSize}
-        sorting={list.sorting} onSortingChange={list.setSorting}
-        loading={list.loading} ariaLabel="ملخص أرصدة المخزون بحسب الصنف"/>
+      <InventoryD13 columns={columns} list={list} rowKey={balanceSummaryKey}
+        dockRowSource={row => summaryDockSource(companyId, row)}
+        storageKey={`alraesy:inventory-d13:v1:${user?.id ?? "guest"}:${companyId}:summary`}
+        pageSizes={balancePageSizes} ariaLabel="ملخص أرصدة المخزون بحسب الصنف" />
     </Card>
   </>;
 }
 function BalancesList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
   for (const key of ["itemId", "locationId", "expiryDate"])
@@ -496,9 +614,9 @@ function BalancesList({ context }: { context: CompanyContext }) {
     `/companies/${companyId}/stock-balances?${filters}`,
     `company:${companyId}:inventory:balances`,
     "id:asc",
-    { pageSizes: [20, 50, 100], staleTime: 60_000 },
+    { pageSizes: balancePageSizes, staleTime: 60_000 },
   );
-  const columns = useMemo<ColumnDef<StockBalance, unknown>[]>(
+  const columns = useMemo<InventoryColumn<StockBalance>[]>(
     () => [
       {
         accessorKey: "itemCode",
@@ -510,7 +628,7 @@ function BalancesList({ context }: { context: CompanyContext }) {
         accessorKey: "itemName",
         header: "الصنف",
         size: 210,
-        cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
+        cell: ({ row }) => <span className="company-item-label">{row.original.itemName}</span>,
       },
       {
         accessorKey: "branchName",
@@ -550,7 +668,8 @@ function BalancesList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => exact(row.original.quantitySmallest),
       },
       {
-        accessorKey: "pooledQuantityUnit1",
+        id: "pooledQuantityUnit1",
+        sortable: true,
         header: "إجمالي المتوفر بالوحدة الأولى",
         size: 195,
         cell: ({ row }) => <ValueCell>
@@ -619,21 +738,10 @@ function BalancesList({ context }: { context: CompanyContext }) {
             </Button>
           </Notice>
         )}
-        <DataTable
-          columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          totalKnown={list.dataLoaded}
-          page={list.page}
-          pageSize={list.pageSize}
-          pageSizeOptions={[20, 50, 100]}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading}
-          ariaLabel="أرصدة المخزون"
-        />
+        <InventoryD13 columns={columns} list={list} rowKey={balanceKey}
+          dockRowSource={balanceDockSource}
+          storageKey={`alraesy:inventory-d13:v1:${user?.id ?? "guest"}:${companyId}:lots`}
+          pageSizes={balancePageSizes} ariaLabel="أرصدة المخزون" />
       </Card>
     </>
   );
@@ -656,6 +764,7 @@ export function InventoryMovementsPage({
 }
 function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const [params] = useSearchParams();
   const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
   const filters = new URLSearchParams(connection === "online" ? { includeNotes: "1" } : {});
@@ -670,7 +779,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
     `company:${companyId}:inventory:movements`,
     "documentDate:desc,createdAt:desc,id:desc",
   );
-  const columns = useMemo<ColumnDef<StockMovement, unknown>[]>(
+  const columns = useMemo<InventoryColumn<StockMovement>[]>(
     () => [
       { accessorKey: "documentDate", header: "التاريخ", size: 120 },
       {
@@ -683,7 +792,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
         accessorKey: "itemName",
         header: "الصنف",
         size: 200,
-        cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
+        cell: ({ row }) => <span className="company-item-label">{row.original.itemName}</span>,
       },
       {
         accessorKey: "supplierAccountName",
@@ -819,19 +928,10 @@ function MovementsList({ context }: { context: CompanyContext }) {
             </Button>
           </Notice>
         )}
-        <DataTable
-          columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          page={list.page}
-          pageSize={list.pageSize}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading}
-          ariaLabel="حركة الأصناف"
-        />
+        <InventoryD13 columns={columns} list={list} rowKey={movementKey}
+          dockRowSource={movementDockSource}
+          storageKey={`alraesy:inventory-d13:v1:${user?.id ?? "guest"}:${companyId}:movements`}
+          pageSizes={movementPageSizes} ariaLabel="حركة الأصناف" />
       </Card>
       <StagedMovementsPanel companyId={companyId} q={list.query}
         dateFrom={dateFrom} dateTo={dateTo}
