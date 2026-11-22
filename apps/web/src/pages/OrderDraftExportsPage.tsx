@@ -1,10 +1,8 @@
 import InteractiveColumnsTable,{type InteractiveTableColumn} from "../InteractiveColumnsTable";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
-import type { CompanyContext, ItemCompositionPeers, Page } from "../../../../packages/contracts/src/index.ts";
-import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
-import { signedStockMovementQuantity } from "../stock-movement-display";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import type { CompanyContext, Page } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
 import { errorMessage } from "../phase2";
@@ -53,12 +51,6 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const [search, setSearch] = useState("");
   const [reviewFilter, setReviewFilter] = useState<"all" | "unreviewed" | "reviewed">("all");
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [sidePanel, setSidePanel] = useState<{ itemId: number; itemName: string; view: "purchase" | "movement" } | null>(null);
-  useEffect(() => {
-    if (sidePanel && window.matchMedia("(max-width: 900px)").matches) {
-      document.getElementById("purchase-comparison-detail-pane")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [sidePanel]);
   const [params] = useSearchParams();
   const threeDays = params.get("period") === "three-days";
   const period = threeDays ? "three-days" : "yesterday";
@@ -141,11 +133,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         case "itemName": return <div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
               aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
               onClick={() => setExpanded(current => current === row.itemId ? null : row.itemId)}>⋯</button>
-              <button type="button" className="purchase-comparison-item-select"
-                aria-pressed={sidePanel?.itemId === row.itemId}
-                onClick={() => setSidePanel(current => ({ itemId: row.itemId, itemName: row.itemName, view: current?.view ?? "purchase" }))}>
-                {row.itemName}
-              </button>
+              <span className="company-item-label purchase-comparison-item-label" dir="auto">{row.itemName}</span>
               <Link className="purchase-comparison-item-card-link" to={`/companies/${companyId}/items/${row.itemId}`}
                 title="فتح كرت الصنف" aria-label={`فتح كرت الصنف ${row.itemName}`}>↗</Link></div>;
         case "requested": return row.requested??"—";
@@ -160,8 +148,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
     <PageHeader title="فارق الشراء والطلبيه"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الفارق = المشتَرى − المطلوب. سعر الفواتير متوسط مرجّح بالكمية للوحدة الأولى."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
-    <div className="purchase-comparison-split-layout">
-    <Card>
+    <Card className="purchase-comparison-list-card">
       <div className="comparison-controls"><nav aria-label="فترة المقارنة">
         <Link className={threeDays ? "button button-secondary" : "button button-primary"}
           aria-current={threeDays ? undefined : "page"} to="?view=purchases">طلبية أمس ومشتريات أمس واليوم</Link>
@@ -177,7 +164,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
           <Button key={option.value} size="compact"
             variant={reviewFilter === option.value ? "primary" : "secondary"}
             aria-pressed={reviewFilter === option.value}
-            onClick={() => { setReviewFilter(option.value); setExpanded(null); setSidePanel(null); }}>
+            onClick={() => { setReviewFilter(option.value); setExpanded(null); }}>
             {option.label}
           </Button>
         ))}
@@ -201,7 +188,6 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
             sortKey={sort?.column} sortDirection={sort?.descending?"desc":"asc"}
             onSort={column=>setSort(current=>({column,descending:current?.column===column&&!current.descending}))}
             dockRowSource={row=>({companyId,itemId:row.itemId,itemName:row.itemName})}
-            rowClassName={row=>sidePanel?.itemId===row.itemId?"selected":undefined}
             renderRowDetails={row=>expanded===row.itemId?
               (!row.info&&metricsError?<Notice tone="error">{errorMessage(metricsError)}</Notice>:
                 <OrderPlanningFields companyId={companyId} itemId={row.itemId} itemName={row.itemName}
@@ -210,139 +196,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         </div>
       </>}
     </Card>
-    <aside id="purchase-comparison-detail-pane" className="purchase-comparison-detail-pane" aria-live="polite">
-      {sidePanel && <Card>
-        <div className="purchase-comparison-side-heading">
-          <strong dir="auto">{sidePanel.itemName}</strong>
-          <button type="button" className="purchase-comparison-close" onClick={() => setSidePanel(null)} aria-label="إغلاق تفاصيل الصنف">×</button>
-        </div>
-        <div className="purchase-comparison-view-switch" role="group" aria-label="نوع حركة الصنف">
-          <Button size="compact" variant={sidePanel.view === "purchase" ? "primary" : "secondary"}
-            onClick={() => setSidePanel(current => current && { ...current, view: "purchase" })}
-            aria-pressed={sidePanel.view === "purchase"}>مشتريات الصنف</Button>
-          <Button size="compact" variant={sidePanel.view === "movement" ? "primary" : "secondary"}
-            onClick={() => setSidePanel(current => current && { ...current, view: "movement" })}
-            aria-pressed={sidePanel.view === "movement"}>حركة الصنف</Button>
-        </div>
-        <PurchaseComparisonItemPanel companyId={companyId} userId={user?.id} itemId={sidePanel.itemId} view={sidePanel.view} />
-      </Card>}
-      {sidePanel && <AvailableAlternatives companyId={companyId} userId={user?.id} itemId={sidePanel.itemId} />}
-    </aside>
-    </div>
   </section>;
-}
-
-export function AvailableAlternatives({ companyId, userId, itemId }: {
-  companyId: number; userId?: number; itemId: number;
-}) {
-  const result = useInfiniteQuery({
-    queryKey: ["purchase-comparison-available-alternatives", companyId, userId, itemId],
-    initialPageParam: 1,
-    queryFn: async ({ pageParam, signal }) => {
-      const response = await api<{ peers: ItemCompositionPeers }>(
-        `/companies/${companyId}/items/${itemId}/composition-peers?page=${pageParam}&pageSize=10`, { signal });
-      return response.peers;
-    },
-    getNextPageParam: page => {
-      // Peers are ordered by descending stock in unit 1, so positive balances come first.
-      if (page.canViewStock && page.composition?.active && page.relation !== "nonInterchangeable" &&
-          page.page * page.pageSize < page.total && Number(page.peers.at(-1)?.stockSmallest) > 0) {
-        return page.page + 1;
-      }
-    },
-    enabled: !!userId,
-    staleTime: 10_000,
-  });
-  const first = result.data?.pages[0];
-  const available = first?.canViewStock && first.composition?.active && first.relation !== "nonInterchangeable"
-    ? result.data?.pages.flatMap(page => page.peers.filter(peer => Number(peer.stockSmallest) > 0)) ?? []
-    : [];
-  return <Card>
-    <strong>بدائل الصنف المتوفرة</strong>
-    {result.isPending && <Notice>جارٍ تحميل البدائل…</Notice>}
-    {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
-    {first && (!first.canViewStock ? <p>تحتاج إلى صلاحية عرض المخزون لمعرفة البدائل المتوفرة.</p>
-      : !first.composition ? <p>لا يوجد تركيب مرتبط بالصنف.</p>
-      : first.relation === "nonInterchangeable" ? <p>التركيب مسجّل على أنه غير قابل للتبديل.</p>
-      : !first.composition.active ? <p>كرت التركيب غير نشط.</p>
-      : !available.length ? <p>لا توجد أصناف أخرى متوفرة بنفس التركيب.</p>
-      : <>{first.relation === "sameComposition" && <p>أصناف من نفس التركيب، لم تُعتمد للتبديل.</p>}
-        <ul>{available.map(peer => <li key={peer.id}>
-          <span className="company-item-label">{peer.name}</span>
-          {" — "}<bdi>{peer.stockSmallest}</bdi> {peer.smallestUnitName}
-        </li>)}</ul></>)}
-    {result.hasNextPage && <Button size="compact" variant="secondary" disabled={result.isFetchingNextPage}
-      onClick={() => void result.fetchNextPage()}>إظهار المزيد</Button>}
-  </Card>;
-}
-
-type ComparisonHistoryRow = {
-  lineId: string | number;
-  documentDate: string;
-  partyName?: string | null;
-  quantityFirstUnit: string;
-  unitPriceFirstUnit?: string | null;
-  isStaged?: boolean;
-};
-
-export function PurchaseComparisonItemPanel({ companyId, userId, itemId, view }: {
-  companyId: number;
-  userId: number | undefined;
-  itemId: number;
-  view: "purchase" | "movement";
-}) {
-  const history = useQuery<{ items: ComparisonHistoryRow[] }>({
-    queryKey: ["purchase-comparison-side-purchases", companyId, userId, itemId],
-    queryFn: ({ signal }) => api<{ items: ComparisonHistoryRow[] }>(
-      "/companies/" + companyId + "/item-history/" + itemId + "?type=purchase", { signal }),
-    enabled: !!userId && view === "purchase",
-    staleTime: 10_000,
-  });
-  const movements = useQuery<Page<StockMovement>>({
-    queryKey: ["purchase-comparison-side-movements", companyId, userId, itemId],
-    queryFn: ({ signal }) => api<Page<StockMovement>>(
-      "/companies/" + companyId + "/stock-movements?" + new URLSearchParams({
-        itemId: String(itemId), page: "1", pageSize: "20", sort: "documentDate:desc,id:desc",
-      }), { signal }),
-    enabled: !!userId && view === "movement",
-    staleTime: 10_000,
-  });
-  if (view === "purchase") return <>
-    {history.isPending && <Notice>جارٍ تحميل مشتريات الصنف…</Notice>}
-    {history.isError && <Notice tone="error">تعذر تحميل مشتريات الصنف: {errorMessage(history.error)}</Notice>}
-    {history.data?.items.length === 0 && <small>لا توجد مشتريات سابقة لهذا الصنف.</small>}
-    {!!history.data?.items.length && <div className="purchase-comparison-side-scroll" role="region" tabIndex={0} aria-label="مشتريات الصنف">
-      <table className="purchase-comparison-side-table" dir="rtl">
-        <thead><tr><th>التاريخ</th><th>المورد</th><th>السعر</th><th>الكمية (و1)</th></tr></thead>
-        <tbody>{history.data.items.map(row => <tr key={row.lineId}>
-          <td dir="ltr">{row.documentDate}{row.isStaged && <small className="muted">أوليًا</small>}</td>
-          <td title={row.partyName ?? "—"}>{row.partyName || "—"}</td>
-          <td dir="ltr">{row.unitPriceFirstUnit ?? "—"}</td>
-          <td dir="ltr">{row.quantityFirstUnit}</td>
-        </tr>)}</tbody>
-      </table>
-    </div>}
-  </>;
-  return <>
-    {movements.isPending && <Notice>جارٍ تحميل حركة الصنف…</Notice>}
-    {movements.isError && <Notice tone="error">تعذر تحميل حركة الصنف: {errorMessage(movements.error)}</Notice>}
-    {movements.data?.items.length === 0 && <small>لا توجد حركات مخزون مرحلة لهذا الصنف.</small>}
-    {!!movements.data?.items.length && <div className="purchase-comparison-side-scroll" role="region" tabIndex={0} aria-label="حركة الصنف">
-      <table className="purchase-comparison-side-table" dir="rtl">
-        <thead><tr><th>التاريخ</th><th>الحركة والموقع</th><th>الكمية</th></tr></thead>
-        <tbody>{movements.data.items.map(row => <tr key={row.id}>
-          <td dir="ltr">{row.documentDate}</td>
-          <td title={row.locationName}>{stockMovementKindLabels[row.kind]} — {row.locationName}</td>
-          <td dir="ltr">{signedStockMovementQuantity(row.quantitySmallest)}</td>
-        </tr>)}</tbody>
-      </table>
-    </div>}
-    {movements.data && movements.data.total > movements.data.pageSize &&
-      <small>تظهر آخر {movements.data.pageSize} حركة من أصل {movements.data.total}.</small>}
-    <Link className="purchase-comparison-all-movements" to={"/companies/" + companyId + "/stock-movements?itemId=" + itemId}>
-      عرض جميع الحركات
-    </Link>
-  </>;
 }
 
 function ExportHistory({ context }: { context: CompanyContext }) {

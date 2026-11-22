@@ -24,7 +24,10 @@ test("export and comparison each have distinct settings, preserve actions, and r
  assert.match(exports,/const sortedItems = useMemo/);
  assert.match(exports,/const totalPages = Math.max\(1, Math.ceil\(\(result\.data\?\.total \?\? 0\)\/100\)\)/);
  assert.match(exports,/renderRowDetails=\{row=>expanded===row\.itemId\?/);
- assert.match(exports,/PurchaseComparisonItemPanel companyId=\{companyId\}/);
+ assert.match(exports,/<Card className="purchase-comparison-list-card">/);
+ const css=await file("pages/purchase-comparison.css");
+ assert.match(css,/\.purchase-comparison-page > \.purchase-comparison-list-card \{ grid-column: 1 \/ -1;/);
+ assert.doesNotMatch(exports,/PurchaseComparisonItemPanel|AvailableAlternatives|purchase-comparison-detail-pane|setSidePanel/);
  assert.equal((exports.match(/dockRowSource=\{row=>\(\{companyId,itemId:row\.itemId,itemName:row\.itemName\}\)\}/g)??[]).length,2);
 });
 test("canonical extensions are optional, preserve mounted editors and sync only ordinary row clicks",async()=>{
@@ -33,9 +36,11 @@ test("canonical extensions are optional, preserve mounted editors and sync only 
  assert.match(table,/renderRowDetails\?:/);
  assert.match(table,/allowColumnVisibility\?:boolean/);
  assert.match(table,/if\(!availableColumns\.some\(column=>!next\.includes\(column\)\)\)return/);
- assert.match(table,/style=\{visibleColumns\.includes\(key\) \? undefined : \{ display: "none" \}\}/);
+ assert.match(table,/style=\{visibleColumns\.includes\(key\)[^\n]+: \{ display: "none" \}\}/);
  assert.match(table,/colSpan=\{Math.max\(1,shown.length\)\}/);
- assert.match(table,/!target\.closest\(dockInteractiveSelector\)/);
- assert.match(table,/selection\.containsNode\(event\.currentTarget,true\)/);
+ assert.match(table,/isDockRowClick\(event,"tr"\)/);
+ const dock=await file("dock-row-interaction.ts");
+ assert.match(dock,/target\.closest\(dockInteractiveSelector\)\)return false/);
+ assert.match(dock,/selection\.containsNode\(event\.currentTarget,true\)/);
  assert.match(table,/updateDock\(dockRowSource\(item\.row\)\)/);
 });

@@ -25,7 +25,8 @@ test("company item name links and name-button cards are removed, explicit card a
  assert.match(comp,/onClick=\{\(\)=>onOpenItem\(item\.id\)\}>كرت الصنف/);
  const exports=await page("OrderDraftExportsPage");
  assert.match(exports,/purchase-comparison-item-card-link.+\/items\//);
- assert.match(exports,/onClick=\{\(\) => setSidePanel/);
+ assert.match(exports,/<span className="company-item-label purchase-comparison-item-label" dir="auto">\{row\.itemName\}<\/span>/);
+ assert.doesNotMatch(exports,/purchase-comparison-item-select|setSidePanel/);
  const market=await page("InterestStatisticsPage");
  assert.match(market,/medicine-market\?card=/);
  assert.doesNotMatch(market,/company-item:\)\?/);

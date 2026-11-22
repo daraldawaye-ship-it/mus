@@ -47,50 +47,8 @@
   }
 }
 
-/* Account-directory style: the report is two thirds, the selected item's history is one third. */
-.purchase-comparison-split-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  direction: rtl;
-  gap: 12px;
-  align-items: start;
-}
-.purchase-comparison-split-layout > * { min-width: 0; }
-.purchase-comparison-detail-pane {
-  min-width: 0;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-.purchase-comparison-table .selected { background: color-mix(in srgb, var(--accent, #6aa9e9) 15%, transparent); }
-.purchase-comparison-item-select {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent, #7ba5ff);
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.purchase-comparison-item-select:hover, .purchase-comparison-item-select:focus-visible { text-decoration: underline; }
+.purchase-comparison-item-label { min-width: 0; overflow-wrap: anywhere; }
 .purchase-comparison-item-card-link { flex: 0 0 auto; font-size: 1rem; }
-.purchase-comparison-side-heading { display: flex; justify-content: space-between; align-items: start; gap: 8px; margin-bottom: 8px; }
-.purchase-comparison-side-heading strong { overflow-wrap: anywhere; }
-.purchase-comparison-close { border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; padding: 2px 9px; }
-.purchase-comparison-view-switch { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
-.purchase-comparison-side-scroll { max-width: 100%; max-height: 62vh; overflow: auto; }
-.purchase-comparison-side-table { width: 100%; min-width: 330px; border-collapse: collapse; font-size: .78rem; }
-.purchase-comparison-side-table th, .purchase-comparison-side-table td { text-align: start; vertical-align: top; padding: 6px 4px; border-bottom: 1px solid var(--border); }
-.purchase-comparison-side-table th { position: sticky; top: 0; background: var(--surface); }
-.purchase-comparison-side-table td { overflow-wrap: anywhere; }
-.purchase-comparison-side-table .muted { display: block; font-size: .7rem; }
-.purchase-comparison-all-movements { display: inline-block; margin-top: 8px; }
-@media (max-width: 900px) {
-  .purchase-comparison-split-layout { grid-template-columns: minmax(0, 1fr); }
-  .purchase-comparison-detail-pane { max-height: none; overflow: visible; }
-  .purchase-comparison-detail-pane:empty { display: none; }
-}
 
 .purchase-comparison-review-filter {
   display: flex;
@@ -130,19 +88,15 @@
   .company-report-printable > .purchase-comparison-page { display: contents; }
   .company-report-printable:has(> .purchase-comparison-page) > .company-report-print-toolbar { grid-area: 1 / 2; }
   .purchase-comparison-page > .page-heading { grid-area: 1 / 1; }
-  .purchase-comparison-page > .purchase-comparison-split-layout { grid-column: 1 / -1; }
+  .purchase-comparison-page > .purchase-comparison-list-card { grid-column: 1 / -1; min-width: 0; padding: 8px; }
   .purchase-comparison-page .purchase-comparison-scroll {
     max-height: var(--comparison-height, 58vh);
     margin-block-start: 3px;
   }
-  .purchase-comparison-page .purchase-comparison-split-layout > .card { padding: 8px; }
 }
 
 .purchase-comparison-d13 .interactive-columns-scroll { max-height:var(--comparison-height,58vh); }
 .order-export-d13 .interactive-columns-scroll { max-height:68vh; }
-.purchase-comparison-d13 .interactive-columns-grid tr.selected td {
-  background: color-mix(in srgb, var(--surface), var(--focus) 13%);
-}
 @media print {
   .purchase-comparison-d13 .interactive-columns-scroll,.order-export-d13 .interactive-columns-scroll {
     max-height:none; overflow:visible;
