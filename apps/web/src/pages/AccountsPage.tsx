@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
+import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
+import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import {
   accountCategories,
   accountCategoryLabels,
@@ -50,7 +51,6 @@ import {
 import {
   Button,
   Card,
-  DataTable,
   Dialog,
   Field,
   Notice,
@@ -576,21 +576,13 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             </Button>
           </Notice>
         )}
-        <DataTable
+        <AccountsDirectoryD13
+          key={`${user?.id ?? "none"}:${companyId}`}
           columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          page={list.page}
-          pageSize={list.pageSize}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading || savingInline !== null}
-          getRowId={(account) => String(account.id)}
-          ariaLabel="دليل الحسابات"
-          dockRowEntity="account"
-          onRowInteract={(account: Account) => {
+          list={list}
+          storageKey={`alraesy:accounts:d13:${user?.id ?? "none"}:${companyId}`}
+          reading={list.loading || savingInline !== null}
+          remember={account => {
             if (user) rememberRecentEntity(user.id, companyId, "account",
               {id:account.id,name:account.name});
           }}
@@ -690,6 +682,102 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   );
 }
 
+
+
+type DirectoryAccount = OptionListRecord<Account>;
+const emptyDirectoryRows: DirectoryAccount[] = [];
+function AccountsDirectoryD13({ columns, list, storageKey, reading, remember }: {
+  columns: ColumnDef<DirectoryAccount, unknown>[];
+  list: ReturnType<typeof usePagedQuery<DirectoryAccount, OptionListMetadata & { baseCurrencyCode?: string | null }>>;
+  storageKey: string;
+  reading: boolean;
+  remember: (account: DirectoryAccount) => void;
+}) {
+  const rows = list.data?.items ?? emptyDirectoryRows;
+  const [selected, setSelected] = useState<Record<number, true>>({});
+  const extendSort = useRef(false);
+  const table = useReactTable({ columns, data: rows, getCoreRowModel: getCoreRowModel(),
+    getRowId: row => String(row.id), manualSorting: true, manualPagination: true });
+  const tableRows = table.getRowModel().rows;
+  const cellByRow = new Map(tableRows.map(row =>
+    [row.original.id, new Map(row.getAllCells().map(cell => [cell.column.id, cell]))]));
+  const allOnPage = rows.length > 0 && rows.every(row => selected[row.id]);
+  const someOnPage = rows.some(row => selected[row.id]);
+  function selectRows(accounts: readonly DirectoryAccount[], checked: boolean) {
+    setSelected(previous => {
+      const next = {...previous};
+      for (const account of accounts) checked ? next[account.id] = true : delete next[account.id];
+      return next;
+    });
+  }
+  const d13Columns: InteractiveTableColumn<DirectoryAccount>[] = [
+    { key: "account-selection", label: "تحديد", width: 62, scrollText: false,
+      header: <input type="checkbox" aria-label="تحديد حسابات الصفحة" checked={allOnPage}
+        ref={node => { if (node) node.indeterminate = someOnPage && !allOnPage; }}
+        onChange={event => selectRows(rows, event.currentTarget.checked)} />,
+      cell: account => <input type="checkbox" aria-label={`تحديد ${account.name}`}
+        checked={!!selected[account.id]} onChange={event => selectRows([account], event.currentTarget.checked)} />,
+    },
+    ...table.getAllLeafColumns().map(column => ({
+      key: column.id,
+      label: typeof column.columnDef.header === "string" ? column.columnDef.header : column.id,
+      width: column.columnDef.size ?? 125,
+      sortable: column.columnDef.enableSorting !== false,
+      scrollText: ["name", "actualBalance", "code"].includes(column.id) || column.id.startsWith("option."),
+      cell: (account: DirectoryAccount) => {
+        const cell = cellByRow.get(account.id)?.get(column.id);
+        return cell ? flexRender(column.columnDef.cell, cell.getContext()) : null;
+      },
+    })),
+  ];
+  function sortBy(key: string) {
+    const multi = extendSort.current;
+    extendSort.current = false;
+    list.setSorting(previous => {
+      const index = previous.findIndex(s => s.id === key);
+      const nextEntry = index < 0 ? { id:key, desc:false } : previous[index].desc ? null : { id:key, desc:true };
+      if (!multi) return nextEntry ? [nextEntry] : [];
+      const next = [...previous];
+      if (index < 0 && nextEntry) next.push(nextEntry);
+      else if (index >= 0 && nextEntry) next[index] = nextEntry;
+      else if (index >= 0) next.splice(index,1);
+      return next;
+    });
+  }
+  const total = list.data?.total ?? 0;
+  const primarySort = list.sorting[0];
+  const selectedCount = Object.keys(selected).length;
+  return <div className="data-table" aria-busy={reading || undefined}
+    onClickCapture={event => { extendSort.current = event.shiftKey; }}>
+    <div className="table-tools">
+      <span>{total.toLocaleString("ar")} سجل{selectedCount ? ` · ${selectedCount.toLocaleString("ar")} محدد` : ""}</span>
+      <span className="muted">Shift لإضافة ترتيب آخر</span>
+    </div>
+    <InteractiveColumnsTable columns={d13Columns} rows={rows} rowKey={account => account.id}
+      visibleColumns={d13Columns.map(column => column.key)} storageKey={storageKey}
+      dockRowSource={account => ({accountId:account.id,accountName:account.name})}
+      onRowClick={remember}
+      rowClassName={account => selected[account.id] ? "accounts-directory-selected" : undefined}
+      sortKey={primarySort?.id} sortDirection={primarySort ? (primarySort.desc ? "desc" : "asc") : undefined}
+      onSort={sortBy} ariaLabel="دليل الحسابات" allowColumnVisibility
+      emptyMessage={reading ? "جارٍ تحميل الحسابات…" : "لا توجد حسابات تطابق البحث."} />
+    <div className="pagination">
+      <label>سجلات الصفحة{" "}
+        <Select aria-label="عدد سجلات الصفحة" value={list.pageSize}
+          onChange={event => list.setPageSize(Number(event.target.value))}>
+          {[10,20,50,100].map(size => <option key={size} value={size}>{size}</option>)}
+        </Select>
+      </label>
+      <span>صفحة {list.page.toLocaleString("ar")} من {Math.max(1,Math.ceil(total/list.pageSize)).toLocaleString("ar")}</span>
+      <div>
+        <Button type="button" variant="secondary" size="compact" disabled={reading || list.page <= 1}
+          onClick={() => list.setPage(list.page-1)}>السابق</Button>{" "}
+        <Button type="button" variant="secondary" size="compact" disabled={reading || list.page*list.pageSize >= total}
+          onClick={() => list.setPage(list.page+1)}>التالي</Button>
+      </div>
+    </div>
+  </div>;
+}
 
 function todayInAdenForAccountPreview() {
   const parts = new Intl.DateTimeFormat("en-US", {
