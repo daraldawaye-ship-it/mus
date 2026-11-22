@@ -19,7 +19,7 @@ import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { api, sessionRequiresLogin, useScopeGuard } from "./api";
 import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
 import { dockDataReads } from "./dock-container-access";
-import { errorMessage } from "./phase2";
+import { errorMessage, moduleAccess } from "./phase2";
 import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 import "./pages/RaisedOptionKeys.css";
@@ -58,6 +58,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const canUseItemView=(view:ItemView)=>reads[view]||
     (staffItemDock&&(view==="movement"||view==="purchases"));
   const accountAccess=dockAccountAccess(context,pages);
+  const canEditAccount=!!context&&accountAccess.card&&moduleAccess(context,"accounts",true);
   const access = workPanelItemActionAccess(context,pages);
   const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
 
@@ -172,8 +173,8 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
         {reads.account ? <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
-          <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}`}
-            actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} />
+          <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}:${canEditAccount}`}
+            actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} canEdit={canEditAccount} />
           : null} /> : <Notice>البحث عن الحسابات غير متاح بصلاحياتك الحالية.</Notice>}
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}

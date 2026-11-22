@@ -902,7 +902,7 @@ export function AccountLedgerPreview({
   );
 }
 
-function AccountEditor({
+export function AccountEditor({
   companyId,
   account,
   onClose,
