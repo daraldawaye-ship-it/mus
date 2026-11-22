@@ -148,7 +148,7 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
   if (!result.peers.length) return null;
   return <div className="invoice-item-options-scroll work-panel-movement-scroll work-panel-alternatives-scroll" tabIndex={0} role="region" aria-label="جدول بدائل الصنف">
     <table dir="rtl">
-      <thead><tr><th scope="col">الاسم</th><th scope="col">الكمية</th><th scope="col">المباع في شهر</th></tr></thead>
+      <thead><tr><th scope="col">البدائل</th><th scope="col">الكمية</th><th scope="col" aria-label="صافي الكمية المباعة في شهر">المباع</th></tr></thead>
       <tbody>{result.peers.map(peer=>{
         const quantity = result.canViewStock && peer.stockAvailableSmallest != null
           && Number.isSafeInteger(peer.factor2) && peer.factor2>0
@@ -359,7 +359,7 @@ export function ItemMenuHistory({
   </>);
   return (
     <div className="user-menu-item-history" aria-live="polite">
-      {!hideHeading && (
+      {!hideHeading && !dockAlternatives && (
         <div className="user-menu-item-history-heading">
           <strong>{selectedLabel}</strong>
           <span title={itemName ?? undefined}>{itemName}</span>
