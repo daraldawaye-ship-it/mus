@@ -678,6 +678,7 @@ export interface ItemCompositionPeers {
  companyId: number;
  itemId: number;
  canViewStock: boolean;
+ canViewMonthlySales?: boolean;
  composition: {
    id: number;
    arabicName: string;
@@ -702,5 +703,7 @@ export interface ItemCompositionPeers {
    stockSmallest: string | null;
    /** Available showroom and warehouse stock only, in this item’s smallest unit. */
    stockAvailableSmallest?: string | null;
+   /** Net sales during the item planning month, already in first units. */
+   saleQuantityMonth?: string | null;
  }>;
 }

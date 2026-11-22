@@ -23,11 +23,12 @@
   top: 0;
   background: var(--soft, var(--surface, white));
 }
-.work-panel-alternatives-scroll :is(th, td):last-child {
+.work-panel-alternatives-scroll :is(th, td):not(:first-child) {
   text-align: center;
-  width: 4.5rem;
+  width: 3.7rem;
   font-variant-numeric: tabular-nums;
 }
+.work-panel-alternatives-scroll :is(th, td):last-child { width: 5.3rem; }
 .work-panel-alternatives-scroll td:first-child span {
   display: block;
   overflow: hidden;

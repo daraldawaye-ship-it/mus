@@ -938,8 +938,13 @@ export function itemRoutes(pool: Pool): Router {
         throw new HttpError(400,"invalid_page","رقم صفحة الأصناف المرتبطة غير صالح");
       const pageSize=req.query.pageSize===undefined?20:req.query.pageSize=== "10"?10:0;
       if(!pageSize)throw new HttpError(400,"invalid_page","عدد أصناف الصفحة غير صالح");
+      const dockRaw=req.query.workPanel;
+      if(dockRaw!==undefined && dockRaw!=="1")
+        throw new HttpError(400,"invalid_query","نوع عرض البدائل غير صالح");
+      const workPanel=dockRaw==="1";
+      if(workPanel)res.setHeader("Cache-Control","private, no-store");
       res.json(await readItems(pool,req,async(client,companyId)=>({
-        peers:await readItemCompositionPeers(client,actor(req),companyId,itemId,page,pageSize),
+        peers:await readItemCompositionPeers(client,actor(req),companyId,itemId,page,pageSize,workPanel),
       })));
     }),
   );

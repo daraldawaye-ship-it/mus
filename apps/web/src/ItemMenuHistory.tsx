@@ -9,6 +9,7 @@ import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./work-panel-alternatives.css";
+import { formatStockSaleQuantity } from "./order-draft-quantities";
 
 type ItemMenuView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
 export type ItemMenuQuickAction = "adjustment" | "transfer" | "memo" | "memo-return";
@@ -147,7 +148,7 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
   if (!result.peers.length) return null;
   return <div className="invoice-item-options-scroll work-panel-movement-scroll work-panel-alternatives-scroll" tabIndex={0} role="region" aria-label="جدول بدائل الصنف">
     <table dir="rtl">
-      <thead><tr><th scope="col">الاسم</th><th scope="col">الكمية</th></tr></thead>
+      <thead><tr><th scope="col">الاسم</th><th scope="col">الكمية</th><th scope="col">المباع في شهر</th></tr></thead>
       <tbody>{result.peers.map(peer=>{
         const quantity = result.canViewStock && peer.stockAvailableSmallest != null
           && Number.isSafeInteger(peer.factor2) && peer.factor2>0
@@ -159,6 +160,7 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
         return <tr key={peer.id}>
           <td><span title={peer.name} dir="auto">{peer.name}</span></td>
           <td><bdi dir="ltr">{quantity}</bdi></td>
+          <td><bdi dir="ltr">{result.canViewMonthlySales?formatStockSaleQuantity(peer.saleQuantityMonth):"—"}</bdi></td>
         </tr>;
       })}</tbody>
     </table>
@@ -261,9 +263,9 @@ export function ItemMenuHistory({
     retry: false,
   });
   const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
-    queryKey: ["avatar-item-alternatives", userId, companyId, itemId, page],
+    queryKey: ["avatar-item-alternatives", userId, companyId, itemId, page, fixedView === "alternatives"],
     queryFn: ({ signal }) => api<{ peers: ItemCompositionPeers }>(
-      `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}&pageSize=10`,
+      `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}&pageSize=10${fixedView==="alternatives"?"&workPanel=1":""}`,
       { signal }),
     enabled: !!itemId && view === "alternatives",
     staleTime: 10000,
