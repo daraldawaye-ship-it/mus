@@ -49,6 +49,7 @@ import {
   Button,
   Card,
   DataTable,
+  DateField,
   Dialog,
   Field,
   Notice,
@@ -1704,6 +1705,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   // A missing date defaults to today; an explicitly cleared field stays empty.
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
+  const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
   const accountId = Number(params.get("accountId")) || 0;
   const showSupplierAccount = !pledge && params.get("showSupplierAccount") === "1";
   const [selected, setSelected] = useState<PickAccount | null>(null);
@@ -1757,12 +1759,21 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           account: PickAccount;
         }
       >(`${ledgerUrl}?${query}`, { signal }),
-    enabled: accountId > 0,
+    enabled: accountId > 0 && !invalidRange,
   });
   const [preparePrint, setPreparePrint] = useState(false);
+  const commitDate = (key: "dateFrom" | "dateTo", value: string) => {
+    setPreparePrint(false);
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(key, value);
+      next.delete("page");
+      return next;
+    });
+  };
   const printQuery = useQuery({
     queryKey: ["ledger-full-print", user?.id, companyId, ledgerUrl, query.toString(), result.data?.total],
-    enabled: preparePrint && !!result.data && accountId > 0,
+    enabled: preparePrint && !!result.data && accountId > 0 && !invalidRange,
     queryFn: async ({ signal }) => {
       const total = result.data?.total ?? 0;
       const rows: AccountLedgerLine[] = [];
@@ -1873,7 +1884,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       <PageHeader
         title="كشف حساب"
         description={`الأحدث أولًا؛ الرصيد والمدين والدائن بالعملة الأساسية (${result.data?.totals.baseCurrencyCode ?? "عملة الشركة الأساسية"})، ولا يظهر تكرار للمبالغ بعملة المستند.`}
-        actions={<Button variant="secondary" disabled={result.isLoading || preparePrint && printQuery.isFetching}
+        actions={<Button variant="secondary" disabled={invalidRange || result.isLoading || preparePrint && printQuery.isFetching}
           onClick={() => { if (printQuery.data) window.print(); else setPreparePrint(true); }}>
           <Printer size={16} /> {preparePrint && printQuery.isFetching ? "جارٍ إعداد جميع الحركات…" : "طباعة كشف الحساب"}
         </Button>}
@@ -1913,21 +1924,15 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
               }}
             />
           </div>
-          <Field
+          <DateField
             label="من تاريخ"
-            type="date"
             value={dateFrom}
-            onChange={(event) =>
-              updateFilter(setParams, "dateFrom", event.target.value)
-            }
+            onCommit={(value) => commitDate("dateFrom", value)}
           />
-          <Field
+          <DateField
             label="إلى تاريخ"
-            type="date"
             value={dateTo}
-            onChange={(event) =>
-              updateFilter(setParams, "dateTo", event.target.value)
-            }
+            onCommit={(value) => commitDate("dateTo", value)}
           />
           {!pledge && (
             <Button variant="secondary" onClick={() => setParams((previous) => {
@@ -1941,6 +1946,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           )}
         </div>
         {!accountId && <Notice>اختر حسابًا لعرض حركاته ورصيده.</Notice>}
+        {invalidRange && <Notice tone="warning">يجب ألا يتجاوز تاريخ البداية تاريخ النهاية.</Notice>}
         {result.error && (
           <Notice tone="error">{errorMessage(result.error)}</Notice>
         )}
@@ -1960,7 +1966,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
             </strong>
           </div>
         )}
-        {accountId > 0 && (
+        {accountId > 0 && !invalidRange && (
           <DataTable
             columns={columns}
             data={result.data?.items ?? []}

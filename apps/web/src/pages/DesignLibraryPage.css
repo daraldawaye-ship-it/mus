@@ -31,7 +31,7 @@
 .design-copy:hover { background:var(--button-surface-hover,var(--hover)); border-color:var(--focus); }
 .design-copy:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .design-sample-body { flex:1; min-height:38px; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:6px; min-width:0; }
-.design-sample-body > :where(.design-stack,.design-field,.design-input-wrap,.design-list,.design-swatch-grid,.design-panel,.design-table-scroll,.design-card-surface,.design-stat,.design-band,.design-two-col,.design-tabs,.design-rule,.design-collapse,.design-pagination,.design-progress,.design-notice) { width:100%; }
+.design-sample-body > :where(.design-stack,.design-field,.date-field,.design-input-wrap,.design-list,.design-swatch-grid,.design-panel,.design-table-scroll,.design-card-surface,.design-stat,.design-band,.design-two-col,.design-tabs,.design-rule,.design-collapse,.design-pagination,.design-progress,.design-notice) { width:100%; }
 .design-sample-note { margin:0; color:var(--muted); font-size:11px; }
 .design-field { display:flex; flex-direction:column; gap:5px; width:100%; font-size:12px; font-weight:600; color:var(--text); }
 .design-field :is(input,select,textarea) { font-weight:400; border-color:var(--field-border,var(--border)); background:var(--field-bg,var(--bg)); }

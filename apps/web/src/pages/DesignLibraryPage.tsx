@@ -6,6 +6,7 @@ import {
   Plus, Search, Settings2, ShieldAlert,
 } from "lucide-react";
 import DesignLibraryScrollableCell from "./DesignLibraryScrollableCell";
+import { DateField } from "../ui";
 import "./DesignLibraryPage.css";
 import "./GlossyButtons.css";
 import "./RaisedOptionKeys.css";
@@ -133,7 +134,7 @@ function DemoFields() {
       <Sample code="ح-08" title="اختيار متعدد بعلامات"><div className="design-stack"><label className="design-check"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)}/> إظهار الأصناف المتوفرة</label><label className="design-check"><input type="checkbox"/> إظهار المؤرشفة</label></div></Sample>
       <Sample code="ح-09" title="اختيار واحد دائري"><div className="design-stack">{["الأول","الثاني"].map(v=><label className="design-check" key={v}><input type="radio" name="design-radio" checked={radio===v} onChange={() => setRadio(v)}/>{v}</label>)}</div></Sample>
       <Sample code="ح-10" title="مفتاح تشغيل وإيقاف"><label className="design-toggle"><input type="checkbox" defaultChecked/><span className="design-switch-track"/><span>تفعيل التنبيهات</span></label></Sample>
-      <Sample code="ح-11" title="حقل تاريخ"><label className="design-field">اختر التاريخ<input type="date" defaultValue="2026-11-14"/></label></Sample>
+      <Sample code="ح-11" title="حقل تاريخ"><DateField label="اختر التاريخ" value="2026-11-14" /></Sample>
       <Sample code="ح-12" title="اختيار ملف"><label className="design-field">إرفاق مستند<input type="file" aria-label="إرفاق مستند"/></label></Sample>
       <Sample code="ح-18" title="مفاتيح اختيار بارزة" note="اضغط أي مفتاح لتفعيله أو إطفائه. الأحجام الثلاثة للتجربة وتتبع لون المظهر."><PressKeyOptions /></Sample>
       <Sample code="ح-19" title="مفتاح منزلق نعم / لا" note="ثلاثة أحجام تتبع ألوان المظهر. كل مفتاح مستقل للتجربة."><SlidingYesNoOptions /></Sample>

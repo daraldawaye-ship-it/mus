@@ -175,6 +175,43 @@ export function Field({
     </div>
   );
 }
+
+export function DateField({ label, value, onCommit }: {
+  label: string;
+  value: string;
+  onCommit?: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (input && input.value !== value) input.value = value;
+  }, [value]);
+
+  const commit = (input: HTMLInputElement) => {
+    if (input.validity.valid && input.value !== value) onCommit?.(input.value);
+  };
+
+  return (
+    <label className="field date-field">
+      {label}
+      <input
+        ref={inputRef}
+        type="date"
+        min="0001-01-01"
+        max="9999-12-31"
+        defaultValue={value}
+        onBlur={(event) => commit(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !onCommit) return;
+          event.preventDefault();
+          if (event.currentTarget.reportValidity()) commit(event.currentTarget);
+        }}
+      />
+    </label>
+  );
+}
+
 export function Select({
   label,
   id,

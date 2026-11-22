@@ -1085,6 +1085,13 @@ legend {
   color: var(--muted);
   font-size: 11px;
 }
+.date-field {
+  font-size: 12px;
+  font-weight: 600;
+}
+.date-field > input {
+  font-weight: 400;
+}
 .field input,
 input:not([type="checkbox"]):not([type="radio"]),
 select,
