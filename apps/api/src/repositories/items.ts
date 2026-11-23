@@ -94,6 +94,8 @@ export function itemDTO(row: QueryResultRow): Item {
     purchasePrice: normalizeRate(row.purchase_price),
     defaultProfitFactor: normalizeRate(row.default_profit_factor),
     orderAlertQuantity: row.order_alert_quantity == null ? null : normalizeRate(row.order_alert_quantity),
+    defaultSupplyMaxQuantity: row.default_supply_max_quantity == null ? null : String(row.default_supply_max_quantity),
+    defaultSupplyMaxNotes: row.default_supply_max_notes ?? null,
     commissionRate: normalizeRate(row.commission_rate),
     clearanceFrom: row.clearance_from_text ?? null,
     clearanceTo: row.clearance_to_text ?? null,

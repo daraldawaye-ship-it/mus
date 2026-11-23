@@ -228,6 +228,8 @@ export const itemFieldColumns = [
   ["purchasePrice", "purchase_price"],
   ["defaultProfitFactor", "default_profit_factor"],
   ["orderAlertQuantity", "order_alert_quantity"],
+  ["defaultSupplyMaxQuantity", "default_supply_max_quantity"],
+  ["defaultSupplyMaxNotes", "default_supply_max_notes"],
   ["commissionRate", "commission_rate"],
   ["clearanceFrom", "clearance_from"],
   ["clearanceTo", "clearance_to"],

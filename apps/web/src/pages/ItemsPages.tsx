@@ -1117,6 +1117,8 @@ type ItemFields = {
   purchasePrice: string;
   defaultProfitFactor: string;
   orderAlertQuantity: string;
+  defaultSupplyMaxQuantity: string;
+  defaultSupplyMaxNotes: string;
   commissionRate: string;
   clearanceFrom: string;
   clearanceTo: string;
@@ -1161,6 +1163,8 @@ function initialItemFields(item: Item | null): ItemFields {
     purchasePrice: item?.purchasePrice ?? "0",
     defaultProfitFactor: item?.defaultProfitFactor ?? "1.2",
     orderAlertQuantity: item?.orderAlertQuantity ?? "",
+    defaultSupplyMaxQuantity: item?.defaultSupplyMaxQuantity ?? "",
+    defaultSupplyMaxNotes: item?.defaultSupplyMaxNotes ?? "",
     commissionRate: item?.commissionRate ?? "0",
     clearanceFrom: item?.clearanceFrom ?? "",
     clearanceTo: item?.clearanceTo ?? "",
@@ -1457,6 +1461,8 @@ function ItemEditor({
       factor3: fields.factor3,
       purchaseFactor: fields.purchaseFactor,
       orderAlertQuantity: fields.orderAlertQuantity.trim() === "" ? null : fields.orderAlertQuantity,
+      defaultSupplyMaxQuantity: fields.defaultSupplyMaxQuantity.trim() || null,
+      defaultSupplyMaxNotes: fields.defaultSupplyMaxNotes.trim() || null,
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
       ...(item && !supplierManuallyTouched ? {} : { supplierAccountId: supplier?.id ?? null }),
@@ -2344,6 +2350,24 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("orderAlertQuantity", event.target.value)}
               hint="اتركه فارغًا لتعطيل التذكير؛ الصفر صالح. الحد بالوحدة الأولى، والمتوفر لا يشمل مخازن المرتجعات. تنبيه يومي للمالك والمبيعات عند بلوغه أو النزول عنه."
+            />
+            <Field
+              label="أعلى كمية توفير افتراضية"
+              inputMode="numeric"
+              dir="ltr"
+              maxLength={22}
+              value={fields.defaultSupplyMaxQuantity}
+              disabled={disabled}
+              onChange={(event) => edit("defaultSupplyMaxQuantity", event.target.value)}
+              hint="بالوحدة الأولى، ولا تدخل في حساب الطلب أو المخزون."
+            />
+            <Field
+              label="ملاحظات أعلى كمية توفير افتراضية"
+              className="item-span-three"
+              maxLength={1000}
+              value={fields.defaultSupplyMaxNotes}
+              disabled={disabled}
+              onChange={(event) => edit("defaultSupplyMaxNotes", event.target.value)}
             />
             <Field
               label="كمية احتياط"

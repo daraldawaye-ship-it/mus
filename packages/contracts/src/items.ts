@@ -211,6 +211,8 @@ const itemFields = z
     purchasePrice: amountSchema.default("0"),
     defaultProfitFactor: itemProfitFactorSchema.default("1.2"),
     orderAlertQuantity: itemOrderAlertQuantitySchema.default(null),
+    defaultSupplyMaxQuantity: itemWholeQuantitySchema.nullable().optional(),
+    defaultSupplyMaxNotes: z.string().trim().max(1000).nullable().optional().transform(value => value === "" ? null : value),
     commissionRate: commissionPercent.default("0"),
     clearanceFrom: documentDateSchema.nullable().default(null),
     clearanceTo: documentDateSchema.nullable().default(null),
@@ -392,6 +394,8 @@ export interface Item extends ItemIdentity {
   purchasePrice: string;
   defaultProfitFactor: string;
   orderAlertQuantity: string | null;
+  defaultSupplyMaxQuantity: string | null;
+  defaultSupplyMaxNotes: string | null;
   commissionRate: string;
   clearanceFrom: string | null;
   clearanceTo: string | null;
@@ -530,6 +534,8 @@ export const itemCatalog = {
     purchasePrice: "0",
     defaultProfitFactor: "1.2",
     orderAlertQuantity: null,
+    defaultSupplyMaxQuantity: null,
+    defaultSupplyMaxNotes: null,
     saleNotes: "",
     productForm: "عام",
     commissionRate: "0",
