@@ -18,18 +18,11 @@ import { canEditInvoiceItemComposition } from "./invoice-item-composition-access
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { api, sessionRequiresLogin, useScopeGuard } from "./api";
 import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
-import { dockDataReads } from "./dock-container-access";
+import { dockDataReads, dockItemViewOptions, type DockItemView } from "./dock-container-access";
 import { errorMessage, moduleAccess } from "./phase2";
 import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 
-type ItemView = "movement" | "purchases" | "card" | "alternatives";
-const itemViews: { key: ItemView; label: string }[] = [
-  { key: "movement", label: "الحركة" },
-  { key: "purchases", label: "المشتريات" },
-  { key: "card", label: "كرت" },
-  { key: "alternatives", label: "البدائل" },
-];
 const AdjustItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemAdjustmentSheet })));
 const TransferItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemTransferSheet })));
 const ReportItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemReportSheet })));
@@ -41,7 +34,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
 }) {
   const companyId = context?.company.id ?? null;
   const dockSelection=useDockTableSelection();
-  const [views, setViews] = useState<ItemView[]>([]);
+  const [views, setViews] = useState<DockItemView[]>([]);
   const [editingComposition,setEditingComposition]=useState<number|null>(null);
   const [active, setActive] = useState<{ action: "adjust" | "transfer" | "report"; id: number; name: string } | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string; memoId?: number } | null>(null);
@@ -54,15 +47,14 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const pages=pagesError?undefined:pageEntries;
   const reads=dockDataReads(context,pages);
   const staffItemDock=showItemTools&&!user.owner&&!!companyId;
-  const canUseItemView=(view:ItemView)=>reads[view]||
-    (staffItemDock&&(view==="movement"||view==="purchases"));
+  const itemViews=dockItemViewOptions(reads,staffItemDock);
   const accountAccess=dockAccountAccess(context,pages);
   const canEditAccount=!!context&&accountAccess.card&&moduleAccess(context,"accounts",true);
   const access = workPanelItemActionAccess(context,pages);
   const itemOptionsPage = pages?.find(page => page.key === "company.item-options-list");
   // Match the existing order stop action: authorized item-card readers who can edit the item list.
   const canStopOrder = reads.card && !!itemOptionsPage?.enabled && !!itemOptionsPage.actionAccess.edit;
-  const canEditComposition=user.owner&&canEditInvoiceItemComposition(context,pages);
+  const canEditComposition=canEditInvoiceItemComposition(context,pages);
 
   function refreshInventory(itemId: number) {
     for (const key of [
@@ -117,7 +109,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           {reads.item||staffItemDock ? <EntityMenuSearch user={user} companyId={companyId} kind="item" staffDockLookup={staffItemDock?(reads.item?"fallback":"limited"):undefined} floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
             renderAdjacent={selected => (<>
                   <InvoiceItemCompositionActions triggerLabel="الخيارات" userId={user.id} companyId={companyId??undefined}
-                    itemId={selected?.id??0} allowCompositionEdit={canEditComposition}
+                    itemId={selected?.id??0} allowCompositionEdit={canEditComposition} showUnavailableComposition
                     openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
                     canPublicRequest={access["public-request"] && !requesting}
@@ -125,7 +117,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     canTransfer={access.transfer} canReport={access.report}
                     onAction={action => { if (selected) openAction(action, selected); }} />
                   <WorkPanelItemViewsDropdown itemName={selected?.name??"الصنف"} disabled={!selected}
-                    views={itemViews.filter(view=>canUseItemView(view.key)).map(view=>({
+                    views={itemViews.map(view=>({
                       ...view,checked:views.includes(view.key),
                       toggle:()=>setViews(previous=>previous.includes(view.key)
                         ?previous.filter(value=>value!==view.key):[...previous,view.key]),
@@ -133,11 +125,11 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                 </>)}
             renderSelection={selected => (
               <>
-                {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && canUseItemView(view.key)).map(view => (
+                {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && view.available).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && reads.card && (
                       <WorkPanelCompactCard userId={user.id} companyId={companyId} itemId={selected.id}
-                        canEdit={user.owner&&access.edit} canStopOrder={canStopOrder} online={online} />
+                        canEdit={access.edit} canStopOrder={canStopOrder} online={online} />
                     ) : <ItemMenuHistory userId={user.id} companyId={companyId}
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}
@@ -171,10 +163,14 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           }} />}
       </Suspense>}</>}
       {showAccountSearch&&<section className="work-panel-tool-card work-panel-account-container" aria-label="حاوية الحساب">
-        {reads.account ? <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
+        {reads.account ? <EntityMenuSearch user={user} companyId={companyId} kind="account" floatingResults accountLookup={reads.statementOnlyAccountSearch?"ledger":undefined} fieldLabel="بحث عن حساب" dockSelection={dockSelection.account} renderSelection={(selected)=>companyId ?
           <DockAccountTools key={`${user.id}:${companyId}:${selected?.id??0}:${accountAccess.card}:${accountAccess.ledger}:${canEditAccount}`}
             actorId={user.id} companyId={companyId} selected={selected} canCard={accountAccess.card} canLedger={accountAccess.ledger} canEdit={canEditAccount} />
-          : null} /> : <Notice>البحث عن الحسابات غير متاح بصلاحياتك الحالية.</Notice>}
+          : null} /> : <>
+          <Notice>البحث عن الحسابات غير متاح بصلاحياتك الحالية.</Notice>
+          {companyId&&<DockAccountTools actorId={user.id} companyId={companyId} selected={null}
+            canCard={false} canLedger={false} canEdit={false} />}
+        </>}
       </section>}
       {user.owner&&<WorkPanelUserSearch user={user} pages={pagesError?undefined:pageEntries} dockSelection={dockSelection.user} />}
       {showPageSearch&&<WorkPanelPageSearch key={currentPageRoute} user={user} companyId={companyId??undefined} pages={pageEntries} loading={pagesLoading} error={pagesError} currentLabel={currentPageLabel} currentRoute={currentPageRoute} context={context} />}

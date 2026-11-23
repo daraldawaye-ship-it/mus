@@ -8,9 +8,10 @@ import { exactInvoiceItemCompositionId } from "./invoice-item-composition-access
 import { Dialog,Notice } from "./ui";
 
 const CompositionEditorSheet=lazy(()=>import("./pages/ItemCompositionsPage").then(module=>({default:module.CompositionEditorSheet})));
-type DropdownProps=Omit<ComponentProps<typeof InvoiceItemActionsDropdown>,"onEditComposition"|"onOpenChange">;
+type DropdownProps=Omit<ComponentProps<typeof InvoiceItemActionsDropdown>,"onEditComposition"|"onOpenChange"|"unavailableCompositionReason">;
 type Props=DropdownProps&{
   userId:number|null;companyId:number|undefined;itemId:number;allowCompositionEdit:boolean;
+  showUnavailableComposition?:boolean;
   openComposition:(id:number)=>void;
 };
 
@@ -18,7 +19,8 @@ type Props=DropdownProps&{
 export function InvoiceItemCompositionActions(props:Props) {
   return <ScopedActions key={`${props.userId??0}:${props.companyId??0}:${props.itemId}`} {...props}/>;
 }
-function ScopedActions({userId,companyId,itemId,allowCompositionEdit,openComposition,...dropdown}:Props) {
+function ScopedActions({userId,companyId,itemId,allowCompositionEdit,openComposition,
+  showUnavailableComposition,...dropdown}:Props) {
   const [open,setOpen]=useState(false);
   const online=useSyncExternalStore(subscribeConnection,connectionSnapshot)==="online"&&!sessionRequiresLogin();
   const eligible=open&&!!userId&&!!companyId&&itemId>0&&!dropdown.disabled&&allowCompositionEdit&&online;
@@ -31,7 +33,13 @@ function ScopedActions({userId,companyId,itemId,allowCompositionEdit,openComposi
   });
   const compositionId=eligible&&!itemQuery.isFetching&&!itemQuery.isError
     ?exactInvoiceItemCompositionId(itemQuery.data?.item,companyId,itemId):null;
+  const unavailableCompositionReason=showUnavailableComposition&&compositionId===null
+    ? !allowCompositionEdit ? "لا يتوفر إذن التعديل"
+      : itemQuery.isFetching ? "جارٍ التحقق"
+      : itemQuery.isError ? "تعذر التحقق من التركيب"
+      : "لا يوجد تركيب مرتبط" : undefined;
   return <InvoiceItemActionsDropdown {...dropdown} onOpenChange={setOpen}
+    unavailableCompositionReason={unavailableCompositionReason}
     onEditComposition={compositionId===null?undefined:()=>{
       if(!isOfflineNow()&&!sessionRequiresLogin())openComposition(compositionId);
     }}/>;

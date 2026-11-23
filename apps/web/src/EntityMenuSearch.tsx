@@ -20,7 +20,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection, renderAdjacent, fieldLabel, dockSelection, floatingResults=false,staffDockLookup,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, renderAdjacent, fieldLabel, dockSelection, floatingResults=false,staffDockLookup,accountLookup,
 }: {
   user: User;
   companyId: number | null;
@@ -39,6 +39,7 @@ export function EntityMenuSearch({
   dockSelection?: RecentEntity;
   floatingResults?:boolean;
   staffDockLookup?:"limited"|"fallback";
+  accountLookup?:"ledger";
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -96,19 +97,20 @@ export function EntityMenuSearch({
   const resource = kind === "item"
     ? `/companies/${company}/commerce-options?type=items`
     : kind === "account"
-      ? `/companies/${company}/financial-options?type=accounts`
+      ? (accountLookup==="ledger" ? `/companies/${company}/account-ledger/accounts`
+        : `/companies/${company}/financial-options?type=accounts`)
       : `/companies/${company}/employees?active=true`;
   const sort = kind === "item" ? "saleTimes:desc,code:asc"
     : kind === "account" ? "name:asc" : "name:asc";
   const result = useQuery({
-    queryKey: ["avatar-entity-search", user.id, company, kind, search, page, embeddedItem],
+    queryKey: ["avatar-entity-search", user.id, company, kind, search, page, embeddedItem, accountLookup],
     queryFn: async ({signal}) => {
       const limited=()=>api<Page<Choice> & {hasMore?:boolean}>(
         `/companies/${company}/work-panel-items?${new URLSearchParams({q:search,page:String(page)})}`,{signal});
       if(limitedItem) return limited();
       try {
         return await api<Page<Choice> & {hasMore?:boolean}>(
-          `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort,...(kind === "item" ? {fast:"1"} : {})})}`,
+          `${resource}${resource.includes("?")?"&":"?"}${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort,...(kind === "item" ? {fast:"1"} : {})})}`,
           {signal});
       } catch (error) {
         if(embeddedItem==="fallback"&&search.length>=2&&search.length<=120&&!signal.aborted&&

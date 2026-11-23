@@ -14,7 +14,7 @@ export const invoiceItemActionLabels: Record<InvoiceItemAction, string> = {
 
 /** Portal-based dropdown escapes the horizontally scrolling invoice matrix. */
 export function InvoiceItemActionsDropdown({
-  itemName, disabled, canPublicRequest = false, canEdit, canAdjust, canTransfer, canReport, onAction, onOpenChange, onEditComposition, triggerLabel,
+  itemName, disabled, canPublicRequest = false, canEdit, canAdjust, canTransfer, canReport, onAction, onOpenChange, onEditComposition, triggerLabel, unavailableCompositionReason,
 }: {
   itemName: string;
   disabled: boolean;
@@ -26,6 +26,7 @@ export function InvoiceItemActionsDropdown({
   onAction: (action: InvoiceItemAction) => void;
   onOpenChange?: (open:boolean)=>void;
   onEditComposition?: ()=>void;
+  unavailableCompositionReason?: string;
   triggerLabel?: string;
 }) {
   return <ItemDropdown itemName={itemName} disabled={disabled} triggerLabel={triggerLabel} onOpenChange={onOpenChange} showPencil={!triggerLabel}>
@@ -40,19 +41,23 @@ export function InvoiceItemActionsDropdown({
             onClick={()=>{close();onAction(action);}}>
             {invoiceItemActionLabels[action]}
           </button>
-          {action==="edit"&&onEditComposition&&<button type="button" role="menuitem"
-            onClick={()=>{close();onEditComposition();}}>تعديل كرت التركيب</button>}
+          {action==="edit"&&(onEditComposition||unavailableCompositionReason)&&<button type="button" role="menuitem"
+            disabled={!onEditComposition} title={unavailableCompositionReason}
+            onClick={()=>{if(onEditComposition){close();onEditComposition();}}}>
+            تعديل كرت التركيب{!onEditComposition&&<small> ({unavailableCompositionReason})</small>}
+          </button>}
           </Fragment>
         )}
   </ItemDropdown>;
 }
 
 export function WorkPanelItemViewsDropdown({itemName,disabled,views}:{
-  itemName:string;disabled:boolean;views:{key:string;label:string;checked:boolean;toggle:()=>void}[];
+  itemName:string;disabled:boolean;views:{key:string;label:string;available:boolean;checked:boolean;toggle:()=>void}[];
 }) {
   return <ItemDropdown itemName={itemName} disabled={disabled} triggerLabel="إجراءات">
     {() => views.map(view => <button type="button" role="menuitemcheckbox" aria-checked={view.checked}
-      key={view.key} className="work-panel-view-menu-entry" onClick={view.toggle}>{view.label}</button>)}
+      key={view.key} className="work-panel-view-menu-entry" disabled={!view.available}
+      onClick={view.toggle}>{view.label}{!view.available&&<small> (لا يتوفر إذن العرض)</small>}</button>)}
   </ItemDropdown>;
 }
 

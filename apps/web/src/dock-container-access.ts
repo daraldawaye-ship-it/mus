@@ -19,10 +19,28 @@ export function dockDataReads(company:Context|undefined, pages:readonly Page[]|u
   const movement=can("inventory.view")&&p("company.stock-movements");
   return {
     item: ["commerce.view","inventory.view","items.view"].some(can),
-    account: (can("finance.view")&&p("company.financial-documents"))||(can("accounts.view")&&p("company.accounts")),
+    account: (can("finance.view")&&(p("company.financial-documents")||p("company.account-ledger")))||
+      (can("accounts.view")&&p("company.accounts")),
+    statementOnlyAccountSearch: can("finance.view")&&p("company.account-ledger")&&
+      !p("company.financial-documents")&&!(can("accounts.view")&&p("company.accounts")),
     movement,
     purchases: movement&&p("company.purchases"),
     alternatives: can("items.view")&&p("company.items")&&p("company.item-card"),
     card: can("items.view")&&p("company.items")&&p("company.item-card"),
   };
+}
+
+export type DockItemView = "movement" | "purchases" | "card" | "alternatives";
+const dockItemViews = [
+  { key:"movement", label:"الحركة" },
+  { key:"purchases", label:"المشتريات" },
+  { key:"card", label:"كرت" },
+  { key:"alternatives", label:"البدائل" },
+] as const;
+export function dockItemViewOptions(
+  reads: Pick<ReturnType<typeof dockDataReads>,DockItemView>,
+  staffItemDock:boolean,
+) {
+  return dockItemViews.map(view=>({...view,available:reads[view.key]||
+    (staffItemDock&&(view.key==="movement"||view.key==="purchases"))}));
 }

@@ -58,10 +58,15 @@ export function DockAccountTools({actorId,companyId,selected,canCard,canLedger,c
   const ledgerOpen=valid&&canLedger&&ledger;
   return <>
     <div className="work-panel-entity-actions">
-      <Button size="compact" variant="secondary" disabled={!valid||!canCard} onClick={()=>setCard(true)}>كرت الحساب</Button>
+      <Button size="compact" variant="secondary" disabled={!valid||!canCard} title={!canCard?"لا يتوفر إذن عرض كرت الحساب":!valid?"اختر حسابًا أولًا":undefined}
+        onClick={()=>setCard(true)}>كرت الحساب</Button>
       <Button size="compact" variant={ledgerOpen?"primary":"secondary"} disabled={!valid||!canLedger}
+        title={!canLedger?"لا يتوفر إذن عرض كشف الحساب":!valid?"اختر حسابًا أولًا":undefined}
         aria-expanded={ledgerOpen} onClick={()=>setLedger(before=>!before)}>كشف الحساب</Button>
     </div>
+    {valid&&(!canCard||!canLedger)&&<small className="muted">
+      لا يتوفر إذن عرض {!canCard&&!canLedger?"كرت الحساب أو كشف الحساب":!canCard?"كرت الحساب":"كشف الحساب"}.
+    </small>}
     {ledgerOpen&&selected&&<div className="work-panel-account-ledger">
       <Suspense fallback={<Notice>جارٍ فتح كشف الحساب…</Notice>}>
         <LedgerPreview companyId={companyId} account={selected} hideFullLink />
