@@ -7,9 +7,12 @@ import InteractiveColumnsTable, { type InteractiveTableColumn } from "../Interac
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
-type Row = {id:number;title:string;senderName:string;currentName:string;status:MemoStatus;createdAt:string};
+type Row = {id:number;title:string;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
+  quantityAvailable:string|null;quantityReturns:string|null;defaultSupplyMaxQuantity:string|null;
+  defaultSupplyMaxNotes:string|null};
 type List = {items:Row[];total:number;page:number;pageSize:number;canOpenMemo:boolean};
-const sorts = ["title","senderName","currentName","status","createdAt"] as const;
+const sorts = ["title","senderName","currentName","status","createdAt",
+  "quantityAvailable","quantityReturns","defaultSupplyMaxQuantity","defaultSupplyMaxNotes"] as const;
 type Sort = (typeof sorts)[number];
 type Column = Sort|"open";
 const title = "طلبات إرجاع الأصناف";
@@ -40,6 +43,10 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   const canOpenMemo = !!result?.canOpenMemo;
   const cols = useMemo<InteractiveTableColumn<Row,Column>[]>(() => [
     {key:"title",label:"الطلب",width:270,sortable:true,cell:row=>row.title},
+    {key:"quantityAvailable",label:"الكمية بدون مخازن المرتجعات",width:184,sortable:true,cell:row=><bdi>{row.quantityAvailable}</bdi>},
+    {key:"quantityReturns",label:"الكمية في مخازن المرتجعات",width:177,sortable:true,cell:row=><bdi>{row.quantityReturns}</bdi>},
+    {key:"defaultSupplyMaxQuantity",label:"أعلى كمية توفير افتراضية",width:165,sortable:true,cell:row=><bdi>{row.defaultSupplyMaxQuantity}</bdi>},
+    {key:"defaultSupplyMaxNotes",label:"ملاحظات أعلى كمية توفير افتراضية",width:207,sortable:true,cell:row=>row.defaultSupplyMaxNotes},
     {key:"senderName",label:"المرسل",width:144,sortable:true,cell:row=>row.senderName},
     {key:"currentName",label:"المسؤول الحالي",width:144,sortable:true,cell:row=>row.currentName},
     {key:"status",label:"الحالة",width:120,sortable:true,cell:row=>memoStatusLabels[row.status]},
@@ -49,7 +56,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   ],[canOpenMemo,companyId]);
   const pages = Math.max(1,Math.ceil((result?.total ?? 0)/pageSize));
   return <div className="wallet-page">
-    <PageHeader title={title} description="عرض طلبات الإرجاع المتاحة لك من المذكرات دون ترحيل مرتجع."
+    <PageHeader title={title} description="عرض طلبات الإرجاع المتاحة لك. الكميات الحالية بالوحدة الأولى، ولا تُرحّل حركة من هذه القائمة."
       actions={<Button variant="secondary" size="compact" disabled={list.isFetching} onClick={()=>void list.refetch()}>تحديث</Button>}/>
     <Card>
       <Field label="بحث عن طلب" value={q} maxLength={200} onChange={event=>update({q:event.target.value,page:""})}/>

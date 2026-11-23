@@ -437,10 +437,18 @@ export function memoRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId/memos";
   router.get("/companies/:companyId/item-return-requests", handler(async (req, res) => {
+    // This page authorizes only these four fields for a linked item of a visible return memo.
+    const firstUnit = "GREATEST(i.factor2::numeric * i.factor3::numeric, 1)";
+    const quantityAvailable = `CASE WHEN i.id IS NOT NULL THEN
+      COALESCE(s.stock_without_returns,0)::numeric / ${firstUnit} END`;
+    const quantityReturns = `CASE WHEN i.id IS NOT NULL THEN
+      COALESCE(s.stock_returns,0)::numeric / ${firstUnit} END`;
     const query = listQuery(req.query, {
       id: "m.id", title: "m.title", createdAt: "m.created_at",
       senderName: "m.sender_name", currentName: "m.current_name", status: "m.status",
-    }, "createdAt:desc");
+      quantityAvailable, quantityReturns, defaultSupplyMaxQuantity: "i.default_supply_max_quantity",
+      defaultSupplyMaxNotes: "i.default_supply_max_notes",
+    }, "createdAt:desc", new Set(["quantityAvailable", "quantityReturns", "defaultSupplyMaxQuantity", "defaultSupplyMaxNotes"]));
     const result = await transaction(pool, async client => {
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const current = await scope(client, req);
@@ -459,8 +467,16 @@ export function memoRoutes(pool: Pool) {
         current.context.general, searchPattern(query.q)];
       const total = Number((await client.query(`SELECT count(*) FROM memos m WHERE ${where}`, values)).rows[0].count);
       const rows = (await client.query(`SELECT m.id,m.title,m.sender_name AS "senderName",
-        m.current_name AS "currentName",m.status,m.created_at AS "createdAt"
-        FROM memos m WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+        m.current_name AS "currentName",m.status,m.created_at AS "createdAt",
+        trim_scale(round(${quantityAvailable},4))::text AS "quantityAvailable",
+        trim_scale(round(${quantityReturns},4))::text AS "quantityReturns",
+        i.default_supply_max_quantity::text AS "defaultSupplyMaxQuantity",
+        i.default_supply_max_notes AS "defaultSupplyMaxNotes"
+        FROM memos m
+        LEFT JOIN memo_links ml ON ml.company_id=m.company_id AND ml.memo_id=m.id
+        LEFT JOIN items i ON i.company_id=m.company_id AND i.id=ml.item_id
+        LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
+        WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
         [...values, query.pageSize, query.offset])).rows;
       return {items: rows.map(row => ({...row, createdAt: row.createdAt.toISOString()})),
         total, page: query.page, pageSize: query.pageSize, canOpenMemo};
