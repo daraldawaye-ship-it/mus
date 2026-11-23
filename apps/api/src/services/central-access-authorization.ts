@@ -24,6 +24,9 @@ export async function centralResourcePolicies(
     editPositions: row.editPositions as string[],
   }]));
 }
+export function centralDefaultPageViewPositions(pageKey: string): ("sales" | "cashier")[] {
+  return pageKey === "company.item-return-requests" ? ["sales", "cashier"] : [];
+}
 export function centralPageAllows(
   policies: ReadonlyMap<string, CentralPagePolicy>,
   pageKey: string, action: PageAction,
@@ -31,10 +34,10 @@ export function centralPageAllows(
 ): boolean {
   if (isOwner) return true;
   const policy = policies.get("page:"+pageKey);
-  // Central page list is a deny-by-default authorization surface.
-  if (!policy) return false;
+  // A stored policy, including an empty list, overrides the new page's default.
   const allowed = action==="view" || action==="print"
-    ? policy.viewPositions : policy.editPositions;
+    ? policy?.viewPositions ?? centralDefaultPageViewPositions(pageKey)
+    : policy?.editPositions ?? [];
   // The generic "موظف" selection on company chat means every active
   // company member. All callers validate company membership before reaching
   // this page decision; it is not a public or cross-company grant.

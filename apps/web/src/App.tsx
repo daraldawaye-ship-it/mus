@@ -200,6 +200,9 @@ const MemosPage = lazy(() =>
 const MemoFeatureRulesPage = lazy(() =>
   import("./pages/MemoFeatureRulesPage").then(module=>({default:module.MemoFeatureRulesPage})),
 );
+const ItemReturnRequestsPage = lazy(() =>
+  import("./pages/ItemReturnRequestsPage").then(module => ({ default: module.ItemReturnRequestsPage })),
+);
 const MemoReportPage = lazy(() =>
   import("./pages/MemoReportPage").then(module=>({default:module.MemoReportPage})),
 );
@@ -381,6 +384,7 @@ const companySections = [
   "notifications",
   "notification-templates",
   "memos",
+  "item-return-requests",
   "inquiries",
   "questions",
   "answers",
@@ -527,6 +531,7 @@ function Navigation({
     "company.chat": <MessageSquare size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
     "company.memos": <FileText size={17} />,
+    "company.item-return-requests": <FileText size={17} />,
     "company.questions": <ListChecks size={17} />,
     "company.answers": <ListChecks size={17} />,
     "public.questions": <ListChecks size={17} />,
@@ -769,6 +774,10 @@ function CompanyContent({
           <MemosPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "item-return-requests":
+      return <Suspense fallback={<Notice>جارٍ تحميل طلبات إرجاع الأصناف…</Notice>}>
+        <ItemReturnRequestsPage key={context.company.id} context={context} />
+      </Suspense>;
     case "memo-report":
       return <Suspense fallback={<Notice>جارٍ تحميل تقرير المذكرات…</Notice>}>
         <MemoReportPage key={context.company.id} context={context}/>

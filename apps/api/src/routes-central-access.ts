@@ -11,6 +11,7 @@ import { deny, HttpError, missing } from "./errors.ts";
 import { companyAccess,currentActor,manageEmployees } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { centralResources,centralResource } from "./services/central-access-catalog.ts";
+import { centralDefaultPageViewPositions } from "./services/central-access-authorization.ts";
 import { employeeDTO } from "./repositories/models.ts";
 
 export const centralPermissionAssignmentSchema=z.object({
@@ -77,6 +78,7 @@ export function centralAccessRoutes(pool:Pool):Router {
             // These old position presets were never an authorization source.
             // Show the actual employee grants without activating any preset.
             policy:resource.kind==="permission"?null:overrides.get(resource.key)??null,
+            defaultViewPositions:resource.kind==="page"?centralDefaultPageViewPositions(resource.key.slice("page:".length)):[],
             controlMode:resource.kind==="permission"?"employees":"positions",
           })),
         };

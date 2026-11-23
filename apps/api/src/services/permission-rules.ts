@@ -127,6 +127,7 @@ export async function requestPermissionTargets(
     "wallet-conversions": "company.wallet-conversions",
     notifications: "company.notifications",
     memos: "company.memos",
+    "item-return-requests": "company.item-return-requests",
     "notification-templates": "company.notification-templates",
     users: "company.employees",
     "item-agents": "company.item-agents",

@@ -4105,6 +4105,10 @@
     },
     "source": "routes-locations.ts"
   },
+  "GET /companies/:companyId/item-return-requests": {
+    "queryFields": ["q", "sort", "page", "pageSize"],
+    "source": "routes-memos.ts"
+  },
   "GET /companies/:companyId/memos": {
     "queryFields": [
       "box",

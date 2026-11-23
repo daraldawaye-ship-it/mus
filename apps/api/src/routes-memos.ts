@@ -436,6 +436,37 @@ async function activeMemoTarget(
 export function memoRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId/memos";
+  router.get("/companies/:companyId/item-return-requests", handler(async (req, res) => {
+    const query = listQuery(req.query, {
+      id: "m.id", title: "m.title", createdAt: "m.created_at",
+      senderName: "m.sender_name", currentName: "m.current_name", status: "m.status",
+    }, "createdAt:desc");
+    const result = await transaction(pool, async client => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current = await scope(client, req);
+      const entries = await directoryEntries(client, current.user, current.companyId);
+      assertDirectoryAccess(entries.find(entry => entry.key === "company.item-return-requests")!);
+      const canOpenMemo = ["company.memos", "company.memo-detail"].every(key =>
+        entries.some(entry => entry.key === key && entry.enabled && entry.actionAccess.view));
+      const visibility = `($4::boolean OR m.sender_user_id=$2
+        OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer))
+        OR EXISTS (SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id
+          AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))
+        OR ${memoFollowerSql("m","$3")})`;
+      const where = `m.company_id=$1 AND m.type='item_return' AND ${visibility}
+        AND (m.title ILIKE $5 OR m.sender_name ILIKE $5 OR m.current_name ILIKE $5)`;
+      const values = [current.companyId, current.user.id, current.ownId,
+        current.context.general, searchPattern(query.q)];
+      const total = Number((await client.query(`SELECT count(*) FROM memos m WHERE ${where}`, values)).rows[0].count);
+      const rows = (await client.query(`SELECT m.id,m.title,m.sender_name AS "senderName",
+        m.current_name AS "currentName",m.status,m.created_at AS "createdAt"
+        FROM memos m WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+        [...values, query.pageSize, query.offset])).rows;
+      return {items: rows.map(row => ({...row, createdAt: row.createdAt.toISOString()})),
+        total, page: query.page, pageSize: query.pageSize, canOpenMemo};
+    });
+    res.json(result);
+  }));
   router.get(
     base,
     handler(async (req, res) => {

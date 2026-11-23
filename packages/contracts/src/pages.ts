@@ -485,6 +485,15 @@ page(
   { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
 );
 page(
+  "company.item-return-requests",
+  "طلبات إرجاع الأصناف",
+  "الشركة",
+  "/companies/:companyId/item-return-requests",
+  { view: member },
+  "قائمة طلبات إرجاع الأصناف ضمن صلاحيات المذكرات، دون إنشاء حركة أو ترحيل.",
+  { keywords: ["إرجاع صنف", "طلبات إرجاع", "مرتجع", "مذكرات"] },
+);
+page(
   "company.memo-report",
   "تقرير المذكرات",
   "الشركة",

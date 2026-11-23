@@ -13,7 +13,7 @@ type Position={key:EmployeePosition;label:string};
 type Policy={key:string;viewPositions:EmployeePosition[];editPositions:EmployeePosition[];
   revision:number;updatedAt:string};
 type Resource={key:string;name:string;section:string;kind:ResourceKind;
-  description:string;integrated:boolean;policy:Policy|null};
+  description:string;integrated:boolean;policy:Policy|null;defaultViewPositions?:EmployeePosition[]};
 type PermissionEmployee={id:number;name:string;active:boolean;
  positions:EmployeePosition[];permissions:Permission[];isGeneralManager:boolean;isOwner:boolean};
 export type CentralAccessResponse={positions:Position[];resources:Resource[];permissionEmployees?:PermissionEmployee[]};
@@ -125,7 +125,7 @@ function CentralPositionField({resource,companyId,dimension,onSaved}:{
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const positions=dimension==="view"
-   ? resource.policy?.viewPositions??[]:resource.policy?.editPositions??[];
+   ? resource.policy?.viewPositions??resource.defaultViewPositions??[]:resource.policy?.editPositions??[];
  const selected=positions.length
    ? positions.map(p=>employeePositionLabels[p]).join("، "):"المالك فقط";
  async function toggle(position:EmployeePosition) {
@@ -133,7 +133,7 @@ function CentralPositionField({resource,companyId,dimension,onSaved}:{
    const next=positions.includes(position)
      ? positions.filter(p=>p!==position):[...positions,position];
    const viewPositions=dimension==="view"
-     ? next:[...new Set([...(resource.policy?.viewPositions??[]),...next])];
+     ? next:[...new Set([...(resource.policy?.viewPositions??resource.defaultViewPositions??[]),...next])];
    const editPositions=dimension==="edit"
      ? next:(resource.policy?.editPositions??[]).filter(p=>viewPositions.includes(p));
    setBusy(true);setError("");
@@ -170,12 +170,12 @@ export function CentralResourceEditor({
  resource,companyId,onSaved,
 }:{resource:Resource;companyId:number;onSaved:()=>void}) {
  const guard=useScopeGuard(`central-resource:${companyId}:${resource.key}`);
- const [view,setView]=useState<EmployeePosition[]>(resource.policy?.viewPositions??[]);
+ const [view,setView]=useState<EmployeePosition[]>(resource.policy?.viewPositions??resource.defaultViewPositions??[]);
  const [edit,setEdit]=useState<EmployeePosition[]>(resource.policy?.editPositions??[]);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [success,setSuccess]=useState("");
- const clean=()=>{setView(resource.policy?.viewPositions??[]);
+ const clean=()=>{setView(resource.policy?.viewPositions??resource.defaultViewPositions??[]);
    setEdit(resource.policy?.editPositions??[]);};
  const base=`/companies/${companyId}/central-access/${encodeURIComponent(resource.key)}`;
  async function save() {
