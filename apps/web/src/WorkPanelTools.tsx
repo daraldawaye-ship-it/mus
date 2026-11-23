@@ -21,6 +21,7 @@ import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connect
 import { dockDataReads, dockItemViewOptions, type DockItemView } from "./dock-container-access";
 import { errorMessage, moduleAccess } from "./phase2";
 import { Notice } from "./ui";
+import { canSubmitStaffWorkPanelPublicRequest } from "../../../packages/contracts/src/work-panel-public-requests";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
 
 const AdjustItem = lazy(() => import("./InvoiceItemActionSheets").then(module => ({ default: module.InvoiceItemAdjustmentSheet })));
@@ -51,6 +52,11 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   const accountAccess=dockAccountAccess(context,pages);
   const canEditAccount=!!context&&accountAccess.card&&moduleAccess(context,"accounts",true);
   const access = workPanelItemActionAccess(context,pages);
+  const standardPublicRequest = access["public-request"];
+  const staffPublicRequest = staffItemDock &&
+    canSubmitStaffWorkPanelPublicRequest(companyId,user,context?.employee) &&
+    pages?.find(page => page.key === "company.public-requests")?.enabled !== false;
+  const publicRequestAvailable = standardPublicRequest || staffPublicRequest;
   const itemOptionsPage = pages?.find(page => page.key === "company.item-options-list");
   // Match the existing order stop action: authorized item-card readers who can edit the item list.
   const canStopOrder = reads.card && !!itemOptionsPage?.enabled && !!itemOptionsPage.actionAccess.edit;
@@ -73,7 +79,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
     setRequesting(true);
     try {
       const result = await api<{ added: boolean; pointsAwarded: string }>(
-        `/companies/${scopedCompanyId}/public-requests`,
+        `/companies/${scopedCompanyId}/${standardPublicRequest ? "public-requests" : "work-panel-public-requests"}`,
         { method: "POST", body: { itemId: item.id }, signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
@@ -95,7 +101,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   }
 
   function openAction(action: InvoiceItemAction, item: { id: number; name: string }) {
-    if (!companyId || !access[action] || !guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()) return;
+    if (!companyId || !(action === "public-request" ? publicRequestAvailable : access[action]) || !guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()) return;
     setNotice(null);
     if (action === "edit") openItemCardSheet(companyId, item.id);
     else if (action === "public-request") void publicRequest(item, companyId);
@@ -112,7 +118,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     itemId={selected?.id??0} allowCompositionEdit={canEditComposition} showUnavailableComposition
                     openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
-                    canPublicRequest={access["public-request"] && !requesting}
+                    canPublicRequest={publicRequestAvailable && !requesting}
                     canEdit={access.edit} canAdjust={access.adjust}
                     canTransfer={access.transfer} canReport={access.report}
                     onAction={action => { if (selected) openAction(action, selected); }} />

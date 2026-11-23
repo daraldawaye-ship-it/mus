@@ -7,18 +7,24 @@ import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { HttpError } from "./errors.ts";
+import { canSubmitStaffWorkPanelPublicRequest } from "../../../packages/contracts/src/work-panel-public-requests.ts";
 import { audit } from "./services/audit.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
 
 const addSchema = z.object({ itemId: z.number().int().positive() }).strict();
 
-async function publicRequestAccess(client: PoolClient, req: Request, companyId: number, action: "view" | "create") {
+async function publicRequestAccess(client: PoolClient, req: Request, companyId: number, action: "view" | "create", staffWorkPanel = false) {
   const user = await currentActor(client, actor(req), action === "create");
-  await companyAccess(client, user, companyId, undefined, action === "create");
+  const context = await companyAccess(client, user, companyId, undefined, action === "create");
   const page = (await directoryEntries(client, user, companyId))
     .find(entry => entry.key === "company.public-requests");
   if (!page) throw new HttpError(403, "forbidden", "صفحة طلب الجمهور غير متاحة");
-  assertDirectoryAccess(page, action);
+  if (staffWorkPanel) {
+    if (!page.enabled || !canSubmitStaffWorkPanelPublicRequest(companyId, user, context.employee))
+      throw new HttpError(403, "forbidden", "تسجيل طلب الجمهور من لوح العمل غير متاح.");
+  } else {
+    assertDirectoryAccess(page, action);
+  }
   return user;
 }
 
@@ -72,13 +78,15 @@ export function publicRequestRoutes(pool: Pool): Router {
   const router = Router();
   const base = "/companies/:companyId/public-requests";
 
-  router.post(base, handler(async (req, res) => {
+  const addPublicRequest = (staffWorkPanel: boolean) => handler(async (req, res) => {
+    if (staffWorkPanel && req.header("X-Alraesy-Employee-Preview"))
+      throw new HttpError(403, "forbidden", "لا يمكن تسجيل طلب الجمهور في وضع المعاينة.");
     const companyId = id(req.params.companyId);
     const { itemId } = parse(addSchema, req.body);
     const result = await transaction(pool, async client => {
-      const user = await publicRequestAccess(client, req, companyId, "create");
+      const user = await publicRequestAccess(client, req, companyId, "create", staffWorkPanel);
       const item = (await client.query(
-        "SELECT id,name FROM items WHERE company_id=$1 AND id=$2",
+        `SELECT id,name FROM items WHERE company_id=$1 AND id=$2${staffWorkPanel ? " AND active" : ""}`,
         [companyId,itemId],
       )).rows[0] as {id:number;name:string}|undefined;
       if (!item) throw new HttpError(404,"item_not_found","الصنف غير موجود في الشركة");
@@ -102,7 +110,9 @@ export function publicRequestRoutes(pool: Pool): Router {
       return {added:true,requestId:inserted.id,pointsAwarded};
     });
     res.status(result.added?201:200).json(result);
-  }));
+  });
+  router.post(base, addPublicRequest(false));
+  router.post("/companies/:companyId/work-panel-public-requests", addPublicRequest(true));
 
   router.get(base, handler(async (req,res) => {
     const companyId = id(req.params.companyId);
