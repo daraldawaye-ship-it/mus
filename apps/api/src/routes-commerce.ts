@@ -242,6 +242,12 @@ export function commerceRoutes(pool: Pool): Router {
         }
         const user = await currentActor(client, actor(req), false);
         await companyAccess(client, user, companyId, "inventory.view");
+        const adjustmentDetails = type === "adjustment" && req.query.includeAdjustmentDetails === "1";
+        // Show only the creator's original entry for this exact item, not an allocated stock batch.
+        const enteredExpiry = (key: "nearestExpiryDate" | "expiryDate") => `MAX(CASE
+          WHEN o.creation_payload->>'itemId' = m.item_id::text
+            AND o.creation_payload->>'${key}' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          THEN o.creation_payload->>'${key}' END)`;
         const dateFrom = req.query.dateFrom === undefined ? null : parse(documentDateSchema, req.query.dateFrom);
         const dateTo = req.query.dateTo === undefined ? null : parse(documentDateSchema, req.query.dateTo);
         if (dateFrom && dateTo && dateFrom > dateTo)
@@ -254,7 +260,11 @@ export function commerceRoutes(pool: Pool): Router {
                THEN CASE WHEN m.kind='transfer_out' THEN -m.quantity_smallest ELSE 0 END
                ELSE m.quantity_smallest END)::numeric /
                (it.factor2::numeric * it.factor3::numeric),3)::text AS "quantityFirstUnit"
+             ${adjustmentDetails ? `, MAX(NULLIF(BTRIM(creator.display_name),'')) AS "createdByName",
+                ${enteredExpiry("nearestExpiryDate")} AS "enteredNearestExpiryDate",
+                ${enteredExpiry("expiryDate")} AS "enteredBatchExpiryDate"` : ""}
            FROM stock_operations o
+           ${adjustmentDetails ? "LEFT JOIN users creator ON creator.id=o.created_by" : ""}
            JOIN stock_movements m ON m.company_id=o.company_id AND m.operation_id=o.id
            JOIN items it ON it.company_id=m.company_id AND it.id=m.item_id
            WHERE o.company_id=$1 AND m.item_id=$2 AND o.kind=$3

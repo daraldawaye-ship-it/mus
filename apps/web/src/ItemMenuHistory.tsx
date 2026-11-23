@@ -20,6 +20,9 @@ type HistoryRow = {
   documentDate: string;
   partyName?: string;
   description?: string;
+  createdByName?: string | null;
+  enteredNearestExpiryDate?: string | null;
+  enteredBatchExpiryDate?: string | null;
   quantityFirstUnit: string;
   unitPriceFirstUnit?: string;
   currencyCode?: string;
@@ -174,13 +177,15 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
   </div>;
 }
 
-function WorkPanelOperationsTable({rows, label, footer}: {
-  rows: HistoryRow[]; label: string; footer?: ReactNode;
+function WorkPanelOperationsTable({rows, label, footer, showAdjustmentDetails}: {
+  rows: HistoryRow[]; label: string; footer?: ReactNode; showAdjustmentDetails: boolean;
 }) {
   return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
     aria-label={label}>
     {!!rows.length && <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
-      <thead><tr><th scope="col">{label}</th><th scope="col">الكمية</th><th scope="col">التاريخ</th></tr></thead>
+      <thead><tr><th scope="col">{label}</th><th scope="col">الكمية</th><th scope="col">التاريخ</th>
+        {showAdjustmentDetails && <><th scope="col">المنشئ</th><th scope="col">تاريخ الانتهاء</th></>}
+      </tr></thead>
       <tbody>{rows.map(row => {
         const quantity = Number(row.quantityFirstUnit);
         return <tr key={row.lineId}>
@@ -190,6 +195,14 @@ function WorkPanelOperationsTable({rows, label, footer}: {
             {row.quantityFirstUnit}
           </bdi></ScrollableTableCell></td>
           <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
+          {showAdjustmentDetails && <>
+            <td><ScrollableTableCell>{row.createdByName || "—"}</ScrollableTableCell></td>
+            <td><ScrollableTableCell>
+              <bdi dir="ltr">{row.enteredNearestExpiryDate || row.enteredBatchExpiryDate || "—"}</bdi>
+              {row.enteredNearestExpiryDate && row.enteredBatchExpiryDate && row.enteredNearestExpiryDate !== row.enteredBatchExpiryDate &&
+                <> (الدفعة: <bdi dir="ltr">{row.enteredBatchExpiryDate}</bdi>)</>}
+            </ScrollableTableCell></td>
+          </>}
         </tr>;
       })}</tbody>
     </table>}
@@ -242,15 +255,17 @@ export function ItemMenuHistory({
     ? itemCard.data.item.compositionId : null;
 
   const inlineOperations = fixedView === "adjustment" || fixedView === "transfer";
+  const showAdjustmentDetails = fixedView === "adjustment";
   const operationLabel = fixedView === "adjustment" ? "التسويات" : "المناقلات";
   const operationFrom = inlineOperations ? movementFrom : "";
   const operationTo = inlineOperations ? movementTo : "";
   const invalidOperationDates = !!operationFrom && !!operationTo && operationFrom > operationTo;
   const history = useQuery<HistoryResult>({
-    queryKey: ["avatar-item-history", userId, companyId, itemId, view, page, ...(inlineOperations ? [operationFrom, operationTo] : [])],
+    queryKey: ["avatar-item-history", userId, companyId, itemId, view, page, ...(inlineOperations ? [operationFrom, operationTo, showAdjustmentDetails] : [])],
     queryFn: ({ signal }) => api<HistoryResult>(
       `/companies/${companyId}/item-history/${itemId}?${new URLSearchParams({
         type: view!, page: String(page), pageSize: "10",
+        ...(showAdjustmentDetails ? {includeAdjustmentDetails: "1"} : {}),
         ...(operationFrom ? {dateFrom: operationFrom} : {}),
         ...(operationTo ? {dateTo: operationTo} : {}),
       })}`, { signal }),
@@ -443,7 +458,7 @@ export function ItemMenuHistory({
               footer={!waiting && !failed ? controls : undefined} />
           ) : inlineOperations ? (
             !invalidOperationDates && !waiting && !failed &&
-              <WorkPanelOperationsTable rows={history.data?.items ?? []} label={operationLabel} footer={controls} />
+              <WorkPanelOperationsTable rows={history.data?.items ?? []} label={operationLabel} footer={controls} showAdjustmentDetails={showAdjustmentDetails} />
           ) : isMovement ? movements.data?.items.map(row => (
             <div key={row.id} className="user-menu-item-history-row">
               <div className="user-menu-item-history-meta">
