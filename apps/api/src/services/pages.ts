@@ -394,7 +394,7 @@ export async function resolvePage(
       memo: "memos",
     }[definition.record];
     const record = await db.query(
-      `SELECT id${definition.record === "memo" ? ",sender_user_id,current_user_id,current_employee_id" : definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
+      `SELECT id${definition.record === "memo" ? ",sender_user_id,current_user_id,current_employee_id,recipient_user_id" : definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
       [reference.companyId, reference.recordId],
     );
     if (!record.rows[0]) missing();
@@ -420,6 +420,7 @@ export async function resolvePage(
       );
       if (
         !context.general &&
+        !(memo.recipient_user_id === null && context.employee?.id) &&
         memo.sender_user_id !== user.id &&
         !currentAssignee &&
         !participant.rowCount &&

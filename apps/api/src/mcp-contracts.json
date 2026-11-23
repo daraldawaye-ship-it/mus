@@ -4144,9 +4144,10 @@
           "maxLength": 20000
         },
         "recipientEmployeeId": {
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 2147483647
+          "anyOf": [
+            { "type": "integer", "exclusiveMinimum": 0, "maximum": 2147483647 },
+            { "type": "null" }
+          ]
         },
         "type": {
           "type": "string",
@@ -4365,7 +4366,6 @@
       "required": [
         "title",
         "body",
-        "recipientEmployeeId",
         "type",
         "idempotencyKey"
       ],

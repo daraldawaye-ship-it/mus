@@ -775,7 +775,7 @@ function CompanyContent({
         </Suspense>
       );
     case "item-return-requests":
-      return <Suspense fallback={<Notice>جارٍ تحميل طلبات إرجاع الأصناف…</Notice>}>
+      return <Suspense fallback={<Notice>جارٍ تحميل المذكرات المرتبطة بصنف…</Notice>}>
         <ItemReturnRequestsPage key={context.company.id} context={context} />
       </Suspense>;
     case "memo-report":

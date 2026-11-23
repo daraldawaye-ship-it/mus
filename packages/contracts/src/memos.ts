@@ -147,7 +147,7 @@ export interface MemoReportRow {
  senderName:string;
  senderUserId:number;
  currentName:string;
- currentUserId:number;
+ currentUserId:number|null;
  currentEmployeeId:number|null;
  createdAt:string;
  assignedAt:string;
@@ -209,14 +209,17 @@ export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
     body: z.string().trim().min(1, "نص المذكرة مطلوب").max(20000),
-    recipientEmployeeId: z.number().int().positive().max(2147483647),
+    recipientEmployeeId: z.number().int().positive().max(2147483647).nullish(),
     type: memoTypeSchema,
     followers: z.array(memoFollowerSchema).max(100).optional(),
     links: memoLinksSchema.optional(),
     options: z.array(memoOptionValueSchema).max(150).optional(),
     idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
   })
-  .strict();
+  .strict().superRefine((value,ctx) => {
+    if (value.recipientEmployeeId == null && value.links?.itemId == null)
+      ctx.addIssue({code:"custom",path:["recipientEmployeeId"],message:"اختر المستلم أو اربط المذكرة بصنف لإرسالها إلى الإدارة."});
+  });
 export type MemoCreateInput = z.input<typeof memoCreateSchema>;
 export const memoStatusSchema = z.enum([
   "pending",
@@ -272,13 +275,13 @@ export interface MemoRecord {
   revision: number;
   senderUserId: number;
   senderName: string;
-  recipientEmployeeId: number;
-  recipientUserId: number;
+  recipientEmployeeId: number | null;
+  recipientUserId: number | null;
   recipientName: string;
   createdAt: string;
   readAt: string | null;
   recipientReadAt: string | null;
-  currentUserId: number;
+  currentUserId: number | null;
   currentEmployeeId: number | null;
   currentName: string;
   currentAssignedAt: string;

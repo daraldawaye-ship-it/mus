@@ -62,7 +62,7 @@ const time = (value: string | null) =>
         timeZone: "Asia/Aden",
       }).format(new Date(value))
     : "—";
-type SubmittedMemo = { payload: MemoCreateInput; recipient: MemoRecipient };
+type SubmittedMemo = { payload: MemoCreateInput; recipient: MemoRecipient | null };
 type SubmittedMemoAction = {
   payload: MemoActionInput;
   recipient: MemoRecipient | null;
@@ -146,7 +146,9 @@ function MemosContent({ context }: { context: CompanyContext }) {
     !!detailEntry?.enabled && !!detailEntry.actionAccess.view;
   const [params, setParams] = useSearchParams();
   const box =
-    params.get("box") === "sent"
+    params.get("box") === "management"
+      ? "management"
+      : params.get("box") === "sent"
       ? "sent"
       : params.get("box") === "following"
         ? "following"
@@ -268,8 +270,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (savingLock.current || (!canCreate && !submitted)) return;
-    if (!submitted && !recipient) {
-      setError("اختر المستلم من موظفي الشركة الفعالين.");
+    if (!submitted && !recipient && links.itemId === null) {
+      setError("اختر المستلم أو اربط المذكرة بصنف لإرسالها إلى الإدارة.");
       return;
     }
     const retry = !!submitted;
@@ -278,7 +280,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
         title,
         body,
         type,
-        recipientEmployeeId: recipient!.id,
+        recipientEmployeeId: recipient?.id ?? null,
         followers,
         links,
         options:optionInputs,
@@ -291,7 +293,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     }
     const frozen: SubmittedMemo = {
       payload: parsed.data,
-      recipient: submitted?.recipient ?? recipient!,
+      recipient: submitted ? submitted.recipient : recipient,
     };
     client.setQueryDefaults(["memo-create"], { gcTime: Infinity });
     client.setQueryData(draftKey, frozen);
@@ -316,6 +318,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
       setRecipient(null);
       setCreated(result.memo);
       void refreshMemos(client, user?.id, companyId);
+      void client.invalidateQueries({ queryKey:["item-return-requests",user?.id,companyId] });
     } catch (cause) {
       if (!guard.isCurrent()) return;
       setError(errorMessage(cause));
@@ -412,6 +415,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
     { value: "watching", label: "أتابعها" },
+    { value: "management", label: "مذكرات الإدارة" },
     { value: "deferred", label: "المؤجلة" },
     { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
@@ -604,7 +608,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
             </Select>
           </div>
           {locked || !canCreate ? (
-            <Field label="المستلم" value={recipient?.name ?? ""} readOnly />
+            <Field label="المستلم" value={recipient?.name ?? (links.itemId === null ? "" : "الإدارة")} readOnly />
           ) : (
             <ServerLookup<MemoRecipient>
               companyId={companyId}
@@ -613,10 +617,11 @@ function MemosContent({ context }: { context: CompanyContext }) {
               value={recipient}
               onChange={setRecipient}
               display={(item) => item.name}
-              required
-              emptyLabel="اختر موظفًا فعالًا"
+              required={links.itemId === null}
+              emptyLabel={links.itemId === null ? "اختر موظفًا فعالًا" : "الإدارة عند ترك المستلم فارغًا"}
             />
           )}
+          {links.itemId !== null && !recipient && <small>بدون مستلم، تُرسل المذكرة للإدارة ويمكن لموظفي الشركة المصرّح لهم الاطلاع عليها.</small>}
           <fieldset className="form-stack" disabled={locked || !canCreate}>
             <legend>صفحة المتابعة والمرجع المرتبط</legend>
             <MemoLinksEditor companyId={companyId} value={links} onChange={setLinks}

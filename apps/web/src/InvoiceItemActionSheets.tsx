@@ -104,9 +104,8 @@ export function InvoiceItemReportSheet({
   async function submit(event:FormEvent) {
     event.preventDefault();
     if(requestInFlight.current)return;
-    if(!submitted&&!recipient){setError("اختر الموظف المستلم للتقرير");return;}
     const parsed=memoCreateSchema.safeParse(submitted??{
-      title,body,type:"review",recipientEmployeeId:recipient!.id,
+      title,body,type:"review",recipientEmployeeId:recipient?.id??null,
       links:{followPage:null,referencePage:null,itemId,accountId:null},
       followers:[],options:[],idempotencyKey:crypto.randomUUID(),
     });
@@ -127,11 +126,12 @@ export function InvoiceItemReportSheet({
       await Promise.all([
         queryClient.invalidateQueries({queryKey:["list",user?.id,`company:${companyId}:memos`]}),
         queryClient.invalidateQueries({queryKey:["notifications",user?.id]}),
+        queryClient.invalidateQueries({queryKey:["item-return-requests",user?.id,companyId]}),
       ]);
       if(!guard.isCurrent())return;
       if(user) {
         rememberRecentEntity(user.id,companyId,"item",{id:itemId,name:itemName});
-        if(recipient?.id===frozen.recipientEmployeeId)
+        if(recipient && recipient.id===frozen.recipientEmployeeId)
           rememberRecentEntity(user.id,companyId,"employee",{id:recipient.id,name:recipient.name});
       }
       onCreated(created.memo.id);
@@ -162,10 +162,11 @@ export function InvoiceItemReportSheet({
           <ServerLookup<MemoRecipient>
             companyId={companyId}
             resource={`/companies/${companyId}/memos/recipients`}
-            label="إرسال إلى الموظف"
+            label="إرسال إلى الموظف (اختياري)"
             value={recipient} onChange={setRecipient} display={entry=>entry.name}
-            disabled={locked} required
-            emptyLabel="اختر المستلم"/>
+            disabled={locked}
+            emptyLabel="الإدارة عند ترك المستلم فارغًا"/>
+          {!recipient&&<small>بدون مستلم، يُرسل التقرير للإدارة ويمكن لموظفي الشركة المصرّح لهم الاطلاع عليه.</small>}
           <div className="field">
             <label htmlFor={`invoice-item-report-body-${itemId}`}>شرح التقرير</label>
             <textarea id={`invoice-item-report-body-${itemId}`}

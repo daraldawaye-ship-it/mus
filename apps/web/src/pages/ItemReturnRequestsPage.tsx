@@ -15,7 +15,7 @@ const sorts = ["title","senderName","currentName","status","createdAt",
   "quantityAvailable","quantityReturns","defaultSupplyMaxQuantity","defaultSupplyMaxNotes"] as const;
 type Sort = (typeof sorts)[number];
 type Column = Sort|"open";
-const title = "طلبات إرجاع الأصناف";
+const title = "المذكرات المرتبطة بصنف";
 const dateFormat = new Intl.DateTimeFormat("ar-YE", {timeZone:"Asia/Aden",dateStyle:"short",timeStyle:"short"});
 
 export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
@@ -42,7 +42,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   const result = list.data;
   const canOpenMemo = !!result?.canOpenMemo;
   const cols = useMemo<InteractiveTableColumn<Row,Column>[]>(() => [
-    {key:"title",label:"الطلب",width:270,sortable:true,cell:row=>row.title},
+    {key:"title",label:"المذكرة",width:270,sortable:true,cell:row=>row.title},
     {key:"quantityAvailable",label:"الكمية بدون مخازن المرتجعات",width:184,sortable:true,cell:row=><bdi>{row.quantityAvailable}</bdi>},
     {key:"quantityReturns",label:"الكمية في مخازن المرتجعات",width:177,sortable:true,cell:row=><bdi>{row.quantityReturns}</bdi>},
     {key:"defaultSupplyMaxQuantity",label:"أعلى كمية توفير افتراضية",width:165,sortable:true,cell:row=><bdi>{row.defaultSupplyMaxQuantity}</bdi>},
@@ -50,21 +50,21 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
     {key:"senderName",label:"المرسل",width:144,sortable:true,cell:row=>row.senderName},
     {key:"currentName",label:"المسؤول الحالي",width:144,sortable:true,cell:row=>row.currentName},
     {key:"status",label:"الحالة",width:120,sortable:true,cell:row=>memoStatusLabels[row.status]},
-    {key:"createdAt",label:"وقت الطلب",width:175,sortable:true,cell:row=><bdi>{dateFormat.format(new Date(row.createdAt))}</bdi>},
+    {key:"createdAt",label:"وقت الإرسال",width:175,sortable:true,cell:row=><bdi>{dateFormat.format(new Date(row.createdAt))}</bdi>},
     ...(canOpenMemo ? [{key:"open" as const,label:"فتح",width:70,cell:(row:Row)=><Link className="button button-secondary button-compact"
       to={`/companies/${companyId}/memos/${row.id}`} aria-label={`عرض ${row.title}`}>عرض</Link>}] : []),
   ],[canOpenMemo,companyId]);
   const pages = Math.max(1,Math.ceil((result?.total ?? 0)/pageSize));
   return <div className="wallet-page">
-    <PageHeader title={title} description="عرض طلبات الإرجاع المتاحة لك. الكميات الحالية بالوحدة الأولى، ولا تُرحّل حركة من هذه القائمة."
+    <PageHeader title={title} description="كل المذكرات المرتبطة بصنف والمتاحة لك. الكميات الحالية بالوحدة الأولى، ولا تُرحّل حركة من هذه القائمة."
       actions={<Button variant="secondary" size="compact" disabled={list.isFetching} onClick={()=>void list.refetch()}>تحديث</Button>}/>
     <Card>
-      <Field label="بحث عن طلب" value={q} maxLength={200} onChange={event=>update({q:event.target.value,page:""})}/>
-      {list.isPending && <Notice>جارٍ تحميل الطلبات…</Notice>}
+      <Field label="بحث عن مذكرة" value={q} maxLength={200} onChange={event=>update({q:event.target.value,page:""})}/>
+      {list.isPending && <Notice>جارٍ تحميل المذكرات…</Notice>}
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
       {result && <>
         <InteractiveColumnsTable<Row,Column> columns={cols} rows={result.items} rowKey={row=>row.id}
-          ariaLabel={title} emptyMessage="لا توجد طلبات إرجاع أصناف ضمن صلاحياتك."
+          ariaLabel={title} emptyMessage="لا توجد مذكرات مرتبطة بصنف ضمن صلاحياتك."
           storageKey={`alraesy:d13:item-return-requests:${user?.id ?? "guest"}:${companyId}`}
           visibleColumns={cols.map(column=>column.key)} allowColumnVisibility
           sortKey={sortKey} sortDirection={sortDirection} onSort={key=>{
@@ -72,9 +72,9 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
           }}/>
         <div className="form-actions">
           <Button variant="secondary" size="compact" disabled={page<=1||list.isFetching} onClick={()=>update({page:String(page-1)})}>السابق</Button>
-          <span>صفحة {page} من {pages} · {result.total} طلب</span>
+          <span>صفحة {page} من {pages} · {result.total} مذكرة</span>
           <Button variant="secondary" size="compact" disabled={page>=pages||list.isFetching} onClick={()=>update({page:String(page+1)})}>التالي</Button>
-          <label>عدد الطلبات <select value={pageSize} onChange={event=>update({pageSize:event.target.value,page:""})}>
+          <label>عدد المذكرات <select value={pageSize} onChange={event=>update({pageSize:event.target.value,page:""})}>
             {[10,25,50,100].map(size=><option key={size} value={size}>{size}</option>)}
           </select></label>
         </div>

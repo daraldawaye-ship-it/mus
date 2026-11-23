@@ -126,7 +126,7 @@ async function detail(
   const row = (
     await client.query(
       `SELECT m.*,own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at FROM memos m ${readJoins}
-     WHERE m.company_id=$1 AND m.id=$3 AND ($4::boolean OR m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$5::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$5::integer)) OR ${memoFollowerSql("m", "$5")})`,
+     WHERE m.company_id=$1 AND m.id=$3 AND ($4::boolean OR (m.recipient_user_id IS NULL AND $5::integer IS NOT NULL) OR m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$5::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$5::integer)) OR ${memoFollowerSql("m", "$5")})`,
       [
         current.companyId,
         current.user.id,
@@ -235,10 +235,10 @@ async function detail(
   return {
     ...record(row),
     ...scheduleState,
-    canSchedule:row.status!=="completed" &&
+    canSchedule:row.current_user_id !== null && row.status!=="completed" &&
       (currentAssignee || row.sender_user_id===current.user.id || current.context.general) &&
       entry.enabled && entry.actionAccess.edit,
-    canManageSchedule:row.status!=="completed" &&
+    canManageSchedule:row.current_user_id !== null && row.status!=="completed" &&
       (row.sender_user_id===current.user.id || current.context.general) &&
       entry.enabled && entry.actionAccess.edit,
     events,
@@ -456,25 +456,26 @@ export function memoRoutes(pool: Pool) {
       assertDirectoryAccess(entries.find(entry => entry.key === "company.item-return-requests")!);
       const canOpenMemo = ["company.memos", "company.memo-detail"].every(key =>
         entries.some(entry => entry.key === key && entry.enabled && entry.actionAccess.view));
-      const visibility = `($4::boolean OR m.sender_user_id=$2
+      const visibility = `($4::boolean OR (m.recipient_user_id IS NULL AND $3::integer IS NOT NULL) OR m.sender_user_id=$2
         OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer))
         OR EXISTS (SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id
           AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))
         OR ${memoFollowerSql("m","$3")})`;
-      const where = `m.company_id=$1 AND m.type='item_return' AND ${visibility}
+      const from = `FROM memos m
+        JOIN memo_links ml ON ml.company_id=m.company_id AND ml.memo_id=m.id
+        JOIN items i ON i.company_id=m.company_id AND i.id=ml.item_id`;
+      const where = `m.company_id=$1 AND ${visibility}
         AND (m.title ILIKE $5 OR m.sender_name ILIKE $5 OR m.current_name ILIKE $5)`;
       const values = [current.companyId, current.user.id, current.ownId,
         current.context.general, searchPattern(query.q)];
-      const total = Number((await client.query(`SELECT count(*) FROM memos m WHERE ${where}`, values)).rows[0].count);
+      const total = Number((await client.query(`SELECT count(*) ${from} WHERE ${where}`, values)).rows[0].count);
       const rows = (await client.query(`SELECT m.id,m.title,m.sender_name AS "senderName",
         m.current_name AS "currentName",m.status,m.created_at AS "createdAt",
-        trim_scale(round(${quantityAvailable},4))::text AS "quantityAvailable",
-        trim_scale(round(${quantityReturns},4))::text AS "quantityReturns",
+        trim_scale(CASE WHEN round(${quantityAvailable},4)=0 THEN round(${quantityAvailable},20) ELSE round(${quantityAvailable},4) END)::text AS "quantityAvailable",
+        trim_scale(CASE WHEN round(${quantityReturns},4)=0 THEN round(${quantityReturns},20) ELSE round(${quantityReturns},4) END)::text AS "quantityReturns",
         i.default_supply_max_quantity::text AS "defaultSupplyMaxQuantity",
         i.default_supply_max_notes AS "defaultSupplyMaxNotes"
-        FROM memos m
-        LEFT JOIN memo_links ml ON ml.company_id=m.company_id AND ml.memo_id=m.id
-        LEFT JOIN items i ON i.company_id=m.company_id AND i.id=ml.item_id
+        ${from}
         LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
         WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
         [...values, query.pageSize, query.offset])).rows;
@@ -507,6 +508,7 @@ export function memoRoutes(pool: Pool) {
           "completed",
           "all",
           "watching",
+          "management",
           "deferred",
         ].includes(box)
       )
@@ -534,6 +536,9 @@ export function memoRoutes(pool: Pool) {
             values.push(current.ownId);
             filter =
               "m.status='pending' AND m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)";
+          } else if (box === "management") {
+            values.push(current.ownId, current.context.general);
+            filter = "m.recipient_user_id IS NULL AND ($3::integer IS NOT NULL OR $4::boolean) AND $2::integer IS NOT NULL";
           } else if (box === "approval")
             filter = "m.status='awaiting_approval' AND m.sender_user_id=$2";
           else if (box === "sent") filter = "m.sender_user_id=$2";
@@ -738,7 +743,7 @@ export function memoRoutes(pool: Pool) {
       const payload = {
         title: input.title,
         body: input.body,
-        recipientEmployeeId: input.recipientEmployeeId,
+        recipientEmployeeId: input.recipientEmployeeId ?? null,
         type: input.type,
         followers: input.followers ?? [],
         ...(input.links ? {links:input.links} : {}),
@@ -770,14 +775,14 @@ export function memoRoutes(pool: Pool) {
         await access(client, req, current, "create", false, true);
         if(input.links) await validateMemoLinks(client,current.user,current.companyId,input.links);
         const preparedOptions=await validateMemoOptionEntries(client,current.companyId,input.options??[],true);
-        const recipient = (
+        const recipient = input.recipientEmployeeId == null ? null : (
           await client.query(
             `SELECT e.id,e.user_id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
          WHERE e.company_id=$1 AND e.id=$2 AND e.active FOR SHARE OF e`,
             [current.companyId, input.recipientEmployeeId],
           )
         ).rows[0];
-        if (!recipient)
+        if (input.recipientEmployeeId != null && !recipient)
           throw new HttpError(
             400,
             "invalid_employee",
@@ -794,15 +799,20 @@ export function memoRoutes(pool: Pool) {
               input.type,
               current.user.id,
               current.user.displayName,
-              recipient.id,
-              recipient.user_id,
-              recipient.name,
+              recipient?.id ?? null,
+              recipient?.user_id ?? null,
+              recipient?.name ?? "الإدارة",
               input.idempotencyKey,
               JSON.stringify(payload),
             ],
           )
         ).rows[0];
-        await client.query(
+        const senderParticipant = [current.companyId,memo.id,current.user.id,current.ownId,current.user.displayName];
+        if (!recipient) await client.query(
+          "INSERT INTO memo_participants(company_id,memo_id,user_id,employee_id,name) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+          senderParticipant,
+        );
+        else await client.query(
           "INSERT INTO memo_participants(company_id,memo_id,user_id,employee_id,name) VALUES($1,$2,$3,$4,$5),($1,$2,$6,$7,$8) ON CONFLICT DO NOTHING",
           [
             current.companyId,
@@ -877,7 +887,7 @@ export function memoRoutes(pool: Pool) {
           snapshot,
           current.companyId,
         );
-        await emitNotification(client, {
+        if (recipient) await emitNotification(client, {
           code: "MEMO_RECEIVED",
           companyId: current.companyId,
           subjectEmployeeId: recipient.id,
@@ -1146,6 +1156,8 @@ export function memoRoutes(pool: Pool) {
         if(!found || found.revision!==input.revision)
           throw new HttpError(409,"revision_conflict","تغيرت المراجع، أعد تحميل المذكرة");
         const {revision:_linkRevision,...values}=input;
+        if (before.recipientUserId === null && values.itemId === null)
+          throw new HttpError(400,"management_memo_requires_item","مذكرة الإدارة تحتاج إلى صنف مرتبط.");
         await validateMemoLinks(client,current.user,current.companyId,values);
         const previous=memoLinksSnapshot(found);
         await client.query(
@@ -1648,7 +1660,7 @@ export function memoRoutes(pool: Pool) {
                   employeeId: before.completionRequestedByEmployeeId,
                   name: before.completionRequestedByName!,
                 }
-              : {
+              : before.recipientUserId === null ? null : {
                   userId: before.recipientUserId,
                   employeeId: before.recipientEmployeeId,
                   name: before.recipientName,
@@ -1656,7 +1668,7 @@ export function memoRoutes(pool: Pool) {
         } else if (!target) {
           notifyTarget =
             current.user.id === before.senderUserId
-              ? {
+              ? before.currentUserId === null ? null : {
                   userId: before.currentUserId,
                   employeeId: before.currentEmployeeId,
                   name: before.currentName,
