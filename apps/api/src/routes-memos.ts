@@ -42,6 +42,14 @@ import {
   directoryEntries,
 } from "./services/pages.ts";
 
+// The administrative close is intentionally not offered to ordinary memo workflow clients.
+const ownerCompleteMemoSchema = z.object({
+  action: z.literal("owner-complete"),
+  body: z.string().trim().min(1,"اكتب سبب الإغلاق الإداري").max(20000),
+  revision: z.number().int().positive().max(2147483647),
+  idempotencyKey: z.uuid().transform(value=>value.toLowerCase()),
+}).strict();
+
 async function scope(client: PoolClient, req: Request, write = false) {
   const companyId = id(req.params.companyId);
   const user = await currentActor(client, actor(req), write);
@@ -1384,10 +1392,17 @@ export function memoRoutes(pool: Pool) {
     base + "/:memoId/actions",
     handler(async (req, res) => {
       const memoId = id(req.params.memoId),
-        input = parse(memoActionSchema, req.body);
+        input = parse(z.union([memoActionSchema, ownerCompleteMemoSchema]), req.body);
       const { idempotencyKey, ...payload } = input;
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
+        const ownerClose = input.action === "owner-complete";
+        if (ownerClose) {
+          if (!current.user.owner || current.user.suspended || current.companyId !== 2
+              || req.header("X-Alraesy-Employee-Preview") !== undefined)
+            deny("الإغلاق الإداري لمذكرات الأصناف في دار الدواء متاح للمالك فقط");
+          await access(client, req, current, "post", true, true);
+        }
         const existing = (
           await client.query(
             "SELECT memo_id,actor_user_id,request_payload=$3::jsonb AS payload_matches FROM memo_actions WHERE company_id=$1 AND idempotency_key=$2",
@@ -1415,8 +1430,9 @@ export function memoRoutes(pool: Pool) {
           "approve-completion",
           "reopen-completion",
           "complete",
+          "owner-complete",
         ].includes(input.action);
-        await access(
+        if (!ownerClose) await access(
           client,
           req,
           current,
@@ -1448,8 +1464,17 @@ export function memoRoutes(pool: Pool) {
           "approve-completion": "completed",
           "reopen-completion": "reopened",
           complete: "completed",
+          "owner-complete": "completed",
         }[input.action] as MemoEvent["kind"];
-        if (input.action === "reply") {
+        if (ownerClose) {
+          if (before.status !== "pending" || before.recipientUserId === null || before.currentUserId === null)
+            throw new HttpError(409,"invalid_state","الإغلاق الإداري للمذكرة المسندة التي لا تنتظر اعتمادًا فقط");
+          const linked = await client.query(
+            "SELECT item_id FROM memo_links WHERE company_id=$1 AND memo_id=$2 AND item_id IS NOT NULL FOR SHARE",
+            [current.companyId,memoId],
+          );
+          if (!linked.rowCount) deny("الإغلاق الإداري محصور بالمذكرات المرتبطة بصنف");
+        } else if (input.action === "reply") {
           if (!before.canReply)
             deny("المشاركة في هذه المذكرة للمشاركين فيها فقط");
         } else if (input.action === "return" || input.action === "forward") {
@@ -1557,7 +1582,7 @@ export function memoRoutes(pool: Pool) {
           reopen = input.action === "reopen-completion",
           close =
             input.action === "approve-completion" ||
-            input.action === "complete";
+            input.action === "complete" || ownerClose;
         const nextStatus = request
           ? "awaiting_approval"
           : reopen
@@ -1663,7 +1688,7 @@ export function memoRoutes(pool: Pool) {
           : "MEMO_REPLY";
         if (close) {
           code = "MEMO_COMPLETED";
-          notifyTarget =
+          notifyTarget = ownerClose ? null :
             input.action === "approve-completion" &&
             before.completionRequestedByUserId !== null
               ? {
@@ -1738,6 +1763,7 @@ export function memoRoutes(pool: Pool) {
             "approve-completion": "اعتماد إنجاز المذكرة",
             "reopen-completion": "مذكرة أعيدت إليك للاستكمال",
             complete: "إنجاز المذكرة",
+            "owner-complete": "إغلاق إداري للمذكرة",
           };
           await emitNotification(client, {
             code,
@@ -1752,7 +1778,7 @@ export function memoRoutes(pool: Pool) {
             href: `/companies/${current.companyId}/memos/${memoId}`,
           });
         }
-        if (target || close || request)
+        if (!ownerClose && (target || close || request))
           await notifyMemoFollowers(client,current,memoId,saved.title,
             `تحديث سير عمل المذكرة بواسطة ${current.user.displayName}`,`action:${idempotencyKey}`);
         return { memo: saved, created: true };

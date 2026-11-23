@@ -259,6 +259,7 @@ export const auditActionLabels = {
   "memo.approve-completion": "اعتماد إنجاز مذكرة",
   "memo.reopen-completion": "إعادة مذكرة للاستكمال",
   "memo.complete": "إنجاز مذكرة لدى مرسلها",
+  "memo.owner-complete": "إغلاق إداري لمذكرة مرتبطة بصنف",
   "memo.links": "تعديل روابط ومراجع المذكرة",
   "memo.options": "تعديل خصائص المذكرة",
   "memo.schedule": "تأجيل متابعة المذكرة",
