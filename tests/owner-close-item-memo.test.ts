@@ -32,6 +32,8 @@ test("owner can close assigned company-2 item memo without becoming a participan
    INSERT INTO memo_participants VALUES (2,2,3),(2,6,2),(2,7,2),(2,9,2);
  `);
  await db.exec(readFileSync(new URL("../apps/api/migrations/20261123_zzz_owner_close_assigned_item_memos.sql",import.meta.url),"utf8"));
+ await db.exec("ALTER TABLE memos ADD CONSTRAINT memos_completed_state_check CHECK (status <> 'completed' OR (completed_by_user_id=sender_user_id AND current_user_id=sender_user_id))");
+ await db.exec(readFileSync(new URL("../apps/api/migrations/20261123_zzzz_owner_close_completed_shape.sql",import.meta.url),"utf8"));
  await db.exec(`CREATE CONSTRAINT TRIGGER event_integrity AFTER INSERT ON memo_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_memo_event_integrity();
   CREATE CONSTRAINT TRIGGER conversation_integrity AFTER UPDATE ON memos DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_memo_conversation_integrity();`);
  const close=(id:number, company:number, actor:number, type="owner-complete", eventKind="completed")=>db.transaction(async q=>{
@@ -44,7 +46,7 @@ test("owner can close assigned company-2 item memo without becoming a participan
  assert.deepEqual((await db.query("SELECT status,current_user_id,recipient_user_id,completed_by_user_id FROM memos WHERE company_id=2 AND id=1")).rows,[{status:"completed",current_user_id:3,recipient_user_id:3,completed_by_user_id:1}]);
  assert.equal((await db.query("SELECT 1 FROM memo_participants WHERE company_id=2 AND memo_id=1")).rows.length,0);
  for(const args of [[2,2,3],[3,3,1],[4,2,1],[5,2,1],[6,2,1],[8,2,4]] as const)
-  await assert.rejects(close(args[0],args[1],args[2]),/administrative close action/);
+  await assert.rejects(close(args[0],args[1],args[2]),/administrative close action|memos_completed_state_check/);
  await assert.rejects(close(9,2,2,"complete"),/original sender/);
  await close(7,2,2,"complete");
  assert.deepEqual((await db.query("SELECT id FROM memos WHERE status='completed' ORDER BY id")).rows,[{id:1},{id:7}]);
