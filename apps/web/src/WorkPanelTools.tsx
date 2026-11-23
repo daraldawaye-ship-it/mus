@@ -12,7 +12,7 @@ import type { CompanyContext, User } from "../../../packages/contracts/src/index
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { WorkPanelCompactCard } from "./WorkPanelCompactCard";
 import { ItemMenuHistory } from "./ItemMenuHistory";
-import type { InvoiceItemAction } from "./InvoiceItemActionsDropdown";
+import { WorkPanelItemViewsDropdown, type InvoiceItemAction } from "./InvoiceItemActionsDropdown";
 import { InvoiceItemCompositionActions,InvoiceItemCompositionEditor } from "./InvoiceItemCompositionActions";
 import { canEditInvoiceItemComposition } from "./invoice-item-composition-access";
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
@@ -22,7 +22,6 @@ import { dockDataReads } from "./dock-container-access";
 import { errorMessage, moduleAccess } from "./phase2";
 import { Notice } from "./ui";
 import { workPanelItemActionAccess } from "./work-panel-item-action-access";
-import "./pages/RaisedOptionKeys.css";
 
 type ItemView = "movement" | "purchases" | "card" | "alternatives";
 const itemViews: { key: ItemView; label: string }[] = [
@@ -116,10 +115,8 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
       {showItemTools&&<><section className="work-panel-tool-card work-panel-item-container" aria-label="حاوية الصنف">
         <div className="work-panel-item-body">
           {reads.item||staffItemDock ? <EntityMenuSearch user={user} companyId={companyId} kind="item" staffDockLookup={staffItemDock?(reads.item?"fallback":"limited"):undefined} floatingResults fieldLabel="بحث عن صنف" dockSelection={dockSelection.item}
-            renderSelection={selected => (
-              <>
-                <div className="work-panel-item-options" role="group" aria-label="عرض بيانات الصنف">
-                  <InvoiceItemCompositionActions userId={user.id} companyId={companyId??undefined}
+            renderAdjacent={selected => (<>
+                  <InvoiceItemCompositionActions triggerLabel="الخيارات" userId={user.id} companyId={companyId??undefined}
                     itemId={selected?.id??0} allowCompositionEdit={canEditComposition}
                     openComposition={setEditingComposition}
                     itemName={selected?.name ?? "الصنف"} disabled={!selected || !companyId || !online}
@@ -127,20 +124,15 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                     canEdit={access.edit} canAdjust={access.adjust}
                     canTransfer={access.transfer} canReport={access.report}
                     onAction={action => { if (selected) openAction(action, selected); }} />
-                  {itemViews.filter(view=>canUseItemView(view.key)).map(view => {
-                    const enabled = views.includes(view.key);
-                    return (
-                      <button key={view.key} type="button" aria-pressed={enabled}
-                        disabled={!selected}
-                        className="design-press-key design-press-key-sm"
-                        onClick={() => setViews(previous => previous.includes(view.key)
-                          ? previous.filter(value => value !== view.key)
-                          : [...previous, view.key])}>
-                        {view.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                  <WorkPanelItemViewsDropdown itemName={selected?.name??"الصنف"} disabled={!selected}
+                    views={itemViews.filter(view=>canUseItemView(view.key)).map(view=>({
+                      ...view,checked:views.includes(view.key),
+                      toggle:()=>setViews(previous=>previous.includes(view.key)
+                        ?previous.filter(value=>value!==view.key):[...previous,view.key]),
+                    }))}/>
+                </>)}
+            renderSelection={selected => (
+              <>
                 {!!companyId && !!selected && itemViews.filter(view => views.includes(view.key) && canUseItemView(view.key)).map(view => (
                   <div className="work-panel-item-report" key={`${companyId}:${selected?.id ?? "none"}:${view.key}`}>
                     {view.key==="card" ? selected && reads.card && (

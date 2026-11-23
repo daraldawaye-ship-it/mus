@@ -20,7 +20,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 export function EntityMenuSearch({
   user, companyId, employeeId = null, employeeName, kind, itemMenuReset = 0,
   onEditItem = () => {}, onOpenComposition = () => {}, onItemQuickAction = () => {},
-  canCreateMemo = false, canViewItemCompositions = false, renderSelection, fieldLabel, dockSelection, floatingResults=false,staffDockLookup,
+  canCreateMemo = false, canViewItemCompositions = false, renderSelection, renderAdjacent, fieldLabel, dockSelection, floatingResults=false,staffDockLookup,
 }: {
   user: User;
   companyId: number | null;
@@ -34,6 +34,7 @@ export function EntityMenuSearch({
   canCreateMemo?: boolean;
   canViewItemCompositions?: boolean;
   renderSelection?: (selected: RecentEntity | null) => ReactNode;
+  renderAdjacent?: (selected: RecentEntity | null) => ReactNode;
   fieldLabel?: string;
   dockSelection?: RecentEntity;
   floatingResults?:boolean;
@@ -161,8 +162,7 @@ export function EntityMenuSearch({
           )}
         </div>
   ) : null;
-  return (
-    <div className="user-menu-entity-section">
+  const searchField = (
       <label className="user-menu-entity-search">
         <span ref={fieldAnchor} className={`user-menu-entity-input-wrap${fieldLabel ? " has-field-label" : ""}`}>
           {fieldLabel && <span className="user-menu-entity-field-label">{fieldLabel}</span>}
@@ -203,6 +203,15 @@ export function EntityMenuSearch({
           />
         </span>
       </label>
+  );
+  return (
+    <div className="user-menu-entity-section">
+      {renderAdjacent ? (
+        <div className="work-panel-item-search-row">
+          {searchField}
+          {renderAdjacent(selected)}
+        </div>
+      ) : searchField}
       {company === 0 && (
         <p className="user-menu-entity-hint">
           {kind === "employee"

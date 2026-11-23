@@ -117,35 +117,26 @@
 .work-panel-tools .user-menu-entity-results { max-height: 220px; overflow-y: auto; scrollbar-width: thin; }
 .work-panel-tools .user-menu-entity-choice { gap: 5px; padding: 6px; }
 .work-panel-tools .user-menu-entity-choice span { white-space: normal; overflow-wrap: anywhere; }
-/* ح-18: compact item options wrap when the workboard gets narrow. */
-.work-panel-tools .work-panel-item-options {
-  display: flex;
-  flex-wrap: wrap;
+.work-panel-tools .work-panel-item-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px;
-  width: 100%;
 }
-.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger {
-  flex: 0 0 auto;
-  min-width: 30px;
-  min-height: 24px;
-  height: 24px;
-  padding: 0 3px;
-  gap: 1px;
+.work-panel-item-search-row > .user-menu-entity-search { min-width: 0; }
+.work-panel-item-search-row > .invoice-item-actions-trigger {
+  min-width: 0;
+  min-height: 29px;
+  white-space: nowrap;
+  padding-inline: 4px;
+  gap: 2px;
+  font-size: 11px;
 }
-.work-panel-tools .work-panel-item-options > .invoice-item-actions-trigger svg {
-  width: 12px;
-  height: 12px;
-}
-.work-panel-tools .work-panel-item-options > .design-press-key {
-  min-width: 24px;
-  max-width: 100%;
-  min-height: 24px;
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 1.15;
-  white-space: normal;
-  overflow-wrap: anywhere;
+.work-panel-item-search-row > .invoice-item-actions-trigger svg { width: 11px; height: 11px; }
+.invoice-item-actions-dropdown .work-panel-view-menu-entry[aria-checked="true"] {
+  color: var(--focus);
+  background: var(--surface-hover, var(--surface));
+  font-weight: 700;
 }
 .work-panel-tools .work-panel-movement-scroll {
   /* Keep the viewport short so dates and paging stay in view. */

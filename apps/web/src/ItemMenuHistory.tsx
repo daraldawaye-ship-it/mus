@@ -367,22 +367,6 @@ export function ItemMenuHistory({
       )}
       {!itemId ? <p className="user-menu-entity-hint">اختر صنفًا من البحث أولًا.</p> : (
         <>
-          {isMovement && workPanelMovement && (
-            <div className="work-panel-movement-date-filters work-panel-date-range" role="group" aria-label="فترة حركة الصنف">
-              <label>من
-                <input type="date" aria-label="بداية فترة حركة الصنف" value={movementFrom} onChange={event => {
-                  setMovementFrom(event.currentTarget.value);
-                  setPage(1);
-                }} />
-              </label>
-              <label>إلى
-                <input type="date" aria-label="نهاية فترة حركة الصنف" value={movementTo} onChange={event => {
-                  setMovementTo(event.currentTarget.value);
-                  setPage(1);
-                }} />
-              </label>
-            </div>
-          )}
           {isMovement && invalidMovementDates &&
             <p className="user-menu-entity-hint" role="alert">بداية الفترة يجب ألا تكون بعد نهايتها.</p>}
           {waiting && !(isMovement && invalidMovementDates) &&
@@ -443,6 +427,22 @@ export function ItemMenuHistory({
               </div>
             </div>
           ))}
+          {isMovement && workPanelMovement && (
+            <div className="work-panel-movement-date-filters work-panel-date-range" role="group" aria-label={purchaseOnly?"فترة مشتريات الصنف":"فترة حركة الصنف"}>
+              <label>من
+                <input type="date" aria-label="بداية فترة حركة الصنف" value={movementFrom} onChange={event => {
+                  setMovementFrom(event.currentTarget.value);
+                  setPage(1);
+                }} />
+              </label>
+              <label>إلى
+                <input type="date" aria-label="نهاية فترة حركة الصنف" value={movementTo} onChange={event => {
+                  setMovementTo(event.currentTarget.value);
+                  setPage(1);
+                }} />
+              </label>
+            </div>
+          )}
           {!inlineMovement && controls}
         </>
       )}
