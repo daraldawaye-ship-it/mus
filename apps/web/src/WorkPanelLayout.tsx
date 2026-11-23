@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { GripHorizontal, GripVertical, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { mobileWorkPanelAvailableHeight,mobileWorkPanelMaxSize,watchMobileWorkPanelGeometry } from "./work-panel-viewport";
@@ -41,11 +41,9 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [mobileAvailableHeight,setMobileAvailableHeight] = useState<number|null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
   const panelViewport = useRef<HTMLDivElement>(null);
   const panelContent = useRef<HTMLDivElement>(null);
   const panelScrollId = useId();
-  const pendingPageScroll = useRef<{ scrollTop: number; size: number } | null>(null);
   const dragStart = useRef<{
     pointerId: number;
     x: number;
@@ -111,28 +109,13 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
   const size = clamp(settings[sizeKey], rail + 1, maxSize);
   const displayedSize = settings.open ? size : rail;
 
-  useLayoutEffect(() => {
-    const previous = pendingPageScroll.current;
-    pendingPageScroll.current = null;
-    if (!previous || !enabled || !mobile || !pageRef.current) return;
-    // Move the page with the user's divider movement; viewport/IME changes
-    // alone never create a pending scroll adjustment.
-    pageRef.current.scrollTop = previous.scrollTop + displayedSize - previous.size;
-  }, [displayedSize, enabled, mobile, settings]);
-
-  function capturePageScroll() {
-    if (!enabled || !mobile || !pageRef.current || pendingPageScroll.current) return;
-    pendingPageScroll.current = { scrollTop: pageRef.current.scrollTop, size: displayedSize };
-  }
   function setSize(value: number, previousSize?: number) {
-    capturePageScroll();
     setSettings(s => value <= rail
       ? { ...s, ...(previousSize === undefined ? {} : { [sizeKey]: previousSize }), open: false }
       : { ...s, [sizeKey]: clamp(value, rail + 1, maxSize), open: true });
   }
   function setOpen(open: boolean) {
     if (settings.open === open) return;
-    capturePageScroll();
     setSettings(s => ({ ...s, open }));
   }
   function startDrag(event: PointerEvent<HTMLButtonElement>) {
@@ -196,7 +179,7 @@ export function WorkPanelLayout({ enabled, userId, renderTools, children }: {
       className={`resizable-work-panel-layout${enabled ? " is-enabled" : ""}`}
       style={enabled ? style : undefined}
     >
-      <div ref={pageRef} className="resizable-work-panel-page">{children}</div>
+      <div className="resizable-work-panel-page">{children}</div>
       {enabled && (
         <aside
           className={`resizable-work-panel-frame${settings.open ? "" : " is-collapsed"}`}
