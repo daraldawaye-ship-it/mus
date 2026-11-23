@@ -27,6 +27,7 @@ import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
+import { mayReadStaffDockMovement } from "./services/staff-dock-movement.ts";
 import {memoReport,memoReportQuerySchema} from "./services/memo-report.ts";
 import {scheduleDTO,scheduleDetails,addScheduleHistory,
   closeScheduleNotice,cancelScheduleForTransition} from "./services/memo-reminders.ts";
@@ -439,7 +440,7 @@ export function memoRoutes(pool: Pool) {
   router.get("/companies/:companyId/item-return-requests", handler(async (req, res) => {
     // The list defaults to actionable memos, without changing record visibility.
     const completionFilter = req.query.showCompleted === "true" ? "" : " AND m.status <> 'completed'";
-    // This page authorizes only these four item fields for a visible linked memo.
+    // Return the linked item's identity for work panel selection alongside the four list fields.
     const firstUnit = "GREATEST(i.factor2::numeric * i.factor3::numeric, 1)";
     const quantityAvailable = `CASE WHEN i.id IS NOT NULL THEN
       COALESCE(s.stock_without_returns,0)::numeric / ${firstUnit} END`;
@@ -456,6 +457,7 @@ export function memoRoutes(pool: Pool) {
       const current = await scope(client, req);
       const entries = await directoryEntries(client, current.user, current.companyId);
       assertDirectoryAccess(entries.find(entry => entry.key === "company.item-return-requests")!);
+      const canSelectDockItem = !req.header("X-Alraesy-Employee-Preview") && mayReadStaffDockMovement(current.user,current.context.employee);
       const canOpenMemo = ["company.memos", "company.memo-detail"].every(key =>
         entries.some(entry => entry.key === key && entry.enabled && entry.actionAccess.view));
       const visibility = `($4::boolean OR (m.recipient_user_id IS NULL AND $3::integer IS NOT NULL) OR m.sender_user_id=$2
@@ -472,6 +474,8 @@ export function memoRoutes(pool: Pool) {
         current.context.general, searchPattern(query.q)];
       const total = Number((await client.query(`SELECT count(*) ${from} WHERE ${where}`, values)).rows[0].count);
       const rows = (await client.query(`SELECT m.id,m.title,m.sender_name AS "senderName",
+        CASE WHEN $8::boolean AND i.active THEN i.id END AS "itemId",
+        CASE WHEN $8::boolean AND i.active THEN i.name END AS "itemName",
         m.current_name AS "currentName",m.status,m.created_at AS "createdAt",
         trim_scale(CASE WHEN round(${quantityAvailable},4)=0 THEN round(${quantityAvailable},20) ELSE round(${quantityAvailable},4) END)::text AS "quantityAvailable",
         trim_scale(CASE WHEN round(${quantityReturns},4)=0 THEN round(${quantityReturns},20) ELSE round(${quantityReturns},4) END)::text AS "quantityReturns",
@@ -480,7 +484,7 @@ export function memoRoutes(pool: Pool) {
         ${from}
         LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
         WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
-        [...values, query.pageSize, query.offset])).rows;
+        [...values, query.pageSize, query.offset, canSelectDockItem])).rows;
       return {items: rows.map(row => ({...row, createdAt: row.createdAt.toISOString()})),
         total, page: query.page, pageSize: query.pageSize, canOpenMemo};
     });

@@ -7,7 +7,7 @@ import InteractiveColumnsTable, { type InteractiveTableColumn } from "../Interac
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
-type Row = {id:number;title:string;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
+type Row = {id:number;itemId:number|null;itemName:string|null;title:string;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
   quantityAvailable:string|null;quantityReturns:string|null;defaultSupplyMaxQuantity:string|null;
   defaultSupplyMaxNotes:string|null};
 type List = {items:Row[];total:number;page:number;pageSize:number;canOpenMemo:boolean};
@@ -71,6 +71,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
       {result && <>
         <InteractiveColumnsTable<Row,Column> columns={cols} rows={result.items} rowKey={row=>row.id}
+          dockRowSource={row=>({companyId,itemId:row.itemId,itemName:row.itemName})}
           ariaLabel={title} emptyMessage={showCompleted ? "لا توجد مذكرات مرتبطة بصنف ضمن صلاحياتك." : "لا توجد مذكرات غير منجزة ضمن صلاحياتك."}
           storageKey={`alraesy:d13:item-return-requests:${user?.id ?? "guest"}:${companyId}`}
           visibleColumns={cols.map(column=>column.key)} allowColumnVisibility
