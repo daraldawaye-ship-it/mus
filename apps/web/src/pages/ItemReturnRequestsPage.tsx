@@ -7,11 +7,11 @@ import InteractiveColumnsTable, { type InteractiveTableColumn } from "../Interac
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
-type Row = {id:number;itemId:number|null;itemName:string|null;title:string;type:MemoType;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
+type Row = {id:number;itemId:number|null;itemName:string|null;title:string;type:MemoType;body:string|null;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
   quantityAvailable:string|null;quantityReturns:string|null;defaultSupplyMaxQuantity:string|null;
   defaultSupplyMaxNotes:string|null};
 type List = {items:Row[];total:number;page:number;pageSize:number;canOpenMemo:boolean};
-const sorts = ["title","type","senderName","currentName","status","createdAt",
+const sorts = ["title","body","type","senderName","currentName","status","createdAt",
   "quantityAvailable","quantityReturns","defaultSupplyMaxQuantity","defaultSupplyMaxNotes"] as const;
 type Sort = (typeof sorts)[number];
 type Column = Sort|"open";
@@ -45,6 +45,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   const canOpenMemo = !!result?.canOpenMemo;
   const cols = useMemo<InteractiveTableColumn<Row,Column>[]>(() => [
     {key:"title",label:"المذكرة",width:270,sortable:true,cell:row=>row.title},
+    ...(canOpenMemo ? [{key:"body" as const,label:"البيان",width:280,sortable:true,cell:(row:Row)=>row.body}] : []),
     {key:"type",label:"نوع الإشعار",width:120,sortable:true,cell:row=>memoTypeLabels[row.type]},
     {key:"quantityAvailable",label:"الكمية بدون مخازن المرتجعات",width:184,sortable:true,cell:row=><bdi>{row.quantityAvailable}</bdi>},
     {key:"quantityReturns",label:"الكمية في مخازن المرتجعات",width:177,sortable:true,cell:row=><bdi>{row.quantityReturns}</bdi>},

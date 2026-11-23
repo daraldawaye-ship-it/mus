@@ -448,8 +448,9 @@ export function memoRoutes(pool: Pool) {
       COALESCE(s.stock_without_returns,0)::numeric / ${firstUnit} END`;
     const quantityReturns = `CASE WHEN i.id IS NOT NULL THEN
       COALESCE(s.stock_returns,0)::numeric / ${firstUnit} END`;
+    const memoBody = "CASE WHEN $9::boolean THEN m.body END";
     const query = listQuery(req.query, {
-      id: "m.id", title: "m.title", type:"m.type", createdAt: "m.created_at",
+      id: "m.id", title: "m.title", type:"m.type", body:memoBody, createdAt: "m.created_at",
       senderName: "m.sender_name", currentName: "m.current_name", status: "m.status",
       quantityAvailable, quantityReturns, defaultSupplyMaxQuantity: "i.default_supply_max_quantity",
       defaultSupplyMaxNotes: "i.default_supply_max_notes",
@@ -475,7 +476,7 @@ export function memoRoutes(pool: Pool) {
       const values = [current.companyId, current.user.id, current.ownId,
         current.context.general, searchPattern(query.q)];
       const total = Number((await client.query(`SELECT count(*) ${from} WHERE ${where}`, values)).rows[0].count);
-      const rows = (await client.query(`SELECT m.id,m.title,m.type,m.sender_name AS "senderName",
+      const rows = (await client.query(`SELECT m.id,m.title,m.type,${memoBody} AS body,m.sender_name AS "senderName",
         CASE WHEN $8::boolean AND i.active THEN i.id END AS "itemId",
         CASE WHEN $8::boolean AND i.active THEN i.name END AS "itemName",
         m.current_name AS "currentName",m.status,m.created_at AS "createdAt",
@@ -486,7 +487,7 @@ export function memoRoutes(pool: Pool) {
         ${from}
         LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
         WHERE ${where} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
-        [...values, query.pageSize, query.offset, canSelectDockItem])).rows;
+        [...values, query.pageSize, query.offset, canSelectDockItem, canOpenMemo])).rows;
       return {items: rows.map(row => ({...row, createdAt: row.createdAt.toISOString()})),
         total, page: query.page, pageSize: query.pageSize, canOpenMemo};
     });
