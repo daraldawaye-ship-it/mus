@@ -19,7 +19,7 @@ test("dock container roles require real active company context, without changing
  assert.deepEqual(visible(dockContainerRoles(member,company(["cashier"],[],false),true,false,false)),[]);
 });
 test("container role alone grants no item, inventory, finance or ledger reads",()=>{
- assert.deepEqual(dockDataReads(company(["cashier"]),undefined),{item:false,account:false,statementOnlyAccountSearch:false,movement:false,purchases:false,alternatives:false,card:false});
+ assert.deepEqual(dockDataReads(company(["cashier"]),undefined),{item:false,account:false,statementOnlyAccountSearch:false,movement:false,purchases:false,adjustment:false,transfer:false,alternatives:false,card:false});
  assert.equal(dockDataReads(company(["sales"],["commerce.view"]),[]).item,true);
  assert.equal(dockDataReads(company(["cashier"],["accounts.view"]),[page("company.accounts"),page("company.financial-documents")]).account,true);
  assert.equal(dockDataReads(company(["cashier"],["finance.view"]),[page("company.accounts"),page("company.financial-documents",false)]).account,false);
@@ -29,15 +29,23 @@ test("container role alone grants no item, inventory, finance or ledger reads",(
  assert.equal(dockDataReads(company(["cashier"],["items.view"]),[page("company.items")]).alternatives,false);
 });
 
-test("all four dock views remain visible but denied reads stay disabled",()=>{
+test("all six dock views remain visible but denied reads stay disabled",()=>{
  const staff=company(["sales"],["commerce.view"]);
  const exposed=dockItemViewOptions(dockDataReads(staff,[]),true);
  assert.deepEqual(exposed.map(v=>[v.key,v.available]),[
-  ["movement",true],["purchases",true],["card",false],["alternatives",false],
+  ["movement",true],["purchases",true],["adjustment",false],["transfer",false],["card",false],["alternatives",false],
  ]);
  const allowed=dockItemViewOptions(dockDataReads(company(["sales"],["items.view"]),
   [page("company.items"),page("company.item-card")]),true);
- assert.deepEqual(allowed.map(v=>v.available),[true,true,true,true]);
+ assert.deepEqual(allowed.map(v=>v.available),[true,true,false,false,true,true]);
+ const stockPage = page("company.stock-movements");
+ const stockReader = company(["sales"],["inventory.view","commerce.view"]);
+ const visible = dockItemViewOptions(dockDataReads(stockReader,[stockPage]),true);
+ assert.deepEqual(visible.filter(v=>["adjustment","transfer"].includes(v.key)).map(v=>[v.label,v.available]),
+   [["التسويات",true],["المناقلات",true]]);
+ const inventoryOnly = company(["sales"],["inventory.view"]);
+ assert.equal(dockDataReads(inventoryOnly,[stockPage]).adjustment,false);
+ assert.equal(dockDataReads(stockReader,[page("company.stock-movements",false)]).transfer,false);
 });
 test("cashier with statement permission can select a posting account without gaining card access",()=>{
  const cashier=company(["cashier"],["finance.view"]);

@@ -242,6 +242,10 @@ export function commerceRoutes(pool: Pool): Router {
         }
         const user = await currentActor(client, actor(req), false);
         await companyAccess(client, user, companyId, "inventory.view");
+        const dateFrom = req.query.dateFrom === undefined ? null : parse(documentDateSchema, req.query.dateFrom);
+        const dateTo = req.query.dateTo === undefined ? null : parse(documentDateSchema, req.query.dateTo);
+        if (dateFrom && dateTo && dateFrom > dateTo)
+          throw new HttpError(400, "invalid_query", "بداية الفترة بعد نهايتها");
         const result = await client.query(
           `SELECT o.id AS "lineId", o.id AS "documentId",
              o.document_date::text AS "documentDate",
@@ -254,10 +258,12 @@ export function commerceRoutes(pool: Pool): Router {
            JOIN stock_movements m ON m.company_id=o.company_id AND m.operation_id=o.id
            JOIN items it ON it.company_id=m.company_id AND it.id=m.item_id
            WHERE o.company_id=$1 AND m.item_id=$2 AND o.kind=$3
+             AND ($6::date IS NULL OR o.document_date >= $6)
+             AND ($7::date IS NULL OR o.document_date <= $7)
            GROUP BY o.id,o.document_date,o.description,it.factor2,it.factor3
            ORDER BY o.document_date DESC,o.id DESC
            LIMIT $4 OFFSET $5`,
-          [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
+          [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize, dateFrom, dateTo],
         );
         return result.rows;
       });

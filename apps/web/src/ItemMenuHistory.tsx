@@ -174,6 +174,29 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
   </div>;
 }
 
+function WorkPanelOperationsTable({rows, label, footer}: {
+  rows: HistoryRow[]; label: string; footer?: ReactNode;
+}) {
+  return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
+    aria-label={label}>
+    {!!rows.length && <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
+      <thead><tr><th scope="col">{label}</th><th scope="col">الكمية</th><th scope="col">التاريخ</th></tr></thead>
+      <tbody>{rows.map(row => {
+        const quantity = Number(row.quantityFirstUnit);
+        return <tr key={row.lineId}>
+          <td><ScrollableTableCell>{row.description || "—"}</ScrollableTableCell></td>
+          <td className="invoice-item-options-number"><ScrollableTableCell><bdi dir="ltr"
+            data-work-panel-quantity={quantity > 0 ? "positive" : quantity < 0 ? "negative" : "zero"}>
+            {row.quantityFirstUnit}
+          </bdi></ScrollableTableCell></td>
+          <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
+        </tr>;
+      })}</tbody>
+    </table>}
+    {footer && <div className="work-panel-movement-footer">{footer}</div>}
+  </div>;
+}
+
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
   userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, staffDockMovement=false, allowMovementInvoiceDetails = true, purchasePriceAccess,
@@ -185,7 +208,7 @@ export function ItemMenuHistory({
   itemId: number | null;
   itemName: string | null;
   resetKey?: number;
-  fixedView?: "movement" | "alternatives";
+  fixedView?: "movement" | "alternatives" | "adjustment" | "transfer";
   hideHeading?: boolean;
   workPanelMovement?: boolean;
   purchaseOnly?: boolean;
@@ -218,13 +241,20 @@ export function ItemMenuHistory({
   const compositionId = itemCard.data?.item.id === itemId
     ? itemCard.data.item.compositionId : null;
 
+  const inlineOperations = fixedView === "adjustment" || fixedView === "transfer";
+  const operationLabel = fixedView === "adjustment" ? "التسويات" : "المناقلات";
+  const operationFrom = inlineOperations ? movementFrom : "";
+  const operationTo = inlineOperations ? movementTo : "";
+  const invalidOperationDates = !!operationFrom && !!operationTo && operationFrom > operationTo;
   const history = useQuery<HistoryResult>({
-    queryKey: ["avatar-item-history", userId, companyId, itemId, view, page],
+    queryKey: ["avatar-item-history", userId, companyId, itemId, view, page, ...(inlineOperations ? [operationFrom, operationTo] : [])],
     queryFn: ({ signal }) => api<HistoryResult>(
       `/companies/${companyId}/item-history/${itemId}?${new URLSearchParams({
         type: view!, page: String(page), pageSize: "10",
+        ...(operationFrom ? {dateFrom: operationFrom} : {}),
+        ...(operationTo ? {dateTo: operationTo} : {}),
       })}`, { signal }),
-    enabled: !!itemId && !!view && view !== "alternatives" && view !== "movement",
+    enabled: !!itemId && !!view && view !== "alternatives" && view !== "movement" && !invalidOperationDates,
     staleTime: 10000,
   });
   const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
@@ -370,7 +400,7 @@ export function ItemMenuHistory({
   </>);
   return (
     <div className="user-menu-item-history" aria-live="polite">
-      {!hideHeading && !dockAlternatives && (
+      {!hideHeading && !dockAlternatives && !inlineOperations && (
         <div className="user-menu-item-history-heading">
           <strong>{selectedLabel}</strong>
           <span title={itemName ?? undefined}>{itemName}</span>
@@ -378,9 +408,9 @@ export function ItemMenuHistory({
       )}
       {!itemId ? <p className="user-menu-entity-hint">اختر صنفًا من البحث أولًا.</p> : (
         <>
-          {isMovement && invalidMovementDates &&
+          {((isMovement && invalidMovementDates) || invalidOperationDates) &&
             <p className="user-menu-entity-hint" role="alert">بداية الفترة يجب ألا تكون بعد نهايتها.</p>}
-          {waiting && !(isMovement && invalidMovementDates) &&
+          {waiting && !(isMovement && invalidMovementDates) && !invalidOperationDates &&
             <p className="user-menu-entity-hint">جارٍ تحميل الحركات…</p>}
           {failed && <p className="user-menu-entity-hint">{staffDockMovement?"تعذّر تحميل حركة الصنف. أعد المحاولة.":"تعذر تحميل البيانات؛ تحقق من صلاحيات عرض الفواتير أو المخزون أو الأصناف."}</p>}
           {isAlternatives && peers && !peers.composition &&
@@ -411,6 +441,9 @@ export function ItemMenuHistory({
             <WorkPanelMovementTable scrollKey={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`} beforeFooter={purchasePrice}
               rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []}
               footer={!waiting && !failed ? controls : undefined} />
+          ) : inlineOperations ? (
+            !invalidOperationDates && !waiting && !failed &&
+              <WorkPanelOperationsTable rows={history.data?.items ?? []} label={operationLabel} footer={controls} />
           ) : isMovement ? movements.data?.items.map(row => (
             <div key={row.id} className="user-menu-item-history-row">
               <div className="user-menu-item-history-meta">
@@ -438,8 +471,8 @@ export function ItemMenuHistory({
               </div>
             </div>
           ))}
-          {isMovement && workPanelMovement && (
-            <div className="work-panel-movement-date-filters work-panel-date-range" role="group" aria-label={purchaseOnly?"فترة مشتريات الصنف":"فترة حركة الصنف"}>
+          {(inlineMovement || inlineOperations) && (
+            <div className="work-panel-movement-date-filters work-panel-date-range" role="group" aria-label={inlineOperations ? `فترة ${operationLabel}` : purchaseOnly ? "فترة مشتريات الصنف" : "فترة حركة الصنف"}>
               <label>من
                 <input type="date" aria-label="بداية فترة حركة الصنف" value={movementFrom} onChange={event => {
                   setMovementFrom(event.currentTarget.value);
@@ -454,7 +487,7 @@ export function ItemMenuHistory({
               </label>
             </div>
           )}
-          {!inlineMovement && controls}
+          {!inlineMovement && !inlineOperations && controls}
         </>
       )}
     </div>

@@ -65,6 +65,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
   function refreshInventory(itemId: number) {
     for (const key of [
       ["avatar-item-stock-movements", user.id, companyId, itemId],
+      ["avatar-item-history", user.id, companyId, itemId],
       ["work-panel-movement-invoices", user.id, companyId, itemId],
       ["staff-work-panel-movement",user.id,companyId,itemId],
       ["avatar-item-alternatives", user.id, companyId, itemId],

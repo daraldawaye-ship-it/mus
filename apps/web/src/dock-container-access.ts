@@ -25,15 +25,19 @@ export function dockDataReads(company:Context|undefined, pages:readonly Page[]|u
       !p("company.financial-documents")&&!(can("accounts.view")&&p("company.accounts")),
     movement,
     purchases: movement&&p("company.purchases"),
+    adjustment: movement&&can("commerce.view"),
+    transfer: movement&&can("commerce.view"),
     alternatives: can("items.view")&&p("company.items")&&p("company.item-card"),
     card: can("items.view")&&p("company.items")&&p("company.item-card"),
   };
 }
 
-export type DockItemView = "movement" | "purchases" | "card" | "alternatives";
+export type DockItemView = "movement" | "purchases" | "adjustment" | "transfer" | "card" | "alternatives";
 const dockItemViews = [
   { key:"movement", label:"الحركة" },
   { key:"purchases", label:"المشتريات" },
+  { key:"adjustment", label:"التسويات" },
+  { key:"transfer", label:"المناقلات" },
   { key:"card", label:"كرت" },
   { key:"alternatives", label:"البدائل" },
 ] as const;
