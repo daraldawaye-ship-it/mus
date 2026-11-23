@@ -143,7 +143,10 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                       hideHeading={view.key === "movement" || view.key === "purchases"}
                       workPanelMovement={view.key === "movement" || view.key === "purchases"}
                       purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={reads.movement}
-                      purchasePriceAccess={view.key==="purchases"&&reads.card?{canEdit:access.edit,online}:undefined}
+                      purchasePriceAccess={view.key==="purchases"&&reads.card?{
+                        canEdit:access.edit,online,saveScope:guard,
+                        onDetachedSaveError:message=>{if(guard.isCurrent())setNotice({tone:"error",message});},
+                      }:undefined}
                       staffDockMovement={staffItemDock&&((view.key==="movement"&&!reads.movement)||(view.key==="purchases"&&!reads.purchases))} />}
                   </div>
                 ))}

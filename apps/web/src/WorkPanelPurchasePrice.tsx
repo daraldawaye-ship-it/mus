@@ -9,9 +9,16 @@ import { errorMessage } from "./phase2";
 const priceLabel = "سعر الشراء الافتراضي";
 type Edit = { value: string; expected: string };
 
-export function WorkPanelPurchasePrice({userId,companyId,itemId,canEdit,online}:{
-  userId:number;companyId:number;itemId:number;canEdit:boolean;online:boolean;
-}) {
+export type WorkPanelPurchasePriceAccess = {
+  canEdit:boolean;
+  online:boolean;
+  saveScope:ReturnType<typeof useScopeGuard>;
+  onDetachedSaveError:(message:string)=>void;
+};
+
+export function WorkPanelPurchasePrice({userId,companyId,itemId,canEdit,online,saveScope,onDetachedSaveError}:
+  {userId:number;companyId:number;itemId:number} & WorkPanelPurchasePriceAccess
+) {
   const id=useId();
   const mobile=useMobileQuantityPad();
   const client=useQueryClient();
@@ -30,7 +37,7 @@ export function WorkPanelPurchasePrice({userId,companyId,itemId,canEdit,online}:
   const maxDecimals=Math.min(6,Math.max(4,item?.currencyDecimalPlaces??4));
 
   async function commit(change:Edit|null) {
-    if(!change||disabled||busy.current||!guard.isCurrent()||isOfflineNow()||sessionRequiresLogin())return;
+    if(!change||disabled||busy.current||!guard.isCurrent()||!saveScope.isCurrent()||isOfflineNow()||sessionRequiresLogin())return;
     const parsed=amountSchema.safeParse(change.value);
     if(!parsed.success){setIssue({text:"أدخل سعرًا صالحًا؛ الفراغ لا يعني صفرًا."});return;}
     const fraction=parsed.data.split(".")[1]??"";
@@ -43,25 +50,30 @@ export function WorkPanelPurchasePrice({userId,companyId,itemId,canEdit,online}:
     setPending(true);
     setIssue(null);
     try {
-      const response=await api<{item:Item}>(path,{method:"PATCH",body:payload.data,signal:guard.signal});
-      if(!guard.isCurrent())return;
+      // Keep a committed edit tied to the dock's user/company, not to which
+      // item's purchase history is currently visible.
+      const response=await api<{item:Item}>(path,{method:"PATCH",body:payload.data,signal:saveScope.signal});
+      if(!saveScope.isCurrent())return;
       const saved=amountSchema.safeParse(response.item.purchasePrice);
       if(response.item.id!==itemId||response.item.companyId!==companyId||!saved.success||saved.data!==parsed.data)
         throw new Error("تعذر تأكيد السعر المحفوظ لهذا الصنف.");
       await client.cancelQueries({queryKey,exact:true});
-      if(!guard.isCurrent())return;
+      if(!saveScope.isCurrent())return;
       client.setQueryData<{item:Item}>(queryKey,old=>old&&old.item.revision>response.item.revision?old:response);
-      focusBaseline.current=null;
-      setEdit(null);
+      if(guard.isCurrent()){
+        focusBaseline.current=null;
+        setEdit(null);
+      }
       for(const key of [
         ["items",userId,companyId],["work-panel-compact-card",userId,companyId,itemId],
         ["item-options-list",userId,companyId],
       ]) void client.invalidateQueries({queryKey:key});
     } catch(reason) {
-      if(!guard.isCurrent())return;
-      if(reason instanceof ApiFailure&&reason.status===409) {
-        setIssue({text:"غيّر مستخدم آخر السعر. حمّل القيمة المحفوظة قبل تعديلها.",conflict:true});
-      } else setIssue({text:errorMessage(reason)});
+      if(!saveScope.isCurrent())return;
+      const conflict=reason instanceof ApiFailure&&reason.status===409;
+      const message=conflict?"غيّر مستخدم آخر السعر. حمّل القيمة المحفوظة قبل تعديلها.":errorMessage(reason);
+      if(guard.isCurrent())setIssue({text:message,conflict});
+      else onDetachedSaveError(`لم يتأكد حفظ سعر الشراء للصنف ${item?.name??itemId}: ${message}`);
     } finally {
       busy.current=false;
       if(guard.isCurrent())setPending(false);

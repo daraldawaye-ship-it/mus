@@ -7,7 +7,7 @@ import { formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanel
 import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
-import { WorkPanelPurchasePrice } from "./WorkPanelPurchasePrice";
+import { WorkPanelPurchasePrice, type WorkPanelPurchasePriceAccess } from "./WorkPanelPurchasePrice";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./work-panel-alternatives.css";
 import { formatStockSaleQuantity } from "./order-draft-quantities";
@@ -191,7 +191,7 @@ export function ItemMenuHistory({
   purchaseOnly?: boolean;
   staffDockMovement?:boolean;
   allowMovementInvoiceDetails?: boolean;
-  purchasePriceAccess?: {canEdit:boolean;online:boolean};
+  purchasePriceAccess?: WorkPanelPurchasePriceAccess;
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
