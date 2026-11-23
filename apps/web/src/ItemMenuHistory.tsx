@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
@@ -7,6 +7,7 @@ import { formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanel
 import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
+import { WorkPanelPurchasePrice } from "./WorkPanelPurchasePrice";
 import ScrollableTableCell from "./ScrollableTableCell";
 import "./work-panel-alternatives.css";
 import { formatStockSaleQuantity } from "./order-draft-quantities";
@@ -48,8 +49,8 @@ type StaffDockMovement={
   documentDate:string;quantitySmallest:string;postedUnitPrice:string|null;firstUnitMultiplier:string|null;
 };
 
-function StaffWorkPanelMovementTable({rows,footer,purchaseOnly}:{
-  rows:StaffDockMovement[];footer?:ReactNode;purchaseOnly:boolean;
+function StaffWorkPanelMovementTable({rows,beforeFooter,footer,purchaseOnly}:{
+  rows:StaffDockMovement[];beforeFooter?:ReactNode;footer?:ReactNode;purchaseOnly:boolean;
 }){
   return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
     aria-label={purchaseOnly?"جدول مشتريات الصنف":"جدول حركات بيع وشراء الصنف"}>
@@ -69,19 +70,24 @@ function StaffWorkPanelMovementTable({rows,footer,purchaseOnly}:{
         </tr>;
       })}</tbody>
     </table>}
+    {beforeFooter}
     {footer&&<div className="work-panel-movement-footer">{footer}</div>}
   </div>;
 }
 
-function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
+function WorkPanelMovementTable({ rows, invoiceDetails, beforeFooter, footer, scrollKey }: {
   rows: StockMovement[];
   invoiceDetails: MovementInvoiceDetail[];
+  beforeFooter?: ReactNode;
   footer?: ReactNode;
+  scrollKey: string;
 }) {
-  if (!rows.length && !footer) return null;
+  const viewport=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(viewport.current)viewport.current.scrollTop=0;},[scrollKey]);
+  if (!rows.length && !beforeFooter && !footer) return null;
   const invoices = new Map(invoiceDetails.map(detail => [detail.movementId, detail]));
   return (
-    <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
+    <div ref={viewport} className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
       aria-label="جدول حركات الصنف">
       {rows.length > 0 && <table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table" dir="rtl">
         <thead><tr>
@@ -139,6 +145,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, footer }: {
           );
         })}</tbody>
       </table>}
+      {beforeFooter}
       {footer && <div className="work-panel-movement-footer">{footer}</div>}
     </div>
   );
@@ -169,7 +176,7 @@ function WorkPanelAlternativesTable({result}:{result:ItemCompositionPeers}) {
 
 /** Reuses the existing item reports in the menu or as a fixed work-panel view. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, staffDockMovement=false, allowMovementInvoiceDetails = true,
+  userId, companyId, itemId, itemName, resetKey = 0, fixedView, hideHeading = false, workPanelMovement = false, purchaseOnly = false, staffDockMovement=false, allowMovementInvoiceDetails = true, purchasePriceAccess,
   onEditItem = () => {}, onOpenComposition = () => {}, onQuickAction = () => {},
   canCreateMemo = false, canViewItemCompositions = false,
 }: {
@@ -184,6 +191,7 @@ export function ItemMenuHistory({
   purchaseOnly?: boolean;
   staffDockMovement?:boolean;
   allowMovementInvoiceDetails?: boolean;
+  purchasePriceAccess?: {canEdit:boolean;online:boolean};
   onEditItem?: (itemId: number) => void;
   onOpenComposition?: (compositionId: number) => void;
   onQuickAction?: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
@@ -336,6 +344,9 @@ export function ItemMenuHistory({
   const fetching = isAlternatives ? alternatives.isFetching :
     isMovement ? movementState.isFetching : history.isFetching;
   const inlineMovement = isMovement && workPanelMovement;
+  const purchasePrice = inlineMovement && purchaseOnly && itemId && purchasePriceAccess ?
+    <WorkPanelPurchasePrice key={`${userId}:${companyId}:${itemId}`} userId={userId} companyId={companyId}
+      itemId={itemId} {...purchasePriceAccess} /> : null;
   const controls = (<>
     {isMovement && !staffDockMovement && !purchaseOnly && itemId && !waiting && !failed && (
       <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
@@ -396,8 +407,8 @@ export function ItemMenuHistory({
             </div>
           ))) : isMovement && workPanelMovement ? (
             staffDockMovement ? <StaffWorkPanelMovementTable rows={failed?[]:staffMovement.data?.items??[]} purchaseOnly={purchaseOnly}
-              footer={!waiting&&!failed?controls:undefined} /> :
-            <WorkPanelMovementTable key={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`}
+              beforeFooter={purchasePrice} footer={!waiting&&!failed?controls:undefined} /> :
+            <WorkPanelMovementTable scrollKey={`${itemId}:${page}:${movementDateFrom}:${movementDateTo}`} beforeFooter={purchasePrice}
               rows={movements.data?.items ?? []} invoiceDetails={movementInvoices.data?.items ?? []}
               footer={!waiting && !failed ? controls : undefined} />
           ) : isMovement ? movements.data?.items.map(row => (

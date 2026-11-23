@@ -143,6 +143,24 @@
   max-block-size: 240px;
   overflow: auto;
 }
+.work-panel-purchase-price {
+  display: grid;
+  grid-template-columns: auto minmax(4ch, 12ch);
+  align-items: center;
+  gap: 3px 6px;
+  padding: 4px 5px;
+  border-block-start: 1px solid var(--border);
+  font-size: 11px;
+}
+.work-panel-purchase-price input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 2px 4px;
+  font: inherit;
+}
+.work-panel-purchase-price small, .work-panel-purchase-price > button { grid-column: 1 / -1; }
 .work-panel-movement-date-filters {
   margin-block: 2px 4px;
 }

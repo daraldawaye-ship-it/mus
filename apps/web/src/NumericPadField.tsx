@@ -219,17 +219,17 @@ export function NumericPadField({
 
 /** Keep existing steppers and desktop input behavior; render the pad only for the active phone field. */
 export function MobileNumericPadInput({
-  mobile,label,value,onConfirm,disabled,maxIntegerDigits,allowEmpty=false,
+  mobile,label,value,onConfirm,disabled,maxIntegerDigits,allowEmpty=false,allowDecimal=false,maxDecimals=4,
   onBlur,onKeyDown,onClick,id,...input
 }: Omit<InputHTMLAttributes<HTMLInputElement>,"value"|"type"> & {
   mobile:boolean;label:string;value:string;onConfirm:(value:string)=>void;
-  maxIntegerDigits:number;allowEmpty?:boolean;
+  maxIntegerDigits:number;allowEmpty?:boolean;allowDecimal?:boolean;maxDecimals?:number;
 }) {
   const generated=useId();
   const fieldId=id??generated;
   const {dialog,launch,open}=useNumericPadDialog({
-    fieldId,label,value,onChange:onConfirm,disabled,allowDecimal:false,allowNegative:false,
-    allowEmpty,maxIntegerDigits,maxDecimals:0,isolateClicks:true,
+    fieldId,label,value,onChange:onConfirm,disabled,allowDecimal,allowNegative:false,
+    allowEmpty,maxIntegerDigits,maxDecimals:allowDecimal?maxDecimals:0,isolateClicks:true,
   });
   return <>
     <input {...input} id={fieldId} type="text" value={value} disabled={disabled}
