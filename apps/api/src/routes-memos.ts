@@ -3,6 +3,8 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { z } from "zod";
 import {
   memoCreateSchema,
+  itemMemoNotificationTypes,
+  memoTypeLabels,
   memoActionSchema,
   memoFollowersUpdateSchema,
   memoFollowerCommentSchema,
@@ -447,7 +449,7 @@ export function memoRoutes(pool: Pool) {
     const quantityReturns = `CASE WHEN i.id IS NOT NULL THEN
       COALESCE(s.stock_returns,0)::numeric / ${firstUnit} END`;
     const query = listQuery(req.query, {
-      id: "m.id", title: "m.title", createdAt: "m.created_at",
+      id: "m.id", title: "m.title", type:"m.type", createdAt: "m.created_at",
       senderName: "m.sender_name", currentName: "m.current_name", status: "m.status",
       quantityAvailable, quantityReturns, defaultSupplyMaxQuantity: "i.default_supply_max_quantity",
       defaultSupplyMaxNotes: "i.default_supply_max_notes",
@@ -473,7 +475,7 @@ export function memoRoutes(pool: Pool) {
       const values = [current.companyId, current.user.id, current.ownId,
         current.context.general, searchPattern(query.q)];
       const total = Number((await client.query(`SELECT count(*) ${from} WHERE ${where}`, values)).rows[0].count);
-      const rows = (await client.query(`SELECT m.id,m.title,m.sender_name AS "senderName",
+      const rows = (await client.query(`SELECT m.id,m.title,m.type,m.sender_name AS "senderName",
         CASE WHEN $8::boolean AND i.active THEN i.id END AS "itemId",
         CASE WHEN $8::boolean AND i.active THEN i.name END AS "itemName",
         m.current_name AS "currentName",m.status,m.created_at AS "createdAt",
@@ -893,6 +895,8 @@ export function memoRoutes(pool: Pool) {
           snapshot,
           current.companyId,
         );
+        const selectedNoticeType = input.links?.itemId && itemMemoNotificationTypes.some(type=>type===input.type)
+          ? memoTypeLabels[input.type] : null;
         if (recipient) await emitNotification(client, {
           code: "MEMO_RECEIVED",
           companyId: current.companyId,
@@ -901,8 +905,8 @@ export function memoRoutes(pool: Pool) {
           subjectKey: `memo:${memo.id}`,
           eventKey: `memo:${memo.id}:created`,
           explicitSubjectOnly: true,
-          title: `${current.user.displayName}: ${input.title}`,
-          message: `مذكرة جديدة من ${current.user.displayName}: ${input.title}`,
+          title: `${selectedNoticeType ? `${selectedNoticeType} · ` : ""}${current.user.displayName}: ${input.title}`,
+          message: `${selectedNoticeType ?? "مذكرة جديدة"} من ${current.user.displayName}: ${input.title}`,
           href: `/companies/${current.companyId}/memos/${memo.id}`,
         });
         return { memo: saved, created: true };

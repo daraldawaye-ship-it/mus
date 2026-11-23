@@ -600,7 +600,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
               onChange={(event) => setType(event.target.value as MemoType)}
               disabled={locked}
             >
-              {Object.entries(memoTypeLabels).map(([value, label]) => (
+              {Object.entries(memoTypeLabels).filter(([value])=>value!=="item_shortage"&&value!=="general").map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

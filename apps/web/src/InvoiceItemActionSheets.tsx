@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   memoCreateSchema,
+  itemMemoNotificationTypes,
+  memoTypeLabels,
+  type ItemMemoNotificationType,
   type CompanyContext,
   type Item,
   type MemoCreateInput,
@@ -83,10 +86,10 @@ export function InvoiceItemTransferSheet({
 }
 
 export function InvoiceItemReportSheet({
-  context,itemId,itemName,onClose,onCreated,
+  context,itemId,itemName,onClose,onCreated,chooseNotificationType=false,
 }: {
   context:CompanyContext;itemId:number;itemName:string;
-  onClose:()=>void;onCreated:(memoId:number)=>void;
+  onClose:()=>void;onCreated:(memoId:number)=>void;chooseNotificationType?:boolean;
 }) {
   const companyId=context.company.id;
   const {user}=useSession();
@@ -94,6 +97,7 @@ export function InvoiceItemReportSheet({
   const queryClient=useQueryClient();
   const [title,setTitle]=useState(`تقرير عن الصنف: ${itemName}`);
   const [body,setBody]=useState("");
+  const [notificationType,setNotificationType]=useState<ItemMemoNotificationType>("general");
   const [recipient,setRecipient]=useState<MemoRecipient|null>(null);
   const [error,setError]=useState("");
   const [saving,setSaving]=useState(false);
@@ -105,7 +109,7 @@ export function InvoiceItemReportSheet({
     event.preventDefault();
     if(requestInFlight.current)return;
     const parsed=memoCreateSchema.safeParse(submitted??{
-      title,body,type:"review",recipientEmployeeId:recipient?.id??null,
+      title,body,type:chooseNotificationType ? notificationType : "review",recipientEmployeeId:recipient?.id??null,
       links:{followPage:null,referencePage:null,itemId,accountId:null},
       followers:[],options:[],idempotencyKey:crypto.randomUUID(),
     });
@@ -156,6 +160,16 @@ export function InvoiceItemReportSheet({
         </div>
         <form className="form-stack" onSubmit={event=>void submit(event)}>
           <Field label="الصنف" value={itemName} readOnly/>
+          {chooseNotificationType&&<div className="field">
+            <label htmlFor={`invoice-item-report-type-${itemId}`}>نوع الإشعار</label>
+            <select id={`invoice-item-report-type-${itemId}`} value={notificationType} disabled={locked}
+              onChange={event=>{
+                const type=itemMemoNotificationTypes.find(option=>option===event.target.value);
+                if(type)setNotificationType(type);
+              }}>
+              {itemMemoNotificationTypes.map(type=><option key={type} value={type}>{memoTypeLabels[type]}</option>)}
+            </select>
+          </div>}
           <Field label="عنوان التقرير" value={title} maxLength={200}
             disabled={locked} required
             onChange={event=>setTitle(event.target.value)}/>

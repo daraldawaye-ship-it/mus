@@ -1,6 +1,6 @@
 import type {PoolClient} from "pg";
 import {z} from "zod";
-import type {MemoReportResult} from "../../../../packages/contracts/src/index.ts";
+import {memoTypeSchema,type MemoReportResult} from "../../../../packages/contracts/src/index.ts";
 import {memoFollowerSql} from "./memo-followers.ts";
 export const memoReportQuerySchema=z.object({
  page:z.coerce.number().int().min(1).max(100000).default(1),
@@ -8,7 +8,7 @@ export const memoReportQuerySchema=z.object({
  employeeId:z.coerce.number().int().positive().optional(),
  employeeRole:z.enum(["current","sender","executor"]).default("current"),
  status:z.enum(["pending","awaiting_approval","completed"]).optional(),
- type:z.enum(["task","inquiry","review","approval"]).optional(),
+ type:memoTypeSchema.optional(),
  deferred:z.enum(["yes","no"]).optional(),
  minHours:z.coerce.number().min(0).max(100000).optional(),
  dateField:z.enum(["created","assigned","completed"]).default("created"),

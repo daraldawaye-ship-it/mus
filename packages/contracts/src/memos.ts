@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Page } from "./index.ts";
 
-export const memoTypeSchema = z.enum(["task", "inquiry", "review", "approval", "item_return"]);
+export const memoTypeSchema = z.enum(["task", "inquiry", "review", "approval", "item_return", "item_shortage", "general"]);
 export type MemoType = z.infer<typeof memoTypeSchema>;
 export const memoTypeLabels: Record<MemoType, string> = {
   task: "تكليف",
@@ -9,7 +9,11 @@ export const memoTypeLabels: Record<MemoType, string> = {
   review: "مراجعة",
   approval: "طلب اعتماد",
   item_return: "إرجاع صنف",
+  item_shortage: "نقص صنف",
+  general: "عام",
 };
+export const itemMemoNotificationTypes = ["item_shortage", "item_return", "general"] as const;
+export type ItemMemoNotificationType = (typeof itemMemoNotificationTypes)[number];
 export const memoFollowerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("employee"), employeeId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
   z.object({ kind: z.literal("role"), roleId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
@@ -217,7 +221,9 @@ export const memoCreateSchema = z
     idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
   })
   .strict().superRefine((value,ctx) => {
-    if (value.recipientEmployeeId == null && value.links?.itemId == null)
+    if ((value.type === "item_shortage" || value.type === "general") && value.links?.itemId == null)
+      ctx.addIssue({code:"custom",path:["links","itemId"],message:"اختر الصنف المرتبط بهذا الإشعار."});
+    else if (value.recipientEmployeeId == null && value.links?.itemId == null)
       ctx.addIssue({code:"custom",path:["recipientEmployeeId"],message:"اختر المستلم أو اربط المذكرة بصنف لإرسالها إلى الإدارة."});
   });
 export type MemoCreateInput = z.input<typeof memoCreateSchema>;

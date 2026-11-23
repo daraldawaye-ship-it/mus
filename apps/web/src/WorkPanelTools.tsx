@@ -164,7 +164,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
           onClose={() => setActive(null)} onSaved={refreshInventory} />}
         {active.action === "transfer" && <TransferItem context={context} itemId={active.id}
           onClose={() => setActive(null)} onPosted={() => refreshInventory(active.id)} />}
-        {active.action === "report" && <ReportItem context={context} itemId={active.id} itemName={active.name}
+        {active.action === "report" && <ReportItem context={context} itemId={active.id} itemName={active.name} chooseNotificationType
           onClose={() => setActive(null)} onCreated={memoId => {
             setActive(null);
             setNotice({ tone: "success", message: "تم إرسال التقرير المرتبط بالصنف.", memoId });

@@ -1,17 +1,17 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { memoStatusLabels, type CompanyContext, type MemoStatus } from "../../../../packages/contracts/src/index";
+import { memoStatusLabels, memoTypeLabels, type CompanyContext, type MemoStatus, type MemoType } from "../../../../packages/contracts/src/index";
 import { api, useSession } from "../api";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
-type Row = {id:number;itemId:number|null;itemName:string|null;title:string;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
+type Row = {id:number;itemId:number|null;itemName:string|null;title:string;type:MemoType;senderName:string;currentName:string;status:MemoStatus;createdAt:string;
   quantityAvailable:string|null;quantityReturns:string|null;defaultSupplyMaxQuantity:string|null;
   defaultSupplyMaxNotes:string|null};
 type List = {items:Row[];total:number;page:number;pageSize:number;canOpenMemo:boolean};
-const sorts = ["title","senderName","currentName","status","createdAt",
+const sorts = ["title","type","senderName","currentName","status","createdAt",
   "quantityAvailable","quantityReturns","defaultSupplyMaxQuantity","defaultSupplyMaxNotes"] as const;
 type Sort = (typeof sorts)[number];
 type Column = Sort|"open";
@@ -45,6 +45,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   const canOpenMemo = !!result?.canOpenMemo;
   const cols = useMemo<InteractiveTableColumn<Row,Column>[]>(() => [
     {key:"title",label:"المذكرة",width:270,sortable:true,cell:row=>row.title},
+    {key:"type",label:"نوع الإشعار",width:120,sortable:true,cell:row=>memoTypeLabels[row.type]},
     {key:"quantityAvailable",label:"الكمية بدون مخازن المرتجعات",width:184,sortable:true,cell:row=><bdi>{row.quantityAvailable}</bdi>},
     {key:"quantityReturns",label:"الكمية في مخازن المرتجعات",width:177,sortable:true,cell:row=><bdi>{row.quantityReturns}</bdi>},
     {key:"defaultSupplyMaxQuantity",label:"أعلى كمية توفير افتراضية",width:165,sortable:true,cell:row=><bdi>{row.defaultSupplyMaxQuantity}</bdi>},

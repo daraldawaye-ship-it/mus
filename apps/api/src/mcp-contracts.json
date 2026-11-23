@@ -4155,7 +4155,10 @@
             "task",
             "inquiry",
             "review",
-            "approval"
+            "approval",
+            "item_return",
+            "item_shortage",
+            "general"
           ]
         },
         "followers": {
