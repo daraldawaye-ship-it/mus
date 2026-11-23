@@ -1239,12 +1239,13 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const itemId = id(req.params.itemId);
     const input = parse(z.object({
       revision: z.number().int().positive(),
-      period: z.enum(["ten-years","one-year","four-months","three-days"]),
+      period: z.enum(["ten-years","one-year","four-months","three-days","resume"]),
     }).strict(), req.body);
     const months = input.period === "ten-years" ? 120
       : input.period === "one-year" ? 12
         : input.period === "four-months" ? 4 : 0;
     const days = input.period === "three-days" ? 3 : 0;
+    const resume = input.period === "resume";
     const result = await transaction(pool, async client => {
       const user = await currentActor(client,actor(req));
       await companyAccess(client,user,companyId,"items.view");
@@ -1259,14 +1260,16 @@ export function itemOptionsListRoutes(pool: Pool): Router {
       if (!row) throw new HttpError(404,"item_not_found","الصنف غير موجود");
       if (Number(row.revision) !== input.revision)
         throw new HttpError(409,"stale_item","عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
-      const updated = (await client.query<{revision:number;order_stopped_until:string}>(
-        "UPDATE items SET order_stopped_until=" +
+      if (resume && row.order_stopped_until === null)
+        return {itemId,revision:Number(row.revision),orderStoppedUntil:null};
+      const updated = (await client.query<{revision:number;order_stopped_until:string|null}>(
+        "UPDATE items SET order_stopped_until= CASE WHEN $6::boolean THEN NULL ELSE" +
           " ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date" +
-          " + make_interval(months => $3::integer, days => $5::integer))::date," +
+          " + make_interval(months => $3::integer, days => $5::integer))::date END," +
           " revision=revision+1, updated_at=clock_timestamp()" +
           " WHERE company_id=$1 AND id=$2 AND revision=$4" +
           " RETURNING revision,order_stopped_until::text",
-        [companyId,itemId,months,input.revision,days],
+        [companyId,itemId,months,input.revision,days,resume],
       )).rows[0];
       if (!updated) throw new HttpError(409,"stale_item","تغيرت نسخة الصنف؛ حدّث القائمة.");
       await audit(client,user,"item.field.update","item",itemId,

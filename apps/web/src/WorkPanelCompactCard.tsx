@@ -201,7 +201,7 @@ function CompactItemEditor({userId,companyId,itemId,canEdit,canStopOrder,online,
       <div className="work-panel-compact-field work-panel-compact-actions">
         <ItemOrderStopQuickActions compact companyId={companyId} itemId={itemId} itemName={initial.name}
           revision={Math.max(initial.revision, ...Object.values(revisions.current).map(value => value ?? 0))}
-          orderStoppedUntil={initial.orderStoppedUntil}
+          orderStoppedUntil={initial.orderStoppedUntil} readRevision={initial.revision}
           canEdit={canStopOrder&&online&&!Object.values(pending).some(Boolean)} />
       </div>
     </div>

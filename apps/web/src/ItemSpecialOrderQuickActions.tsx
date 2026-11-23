@@ -170,44 +170,59 @@ const PERIODS = [
 ] as const;
 const THREE_DAY_PERIOD = { key:"three-days", label:"إيقاف 3 أيام", description:"3 أيام" } as const;
 type OrderStopPeriod = typeof PERIODS[number] | typeof THREE_DAY_PERIOD;
+const adenDay = new Intl.DateTimeFormat("sv-SE", {
+  timeZone:"Asia/Aden", year:"numeric", month:"2-digit", day:"2-digit",
+});
+export function orderStopIsActive(date:string|null, now = new Date()) {
+  if (!date) return false;
+  const parts=adenDay.formatToParts(now);
+  const today=["year","month","day"].map(part=>parts.find(value=>value.type===part)?.value).join("-");
+  // Same rule as the stock planning filter: today and earlier are not stopped.
+  return date > today;
+}
 
 export function ItemOrderStopQuickActions({
-  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false, inlineStatus = false, compact = false,
+  companyId, itemId, itemName, revision, orderStoppedUntil, canEdit, includeThreeDays = false, inlineStatus = false, compact = false, readRevision = revision,
 }: {
   companyId:number; itemId:number; itemName:string; revision:number;
-  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean; inlineStatus?:boolean; compact?:boolean;
+  orderStoppedUntil:string|null; canEdit:boolean; includeThreeDays?:boolean; inlineStatus?:boolean; compact?:boolean; readRevision?:number;
 }) {
   const queryClient = useQueryClient();
   const guard=useScopeGuard(`item-order-stop:${companyId}:${itemId}`);
   const currentRevision = useRef(revision);
   const [busy, setBusy] = useState(false);
-  const [savedDate, setSavedDate] = useState<string | null>(null);
+  const [savedStop,setSavedStop]=useState<{date:string|null;revision:number}|null>(null);
+  const inFlight=useRef(false);
   const [error,setError] = useState("");
   useEffect(() => { if (revision >= currentRevision.current) currentRevision.current = revision; },
     [revision,itemId]);
 
-  async function stop(period: OrderStopPeriod) {
-    if (!canEdit || busy || (compact && (!guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()))) return;
-    const confirmed = window.confirm(
+  async function stop(period: OrderStopPeriod | "resume") {
+    if (!canEdit || inFlight.current || (compact && (!guard.isCurrent() || isOfflineNow() || sessionRequiresLogin()))) return;
+    const confirmed = window.confirm(period==="resume" ?
+      "هل تؤكد إلغاء إيقاف طلب الصنف «" + itemName + "»؟" :
       "هل تؤكد إيقاف طلب الصنف «" + itemName + "» لمدة " + period.description +
       " من اليوم؟\nسيُحفظ تاريخ انتهاء الإيقاف في كرت الصنف." +
       "\nتنبيه «إذا كمية الطلب للأصناف الخاصة» سيستمر عند بلوغ الحد؛ لإيقافه اترك كمية الطلب فارغة.",
     );
     if (!confirmed) return;
+    inFlight.current=true;
     setBusy(true);
-    setSavedDate(null);
     setError("");
     try {
       const response = await api<{
-        result: { orderStoppedUntil:string; revision:number };
+        result: { itemId:number; orderStoppedUntil:string|null; revision:number };
       }>("/companies/" + companyId + "/items/" + itemId + "/order-stop-period", {
         method: "PATCH",
-        body: { revision: currentRevision.current, period: period.key },
+        body: { revision: currentRevision.current, period: period==="resume"?"resume":period.key },
         ...(compact ? {signal:guard.signal} : {}),
       });
       if (compact && !guard.isCurrent()) return;
+      if(response.result.itemId!==itemId ||
+        (period==="resume" ? response.result.orderStoppedUntil!==null : !response.result.orderStoppedUntil))
+        throw new Error("تعذر تأكيد حالة إيقاف الصنف.");
       currentRevision.current = response.result.revision;
-      setSavedDate(response.result.orderStoppedUntil);
+      setSavedStop({date:response.result.orderStoppedUntil,revision:response.result.revision});
       void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
       void queryClient.invalidateQueries({ queryKey: ["item-options-list"] });
       void queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -218,15 +233,19 @@ export function ItemOrderStopQuickActions({
       void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
       if (compact) void queryClient.invalidateQueries({queryKey:["work-panel-compact-card"]});
     } finally {
+      inFlight.current=false;
       if (!compact || guard.isCurrent()) setBusy(false);
     }
   }
-  const stopDate = savedDate ?? orderStoppedUntil;
+  const stopDate = savedStop && savedStop.revision>=readRevision ? savedStop.date : orderStoppedUntil;
+  const stopped = orderStopIsActive(stopDate);
   if (compact) return <div className="work-panel-compact-stop">
     <button type="button" className="button button-secondary button-compact" disabled={!canEdit||busy}
-      title={stopDate? `موقوف حتى ${stopDate}` : "إيقاف طلب الصنف"}
-      onClick={() => void stop(PERIODS[0])}>{busy?"جارٍ الحفظ…":PERIODS[0].label}</button>
-    {savedDate && <small role="status">حتى <bdi>{savedDate}</bdi></small>}
+      title={stopped? `موقوف حتى ${stopDate}` : "إيقاف طلب الصنف"}
+      onClick={() => void stop(orderStopIsActive(stopDate)?"resume":PERIODS[0])}>
+      {busy?"جارٍ الحفظ…":stopped?"إلغاء الإيقاف":"إيقاف"}
+    </button>
+    {stopped && <small role="status">حتى <bdi>{stopDate}</bdi></small>}
     {error && <small className="text-error" role="alert">{error}</small>}
   </div>;
   return <div className={inlineStatus ? "item-order-draft-stop-actions item-options-inline-stop" : "item-order-draft-stop-actions"}>
