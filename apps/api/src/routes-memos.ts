@@ -437,7 +437,9 @@ export function memoRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId/memos";
   router.get("/companies/:companyId/item-return-requests", handler(async (req, res) => {
-    // This page authorizes only these four fields for a linked item of a visible return memo.
+    // The list defaults to actionable memos, without changing record visibility.
+    const completionFilter = req.query.showCompleted === "true" ? "" : " AND m.status <> 'completed'";
+    // This page authorizes only these four item fields for a visible linked memo.
     const firstUnit = "GREATEST(i.factor2::numeric * i.factor3::numeric, 1)";
     const quantityAvailable = `CASE WHEN i.id IS NOT NULL THEN
       COALESCE(s.stock_without_returns,0)::numeric / ${firstUnit} END`;
@@ -464,7 +466,7 @@ export function memoRoutes(pool: Pool) {
       const from = `FROM memos m
         JOIN memo_links ml ON ml.company_id=m.company_id AND ml.memo_id=m.id
         JOIN items i ON i.company_id=m.company_id AND i.id=ml.item_id`;
-      const where = `m.company_id=$1 AND ${visibility}
+      const where = `m.company_id=$1 AND ${visibility}${completionFilter}
         AND (m.title ILIKE $5 OR m.sender_name ILIKE $5 OR m.current_name ILIKE $5)`;
       const values = [current.companyId, current.user.id, current.ownId,
         current.context.general, searchPattern(query.q)];

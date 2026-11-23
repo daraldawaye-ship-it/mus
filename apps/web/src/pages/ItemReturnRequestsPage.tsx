@@ -23,6 +23,7 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
   const {user} = useSession();
   const [params,setParams] = useSearchParams();
   const q = (params.get("q") ?? "").slice(0,200);
+  const showCompleted = params.get("showCompleted") === "true";
   const sortKey = sorts.find(key => key === params.get("sortBy")) ?? "createdAt";
   const sortDirection = params.get("sortDir") === "asc" ? "asc" : "desc";
   const rawPage = Number(params.get("page"));
@@ -36,7 +37,8 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
       return next;
     },{replace:true});
   }
-  const query = new URLSearchParams({q,sort:`${sortKey}:${sortDirection}`,page:String(page),pageSize:String(pageSize)}).toString();
+  const query = new URLSearchParams({q,sort:`${sortKey}:${sortDirection}`,page:String(page),pageSize:String(pageSize),
+    ...(showCompleted ? {showCompleted:"true"} : {})}).toString();
   const list = useQuery({queryKey:["item-return-requests",user?.id,companyId,query],
     queryFn:({signal}) => api<List>(`/companies/${companyId}/item-return-requests?${query}`,{signal}),enabled:!!user});
   const result = list.data;
@@ -60,11 +62,16 @@ export function ItemReturnRequestsPage({context}:{context:CompanyContext}) {
       actions={<Button variant="secondary" size="compact" disabled={list.isFetching} onClick={()=>void list.refetch()}>تحديث</Button>}/>
     <Card>
       <Field label="بحث عن مذكرة" value={q} maxLength={200} onChange={event=>update({q:event.target.value,page:""})}/>
+      <label className="u-check">
+        <input type="checkbox" checked={showCompleted}
+          onChange={event=>update({showCompleted:event.target.checked ? "true" : "",page:""})}/>
+        <span>إظهار المنجز</span>
+      </label>
       {list.isPending && <Notice>جارٍ تحميل المذكرات…</Notice>}
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
       {result && <>
         <InteractiveColumnsTable<Row,Column> columns={cols} rows={result.items} rowKey={row=>row.id}
-          ariaLabel={title} emptyMessage="لا توجد مذكرات مرتبطة بصنف ضمن صلاحياتك."
+          ariaLabel={title} emptyMessage={showCompleted ? "لا توجد مذكرات مرتبطة بصنف ضمن صلاحياتك." : "لا توجد مذكرات غير منجزة ضمن صلاحياتك."}
           storageKey={`alraesy:d13:item-return-requests:${user?.id ?? "guest"}:${companyId}`}
           visibleColumns={cols.map(column=>column.key)} allowColumnVisibility
           sortKey={sortKey} sortDirection={sortDirection} onSort={key=>{

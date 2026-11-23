@@ -4106,7 +4106,7 @@
     "source": "routes-locations.ts"
   },
   "GET /companies/:companyId/item-return-requests": {
-    "queryFields": ["q", "sort", "page", "pageSize"],
+    "queryFields": ["q", "sort", "page", "pageSize", "showCompleted"],
     "source": "routes-memos.ts"
   },
   "GET /companies/:companyId/memos": {
