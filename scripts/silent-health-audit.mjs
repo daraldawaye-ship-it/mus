@@ -55,9 +55,9 @@ export async function auditSiteHealth(base = defaultOrigin) {
     if (!res.headers.get('content-type')?.includes('text/html'))
       return { ok: false, reason: 'unexpected_content_type' };
     const html = await res.text();
-    if (html.length > 1024 * 1024 || !/<html\\b/i.test(html))
+    if (html.length > 1024 * 1024 || !/<html\b/i.test(html))
       return { ok: false, reason: 'html_missing_or_oversized' };
-    const match = html.match(/<script\\b[^>]*\\bsrc\\s*=\\s*["']([^"']+\\.js(?:\\?[^"']*)?)["']/i);
+    const match = html.match(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+\.js(?:\?[^"']*)?)["']/i);
     if (!match) return { ok: false, reason: 'script_asset_missing' };
     const asset = new URL(match[1], origin);
     if (asset.origin !== origin.origin) return { ok: false, reason: 'external_script_asset' };
