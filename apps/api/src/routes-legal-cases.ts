@@ -233,6 +233,7 @@ const documentImageState=`CASE
   WHEN r.kind<>'document' THEN NULL
   WHEN local_image.id IS NOT NULL THEN 'internal'
   WHEN canonical_image.id IS NOT NULL THEN 'canonical'
+  WHEN r.document_review->'imageTransferReview'->>'state'='unknown' THEN 'unverified'
   WHEN r.drive_file_id<>'' OR r.pdf_url<>'' OR COALESCE(r.document_review->>'sourceUrl','')<>'' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(r.image_urls) AS href(value) WHERE href.value<>'')
     THEN 'external'
   ELSE 'unverified' END`;
