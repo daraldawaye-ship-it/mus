@@ -52,6 +52,12 @@ export const legalDocumentWorkStatusSchema=z.object({
   manualWorkStatus:z.enum(documentManualWorkStatuses).optional(),
 }).strict().refine(v=>v.automationWorkStatus!==undefined||v.manualWorkStatus!==undefined,"حدد حالة واحدة على الأقل");
 
+const bulkWorkIds=z.array(positive).min(1).max(3000).refine(ids=>new Set(ids).size===ids.length,"لا تكرر رقم المستند");
+export const legalAutomationWorkBulkSchema=z.discriminatedUnion("mode",[
+  z.object({mode:z.literal("preview"),ids:bulkWorkIds}).strict(),
+  z.object({mode:z.literal("execute"),ids:bulkWorkIds,previewDigest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
+]);
+
 const documentReviewSchema=z.object({
   automationWorkStatus:z.enum(documentAutomationWorkStatuses).optional(),
   manualWorkStatus:z.enum(documentManualWorkStatuses).optional(),
@@ -664,6 +670,39 @@ export function legalCaseRoutes(pool:Pool):Router {
       return next;
     });
     res.json({record});
+  }));
+  router.post("/legal/document-automation-work/bulk",handler(async(req,res)=>{
+    const input=parse(legalAutomationWorkBulkSchema,req.body),requested=actor(req);
+    ownerOnly(requested);
+    const result=await transaction(pool,async db=>{
+      const user=await currentActor(db,requested);
+      ownerOnly(user);
+      await forbidIfDisabled(db);
+      const ids=[...input.ids].sort((a,b)=>a-b);
+      const eligible=(await db.query<{id:number;revision:number}>(
+        `SELECT id,revision FROM legal_records
+          WHERE id=ANY($1::int[]) AND kind='document'
+          AND COALESCE(document_review->>'automationWorkStatus','unknown')='unknown'
+          ORDER BY id ${input.mode==="execute"?"FOR UPDATE":""}`,[ids])).rows;
+      const eligibleIds=eligible.map(row=>row.id);
+      const count=eligible.length;
+      const digest=createHash("sha256").update(JSON.stringify(["legalAutomationWorkRemaining.v1",user.id,ids,eligible])).digest("hex");
+      const scope={requestedCount:ids.length,eligibleCount:count,skippedCount:ids.length-count};
+      if(input.mode==="preview")return {...scope,eligibleIds,previewDigest:digest,changedCount:0};
+      if(count===0)return {...scope,changedCount:0,changedIds:[]};
+      if(input.previewDigest!==digest)throw new HttpError(409,"conflict","تغيّر نطاق المعاينة؛ أعد المعاينة دون تطبيق أي تعديل");
+      const changed=(await db.query<{id:number}>(
+        `UPDATE legal_records SET document_review=COALESCE(document_review,'{}'::jsonb)||'{"automationWorkStatus":"remaining"}'::jsonb,
+           revision=revision+1,updated_by=$2,updated_at=now()
+         WHERE id=ANY($1::int[]) AND kind='document'
+           AND COALESCE(document_review->>'automationWorkStatus','unknown')='unknown' RETURNING id`,[eligibleIds,user.id]
+      )).rows.map(row=>row.id).sort((a,b)=>a-b);
+      if(changed.length!==count)throw new HttpError(409,"conflict","تغيّر عدد المستندات المطابقة؛ لم تُحفظ الدفعة");
+      await audit(db,user,"legal.update","legalDocumentAutomationWorkBulk",null,
+        {eligibleIds,previewDigest:digest},{automationWorkStatus:"remaining",changedIds:changed,changedCount:changed.length});
+      return {...scope,changedCount:changed.length,changedIds:changed};
+    });
+    res.json(result);
   }));
   router.patch("/legal/records/:id/work-status",handler(async(req,res)=>{
     const recordId=number(req.params.id),input=parse(legalDocumentWorkStatusSchema,req.body);

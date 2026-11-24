@@ -3,7 +3,7 @@ import { z } from "zod";
 import { medaweeItemBatchSchema } from "../market-medawee-items.ts";
 import { medaweeAgentBatchSchema, medaweeManufacturerVerificationSchema } from "../routes-market-staging.ts";
 import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-prices.ts";
-import { mcpBodySchemas as legalSchemas, legalDocumentWorkStatusSchema } from "../routes-legal-cases.ts";
+import { mcpBodySchemas as legalSchemas, legalDocumentWorkStatusSchema, legalAutomationWorkBulkSchema } from "../routes-legal-cases.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
 import { administrativeCustodyTransferSchema } from "../../../../packages/contracts/src/administrative-custody.ts";
@@ -133,6 +133,7 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
     bodyContract:"centralPermissionAssignmentSchema",bodySchema:z.toJSONSchema(centralPermissionAssignmentSchema),
   },
   "GET /legal/records":{source:"routes-legal-cases.ts",queryFields:["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore","importanceOrder","automationWork","manualWork"]},
+  "POST /legal/document-automation-work/bulk":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalAutomationWorkBulkSchema",bodySchema:z.toJSONSchema(legalAutomationWorkBulkSchema,{io:"input"})},
   "PATCH /legal/records/:id/work-status":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id"],bodyContract:"legalDocumentWorkStatusSchema",bodySchema:z.toJSONSchema(legalDocumentWorkStatusSchema,{io:"input"})},
   "GET /legal/transcription-summary":{source:"routes-legal-cases.ts",queryFields:[]},
   "POST /legal/transcription-status":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalTranscriptionBatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalTranscriptionBatchSchema)},
