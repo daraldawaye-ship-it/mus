@@ -14,11 +14,15 @@ test("catalog advertises document review updates and filters",()=>{
  const router=legalCaseRoutes({} as Pool);
  const list=apiCatalog(router,{operation:"GET /legal/records"}).operations[0];
  const put=apiCatalog(router,{operation:"PUT /legal/records/:id"}).operations[0];
+ const patch=apiCatalog(router,{operation:"PATCH /legal/records/:id/work-status"}).operations[0];
  assert.ok(list && "queryFields" in list);
- assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore","importanceOrder"]);
+ assert.deepEqual(list.queryFields,["kind","q","page","unlinked","compact","caseId","manual","priority","imageState","transcriptionState","importanceScore","importanceOrder","automationWork","manualWork"]);
  assert.ok(put && "bodySchema" in put);
  assert.ok(put.bodySchema && JSON.stringify(put.bodySchema).includes("\"documentReview\""));
  assert.ok(JSON.stringify(put.bodySchema).includes("\"importanceScore\""));
+ assert.ok(patch && "bodySchema" in patch);
+ assert.ok(JSON.stringify(patch.bodySchema).includes("\"automationWorkStatus\""));
+ assert.ok(JSON.stringify(patch.bodySchema).includes("\"manualWorkStatus\""));
 });
 
 test("legal document reviews stay revision-safe and manual queue excludes resolved and duplicate records",async t=>{
@@ -68,8 +72,8 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
  const server=app.listen(0,"127.0.0.1");await once(server,"listening");
  t.after(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));await db.close();});
  const addr=server.address();assert.ok(addr&&typeof addr!=="string");
- const call=async(path:string,user=1,body?:unknown)=>{
-  const r=await fetch(`http://127.0.0.1:${addr.port}/api/legal${path}`,{method:body===undefined?"GET":"PUT",headers:{"Content-Type":"application/json","x-user":String(user)},body:JSON.stringify(body)});
+ const call=async(path:string,user=1,body?:unknown,method=body===undefined?"GET":"PUT")=>{
+  const r=await fetch(`http://127.0.0.1:${addr.port}/api/legal${path}`,{method,headers:{"Content-Type":"application/json","x-user":String(user)},body:JSON.stringify(body)});
   return {status:r.status,data:await r.json()};
  };
  const queued=await call("/records?kind=document&manual=true&caseId=1&compact=true",2);
@@ -143,4 +147,20 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
  assert.equal(firstPage.data.items.length,100);assert.equal(firstPage.data.items[0].id,1);
  assert.equal(secondPage.data.items.at(-1).id,unranked.rows[0].id);
  assert.equal(new Set([...firstPage.data.items,...secondPage.data.items].map((r:{id:number})=>r.id)).size,104);
+ const record2=(await call("/records/2")).data.record;
+ const statusPatch={revision:record2.revision,automationWorkStatus:"completed",manualWorkStatus:"none"};
+ assert.equal((await call("/records/2/work-status",2,statusPatch,"PATCH")).status,403);
+ const changed=await call("/records/2/work-status",1,statusPatch,"PATCH");
+ assert.equal(changed.status,200,JSON.stringify(changed.data));
+ assert.equal(changed.data.record.document_review.sourcePage,17);
+ assert.equal(changed.data.record.document_review.automationWorkStatus,"completed");
+ assert.equal(changed.data.record.document_review.manualWorkStatus,"none");
+ assert.equal((await call("/records/2/work-status",1,statusPatch,"PATCH")).status,409);
+ const combined=await call("/records?kind=document&compact=true&automationWork=completed&manualWork=none",2);
+ assert.equal(combined.status,200,JSON.stringify(combined.data));
+ assert.equal(combined.data.total,1);
+ assert.deepEqual(combined.data.items.map((r:{id:number})=>r.id),[2]);
+ const stillPending=(await call("/records/1")).data.record;
+ assert.equal((await call("/records/1/work-status",1,{revision:stillPending.revision,manualWorkStatus:"none"},"PATCH")).status,409);
+ assert.equal((await call("/records?kind=document&manualWork=invented",2)).status,400);
 });
