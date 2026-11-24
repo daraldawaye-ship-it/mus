@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { isAiTaskJournalArchive, pageAiTaskHistory } from "../apps/api/src/services/ai-task-history-page.ts";
 import { taskDTO } from "../apps/api/src/routes-ai-tasks.ts";
 
 const row = {
@@ -76,4 +77,36 @@ test("legacy recording time does not substitute for the actual finish", () => {
   const start = "2026-11-20T09:59:00.000Z";
   assert.equal(taskDTO(row, [{ ...ended, startedAt: start }]).lastRunDurationSeconds, null);
   assert.equal(taskDTO(row, [{ ...ended, startedAt: start, durationSeconds: 60 }]).lastRunDurationSeconds, 60);
+});
+
+test("newer archive of the same finish cannot become last result or resume cursor", () => {
+  const startedAt = "2026-11-20T09:59:00.000Z";
+  const real = {...ended,startedAt,durationSeconds:60,resumeFrom:"real cursor"};
+  const archived = {...real,id:2,title:"حفظ حرفي لسجل المهمة #434",detail:"verbatim archive",recordedAt:"2026-11-21T00:00:00.000Z",
+    resumeFrom:"archive cursor",archiveReceipt:isAiTaskJournalArchive("أرشيف تاريخ مهمة 434","حفظ حرفي لسجل المهمة #434")};
+  assert.equal(archived.archiveReceipt,true);
+  assert.deepEqual(taskDTO(row,[archived,real]),taskDTO(row,[real]));
+  assert.equal(taskDTO(row,[archived,real]).lastResult,real.detail);
+  assert.equal(taskDTO(row,[archived,real]).resumeFrom,real.resumeFrom);
+  assert.equal(taskDTO(row,[archived,real]).nextEligibleAt,"2026-11-20T17:59:00.000Z");
+  const older=pageAiTaskHistory([archived,real],"older",1,null);
+  assert.deepEqual(older.history.map(receipt=>[receipt.id,receipt.detail,receipt.historical]),[[2,"verbatim archive",true]]);
+});
+
+test("archived starts and later finish cannot override a started real run; real legacy receipts remain", () => {
+  const startedAt="2026-11-20T19:21:31.000Z";
+  const active={...ended,id:3,startedAt,finishedAt:null,detail:"real active"};
+  const archive={...ended,id:4,startedAt:"2026-11-22T09:00:00.000Z",finishedAt:"2026-11-22T11:00:00.000Z",durationSeconds:7200,archiveReceipt:true};
+  const archiveStart={...archive,id:5,finishedAt:null};
+  const legacy={...ended,title:"مطابقة أوراق تاريخية",archiveReceipt:isAiTaskJournalArchive("تنفيذ دوري","مطابقة أوراق تاريخية")};
+  assert.equal(legacy.archiveReceipt,false);
+  const live=taskDTO(row,[archiveStart,archive,active,legacy]);
+  assert.equal(live.lastStartedAt,startedAt);
+  assert.equal(live.lastFinishedAt,legacy.finishedAt);
+  assert.equal(live.latestRunInProgress,true);
+  assert.equal(live.lastResult,"بدأت الجولة: real active");
+  assert.equal(live.nextEligibleAt,"2026-11-21T03:21:31.000Z");
+  const finished={...active,finishedAt:"2026-11-20T19:22:31.000Z",durationSeconds:60,detail:"real finished"};
+  assert.equal(taskDTO(row,[archive,finished,legacy]).lastResult,"real finished");
+  assert.equal(taskDTO(row,[archive,finished,legacy]).lastRunDurationSeconds,60);
 });

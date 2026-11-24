@@ -6,7 +6,7 @@ import { HttpError, missing } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
-import { pageAiTaskHistory, isHistoricalAiTaskReceipt } from "./services/ai-task-history-page.ts";
+import { pageAiTaskHistory, isHistoricalAiTaskReceipt, isAiTaskJournalArchive } from "./services/ai-task-history-page.ts";
 
 const tasksTable = "مهام الذكاء الاصطناعي";
 const journalTable = "سجل إنجاز مهام الذكاء الاصطناعي";
@@ -45,6 +45,7 @@ type Run = {
   recordedAt: string;
   resumeFrom: string | null;
   historicalReceipt?: boolean;
+  archiveReceipt?: boolean;
 };
 
 const endStates = /^(?:finished|completed|stopped|aborted|failed|partial|verified|done|closed)/i;
@@ -111,6 +112,7 @@ function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
       finishedAt,
       durationSeconds: elapsedSeconds(startedAt, recordedFinish),
       resumeFrom: typeof entry?.resumeFrom === "string" ? entry.resumeFrom : null,
+      archiveReceipt: isAiTaskJournalArchive(row.general_table_category,title),
       historicalReceipt: isHistoricalAiTaskReceipt(row.general_table_category,title) || (entry?.status != null && !terminal && !/^started/i.test(String(entry.status))),
     };
     for (const linkedTask of linkedTasks) {
@@ -133,9 +135,10 @@ async function readJournal(pool: Pool) {
 }
 
 export function taskDTO(row: QueryResultRow, history: Run[]) {
-  const lastRun = history.filter(run => run.finishedAt)
+  const receipts = history.filter(run => !run.archiveReceipt);
+  const lastRun = receipts.filter(run => run.finishedAt)
     .sort((a, b) => b.finishedAt!.localeCompare(a.finishedAt!))[0];
-  const knownStarts = history.map(run => run.startedAt);
+  const knownStarts = receipts.map(run => run.startedAt);
   const notes = [row.general_table_text7, row.general_table_text8, row.general_table_text9] as string[];
   const knownFinishes = [];
   const noteStarts: string[] = [];
@@ -165,12 +168,12 @@ export function taskDTO(row: QueryResultRow, history: Run[]) {
   const lastFinishedAt = embeddedIsNewer ? embeddedFinish : lastRun?.finishedAt ?? null;
   const latestRunInProgress = lastStartedAt !== null && (lastFinishedAt === null || lastStartedAt > lastFinishedAt);
   const hasMatchingPair = notePairs.some(pair => pair.start === lastStartedAt && pair.finish === lastFinishedAt)
-    || history.some(run => run.startedAt === lastStartedAt && run.finishedAt === lastFinishedAt && run.durationSeconds != null);
+    || receipts.some(run => run.startedAt === lastStartedAt && run.finishedAt === lastFinishedAt && run.durationSeconds != null);
   const lastRunDurationSeconds = !latestRunInProgress && hasMatchingPair
     ? elapsedSeconds(lastStartedAt, lastFinishedAt) : null;
   const activeNote = latestRunInProgress
     ? (noteStarts.includes(lastStartedAt) ? notes[2] :
-        history.find(run => run.startedAt === lastStartedAt && !run.finishedAt)?.detail) ?? ""
+        receipts.find(run => run.startedAt === lastStartedAt && !run.finishedAt)?.detail) ?? ""
     : "";
   const activeResult = activeNote.startsWith("بدأت") ? activeNote : "بدأت الجولة" + (activeNote ? `: ${activeNote}` : "");
   const cadenceHours = row.cadence_hours as number | null;
@@ -233,7 +236,7 @@ export function aiTaskRoutes(pool: Pool) {
     const history=byTask.get(taskId)??[];
     if(view===undefined) {
       // The original unpaged API keeps its shape and recorded order.
-      res.json({history:history.map(({historicalReceipt:_historical,...run})=>run)});
+      res.json({history:history.map(({historicalReceipt:_historical,archiveReceipt:_archive,...run})=>run)});
       return;
     }
     const state=taskDTO(task.rows[0]!,history);
