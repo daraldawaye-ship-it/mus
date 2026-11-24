@@ -162,5 +162,26 @@ test("legal document reviews stay revision-safe and manual queue excludes resolv
  assert.deepEqual(combined.data.items.map((r:{id:number})=>r.id),[2]);
  const stillPending=(await call("/records/1")).data.record;
  assert.equal((await call("/records/1/work-status",1,{revision:stillPending.revision,manualWorkStatus:"none"},"PATCH")).status,409);
+
+ // Distinguish unset/explicit unknown from effective legacy manual work, while retaining case visibility.
+ const unknownFixtures=await db.query<{id:number}>(`INSERT INTO legal_records(kind,title,created_by,updated_by,transcription_status,document_review)
+  VALUES ('document','Unknown filter absent',1,1,'partial','{}'),
+   ('document','Unknown filter explicit',1,1,'partial','{"automationWorkStatus":"unknown","manualWorkStatus":"unknown"}'),
+   ('document','Unknown filter completed',1,1,'complete','{"automationWorkStatus":"completed"}'),
+   ('document','Unknown filter private',1,1,'partial','{}'),
+   ('document','Unknown filter legacy',1,1,'partial',$1) RETURNING id`,
+   [JSON.stringify({...prev.document_review,manualWorkStatus:"unknown"})]);
+ const [absent,explicit,completed,privateDoc,legacy]=unknownFixtures.rows.map(r=>r.id);
+ await db.query("INSERT INTO legal_record_cases VALUES($1,1),($2,1),($3,1),($4,2),($5,1)",[absent,explicit,completed,privateDoc,legacy]);
+ async function expectFilter(filters:string,ids:number[]){
+  const matched=await call("/records?kind=document&compact=true&q=Unknown%20filter&"+filters,2);
+  assert.equal(matched.status,200,JSON.stringify(matched.data));
+  assert.equal(matched.data.total,ids.length);
+  assert.deepEqual(matched.data.items.map((item:{id:number})=>item.id).sort((a:number,b:number)=>a-b),ids);
+ }
+ await expectFilter("automationWork=unknown",[absent,explicit,legacy]);
+ await expectFilter("manualWork=unknown",[absent,explicit,completed]);
+ await expectFilter("automationWork=unknown&manualWork=unknown",[absent,explicit]);
+ await expectFilter("automationWork=unknown&manualWork=remaining",[legacy]);
  assert.equal((await call("/records?kind=document&manualWork=invented",2)).status,400);
 });
