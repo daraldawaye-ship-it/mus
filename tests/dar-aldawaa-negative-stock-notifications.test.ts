@@ -23,7 +23,7 @@ test("reactivation notifies the subscribed owner on new episodes, not migration 
       CREATE TABLE page_settings(company_id integer,page_key text,enabled boolean);
       CREATE TABLE stock_balances(company_id integer,item_id integer,location_id integer,quantity_smallest bigint);
       CREATE TABLE stock_movements(id integer,company_id integer,item_id integer,location_id integer);
-      CREATE TABLE items(company_id integer,id integer,active boolean,name text,factor2 integer,factor3 integer,unit1_name text,unit2_name text,unit3_name text);
+      CREATE TABLE items(company_id integer,id integer,active boolean,name text,factor2 integer,factor3 integer,unit1_name text,unit2_name text,unit3_name text,order_alert_quantity numeric);
       CREATE TABLE branches(company_id integer,id integer,active boolean);
       CREATE TABLE locations(company_id integer,id integer,branch_id integer,active boolean,name text);
       CREATE TABLE notification_templates(code text PRIMARY KEY,name text,category text,scope text,description text,
@@ -44,8 +44,8 @@ test("reactivation notifies the subscribed owner on new episodes, not migration 
       INSERT INTO users VALUES(1,true,false,false),(8,false,false,false);
       INSERT INTO branches VALUES(2,1,true),(3,1,true);
       INSERT INTO locations VALUES(2,1,1,true,'المعرض'),(3,1,1,true,'المعرض');
-      INSERT INTO items VALUES(2,10,true,'قديم',1,1,'حبة','',''),(2,20,true,'جديد',1,1,'حبة','',''),
-        (2,30,true,'موجب محصّل',1,1,'حبة','',''),(3,10,true,'شركة أخرى',1,1,'حبة','','');
+      INSERT INTO items VALUES(2,10,true,'قديم',1,1,'حبة','','',NULL),(2,20,true,'جديد',1,1,'حبة','','',NULL),
+        (2,30,true,'موجب محصّل',1,1,'حبة','','',NULL),(3,10,true,'شركة أخرى',1,1,'حبة','','',NULL);
       INSERT INTO stock_balances VALUES(2,10,1,-4),(2,20,1,0),(2,30,1,-4),(2,30,1,5),(3,10,1,-6);
       INSERT INTO notification_templates VALUES('INVENTORY_NEGATIVE','مخزون صنف أصبح سالبًا','مخزون','company','',true,true,'medium',false,'{}',false,NULL);
       INSERT INTO notification_settings VALUES

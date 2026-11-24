@@ -15,6 +15,7 @@ import {
 } from "./policies/access.ts";
 import { HttpError, missing, deny } from "./errors.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
+import { stoppedPurchaseNotificationIsEligible } from "./services/stopped-purchase-notification-scope.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
@@ -203,6 +204,7 @@ export function notificationRoutes(pool: Pool) {
           if (inboxScope !== undefined && (inboxScope !== "company" || companyId === null))
             throw new HttpError(400, "invalid_notification_scope", "نطاق التنبيهات غير صالح");
           const visibleInbox = inboxScope === "company" ? companyOnlyInboxFilter : inboxFilter;
+          const currentInbox = visibleInbox + ` AND ${stoppedPurchaseNotificationIsEligible}`;
           const code=req.query.code;
           if(code!==undefined && (typeof code!=="string" || !/^[A-Z0-9_]{1,100}$/.test(code)))
             throw new HttpError(400,"invalid_notification_type","نوع التنبيه غير صالح");
@@ -237,7 +239,7 @@ export function notificationRoutes(pool: Pool) {
             code??null,
           ];
           const filter =
-            visibleInbox +
+            (state === "active" || state === "snoozed" ? currentInbox : visibleInbox) +
             ` AND ${stateFilter} AND (n.title ILIKE $5 OR n.message ILIKE $5 OR n.code ILIKE $5) AND ($6::text IS NULL OR n.code=$6)`;
           const from =
             " FROM notifications n JOIN notification_templates t ON t.code=n.code LEFT JOIN notification_settings s ON s.company_id IS NOT DISTINCT FROM n.company_id AND s.code=n.code";
@@ -254,7 +256,7 @@ export function notificationRoutes(pool: Pool) {
               "SELECT count(*)::integer AS total" +
                 from +
                 " WHERE " +
-                visibleInbox +
+                currentInbox +
                 " AND n.read_at IS NULL AND n.completed_at IS NULL AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp())",
               args.slice(0, 4),
             )
@@ -262,7 +264,7 @@ export function notificationRoutes(pool: Pool) {
           const unreadGroups = (
             await client.query(
               "SELECT COUNT(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code," + latestStream +
-                from + " WHERE " + visibleInbox +
+                from + " WHERE " + currentInbox +
                 " AND n.read_at IS NULL AND n.completed_at IS NULL" +
                 " AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp())) unread_groups",
               args.slice(0,4),

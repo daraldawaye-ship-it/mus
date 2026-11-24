@@ -6,6 +6,7 @@ import type {
 import { audit } from "./audit.ts";
 import { HttpError } from "../errors.ts";
 import { memoFollowerSql } from "./memo-followers.ts";
+import { stoppedPurchaseNotificationIsEligible } from "./stopped-purchase-notification-scope.ts";
 
 export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPROVAL", "MEMO_COMPLETED", "MEMO_FOLLOW", "MEMO_DUE"];
 
@@ -449,6 +450,7 @@ export async function refreshNotificationReminders(
       notificationSelect +
         ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND ${nonLegacyNegativeStockNotice} AND n.completed_at IS NULL
  AND n.code<>'${companyExternalDesktopActivityCode}'
+ AND ${stoppedPurchaseNotificationIsEligible}
  AND ${currentNotification} AND ((n.next_reminder_at<=clock_timestamp() AND COALESCE(s.allow_repeat,false) AND COALESCE(s.enabled,t.implemented)) OR n.snoozed_until<=clock_timestamp())
  AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp()) ORDER BY n.id FOR UPDATE OF n`,
       [companyId],
