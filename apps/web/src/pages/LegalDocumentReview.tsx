@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { documentImportanceScores, documentImageLabels, documentPriorityLabels, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImportanceScores, documentImageLabels, documentPriorityLabels, documentWorkStatuses, documentAutomationWorkStatuses, documentAutomationWorkLabels, documentManualWorkStatuses, documentManualWorkLabels, type DocumentAutomationWorkStatus, type DocumentManualWorkStatus, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
 import { transcriptionLabels, type TranscriptionState } from "../../../../packages/contracts/src/legal-transcription";
 import { Field, Select } from "../ui";
 
@@ -11,6 +11,7 @@ export type ReviewEntry = {
 
 export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
  const review=entry.document_review;
+ const work=documentWorkStatuses(review,entry.transcription_status);
  const state=entry.document_image_state??"unverified";
  const source=review?.sourceUrl||(entry.drive_file_id?"https://drive.google.com/file/d/"+encodeURIComponent(entry.drive_file_id)+"/view":"")||entry.pdf_url||entry.image_urls?.find(Boolean);
  const filename=review?.sourceFilename??entry.title.match(/(?:^|[\s—–])(\d{4}\.gif)\s*$/i)?.[1];
@@ -19,6 +20,8 @@ export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
   <div className="legal-tags">
    <span>الصورة: {documentImageLabels[state]}</span>
    <span>التفريغ: {transcriptionLabels[entry.transcription_status??"unknown"]}</span>
+   <span>{documentAutomationWorkLabels[work.automation]}</span>
+   <span>{documentManualWorkLabels[work.manual]}</span>
    <span className={(review?.importanceScore??0)>=8&&entry.transcription_status!=="complete"?"legal-review-high":undefined}>أهمية النقص: {entry.transcription_status==="complete"?"لا نقص":review?.importanceScore!=null?<bdi>{review.importanceScore} / 10</bdi>:review?.priority?"غير مقيّمة من 10 (تصنيف سابق: "+documentPriorityLabels[review.priority]+")":"غير مقيّمة من 10"}</span>
    {!!entry.document_case_ids?.length&&<span>القضايا: {entry.document_case_ids.map(id=>"#"+id).join("، ")}</span>}
    {(review?.hearingDate||review?.hearingGroup)&&<span>الجلسة: <bdi>{review.hearingDate||review.hearingGroup}</bdi></span>}
@@ -60,6 +63,13 @@ export function DocumentReviewFields({value,change,isNew}:{value:LegalDocumentRe
  return <details className="legal-review-card legal-wide" open={value.manualTranscription||undefined}>
   <summary>بيانات المستند وأولوية تفريغه</summary>
   <div className="legal-fields">
+   <Select label="حالة المهام الآلية" value={value.automationWorkStatus??"unknown"} onChange={e=>set("automationWorkStatus",e.target.value as DocumentAutomationWorkStatus)}>
+    {documentAutomationWorkStatuses.map(s=><option value={s} key={s}>{documentAutomationWorkLabels[s]}</option>)}
+   </Select>
+   <Select label="حالة المهام اليدوية" value={value.manualWorkStatus??"unknown"} onChange={e=>set("manualWorkStatus",e.target.value as DocumentManualWorkStatus)}>
+    {documentManualWorkStatuses.map(s=><option value={s} key={s}>{documentManualWorkLabels[s]}</option>)}
+   </Select>
+   <small className="legal-wide">حدد الحالة حسب العمل المتحقق، وليس من مجرد وجود الصورة أو النص. لا يُغلق طلب تفريغ يدوي قائم تلقائيًا.</small>
    <Field label="عنوان المستند كما يظهر في المصدر" value={value.documentTitle??""} maxLength={300} onChange={e=>set("documentTitle",e.target.value||undefined)}/>
    <Field label="اسم ملف المصدر" value={value.sourceFilename??""} maxLength={250} onChange={e=>set("sourceFilename",e.target.value||undefined)}/>
    <Field label="رابط المصدر المؤكد (HTTPS)" value={value.sourceUrl??""} onChange={e=>set("sourceUrl",e.target.value||undefined)}/>

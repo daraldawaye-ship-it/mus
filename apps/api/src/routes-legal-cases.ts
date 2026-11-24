@@ -42,9 +42,19 @@ const caseSchema = z.object({
   priority: z.number().int().min(0).max(10).default(0),
   summary: z.string().max(100000).default(""),
 }).strict();
-import { documentImageStates, documentPriorities } from "../../../packages/contracts/src/legal-document-review.ts";
+import { documentImageStates, documentPriorities, documentAutomationWorkStatuses, documentManualWorkStatuses, hasPendingManualTranscription } from "../../../packages/contracts/src/legal-document-review.ts";
+
+import { automationWorkStateSql, manualWorkStateSql, pendingManualTranscriptionSql, preserveDocumentWorkStatuses } from "./services/legal-document-work-status.ts";
+
+export const legalDocumentWorkStatusSchema=z.object({
+  revision:positive,
+  automationWorkStatus:z.enum(documentAutomationWorkStatuses).optional(),
+  manualWorkStatus:z.enum(documentManualWorkStatuses).optional(),
+}).strict().refine(v=>v.automationWorkStatus!==undefined||v.manualWorkStatus!==undefined,"حدد حالة واحدة على الأقل");
 
 const documentReviewSchema=z.object({
+  automationWorkStatus:z.enum(documentAutomationWorkStatuses).optional(),
+  manualWorkStatus:z.enum(documentManualWorkStatuses).optional(),
   documentTitle:z.string().trim().min(1).max(300).optional(),
   sourceFilename:z.string().trim().min(1).max(250).optional(),
   sourcePage:z.number().int().min(1).max(1000000).optional(),
@@ -543,6 +553,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const importanceOrder=req.query.importanceOrder;
     const imageState=req.query.imageState;
     const transcriptionState=req.query.transcriptionState;
+    const automationWork=req.query.automationWork, manualWork=req.query.manualWork;
     const caseParam=req.query.caseId;
     const selectedCase=caseParam===undefined?null:Number(caseParam);
     if ((manual!==undefined&&manual!=="true"&&manual!=="false")||
@@ -551,6 +562,8 @@ export function legalCaseRoutes(pool:Pool):Router {
       (importanceScore!==undefined&&(typeof importanceScore!=="string"||!/^(?:[1-9]|10|unrated)$/.test(importanceScore)))||
       (imageState!==undefined&&!z.enum(documentImageStates).safeParse(imageState).success)||
       (transcriptionState!==undefined&&!z.enum(transcriptionStates).safeParse(transcriptionState).success)||
+      (automationWork!==undefined&&!z.enum(documentAutomationWorkStatuses).safeParse(automationWork).success)||
+      (manualWork!==undefined&&!z.enum(documentManualWorkStatuses).safeParse(manualWork).success)||
       (caseParam!==undefined&&(typeof caseParam!=="string"||!/^[0-9]+$/.test(caseParam)||!Number.isSafeInteger(selectedCase)||Number(selectedCase)<1||Number(selectedCase)>2147483647)))
       throw new HttpError(400,"invalid_query","مرشح المستندات غير صالح");
     if (selectedCase!==null) await canCase(pool,user,selectedCase);
@@ -575,10 +588,9 @@ export function legalCaseRoutes(pool:Pool):Router {
     if (importanceScore!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'importanceScore','unrated')=?",importanceScore);
     if (imageState!==undefined) filter("("+documentImageState+")=?",imageState);
     if (transcriptionState!==undefined) filter("r.kind='document' AND COALESCE(r.transcription_status,'unknown')=?",transcriptionState);
-    if (manual==="true") where+=` AND r.kind='document' AND COALESCE(r.transcription_status,'unknown') NOT IN ('complete','duplicate','archived')
-      AND (r.document_review->>'importanceScore' IS NOT NULL OR r.document_review->>'priority'='high')
-      AND r.document_review->>'manualTranscription'='true'
-      AND NULLIF(btrim(r.document_review->>'missingPassage'),'') IS NOT NULL`;
+    if (automationWork!==undefined) filter("r.kind='document' AND ("+automationWorkStateSql+")=?",automationWork);
+    if (manualWork!==undefined) filter("r.kind='document' AND ("+manualWorkStateSql+")=?",manualWork);
+    if (manual==="true") where+=" AND r.kind='document' AND "+pendingManualTranscriptionSql;
     const usualOrder = kind === "instruction" ? "r.sort_order, r.id" :
       kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" :
       manual==="true" ? "document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
@@ -619,6 +631,8 @@ export function legalCaseRoutes(pool:Pool):Router {
       const file=input.transcriptionFile ?? (input.kind==="document" && !!input.driveFileId && /^ملف درايف\s*[—–-]/.test(input.title));
       if(file && (input.kind!=="document" || !input.driveFileId)) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
       await validateDocumentReview(db,user,input);
+      if(input.documentReview?.manualWorkStatus==="none"&&hasPendingManualTranscription(input.documentReview,input.transcriptionStatus??null))
+        throw new HttpError(409,"manual_transcription_pending","ما زال موضع للتفريغ اليدوي مسجلاً؛ أزل طلب التفريغ بعد استكماله.");
       const columns=[...recordColumns,"transcription_status","transcription_file","created_by","updated_by","document_review"];
       const values=[...recordValues(input),input.kind==="document"?(input.transcriptionStatus??"unknown"):null,file,user.id,user.id,JSON.stringify(input.documentReview??{})];
       const next=(await db.query("INSERT INTO legal_records("+columns.join(",")+") VALUES("+values.map((_,i)=>"$"+(i+1)).join(",")+") RETURNING *",values)).rows[0];
@@ -641,9 +655,36 @@ export function legalCaseRoutes(pool:Pool):Router {
       if(file && (!input.driveFileId || input.kind!=="document")) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
       const state=input.kind==="document"?(input.transcriptionStatus??old.transcription_status??"unknown"):null;
       await validateDocumentReview(db,user,{...input,caseIds:[]},recordId);
-      const review=input.documentReview===undefined?old.document_review:(input.documentReview??{});
+      const review=input.documentReview===undefined?old.document_review:
+        preserveDocumentWorkStatuses(old.document_review,input.documentReview??{});
+      if(input.documentReview?.manualWorkStatus==="none"&&hasPendingManualTranscription(review,state))
+        throw new HttpError(409,"manual_transcription_pending","ما زال موضع للتفريغ اليدوي مسجلاً؛ أزل طلب التفريغ بعد استكماله.");
       const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",transcription_status=$17,transcription_file=$18,revision=revision+1,updated_by=$19,updated_at=now(),document_review=$21 WHERE id=$20 RETURNING *",[...recordValues({...input,caseIds:[]}),state,file,user.id,recordId,JSON.stringify(review??{})])).rows[0];
       await audit(db,user,"legal.update","legalRecord",recordId,old,next);
+      return next;
+    });
+    res.json({record});
+  }));
+  router.patch("/legal/records/:id/work-status",handler(async(req,res)=>{
+    const recordId=number(req.params.id),input=parse(legalDocumentWorkStatusSchema,req.body);
+    const record=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      await canRecord(db,user,recordId,"editor");
+      await forbidIfDisabled(db);
+      const old=(await db.query("SELECT id,kind,revision,document_review,transcription_status FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
+      if(!old)missing();
+      if(old.kind!=="document")throw new HttpError(400,"invalid_kind","حالة العمل لسجلات المستندات فقط");
+      if(old.revision!==input.revision)throw new HttpError(409,"conflict","تغير السجل؛ أعد تحميله");
+      if(input.manualWorkStatus==="none"&&hasPendingManualTranscription(old.document_review,old.transcription_status))
+        throw new HttpError(409,"manual_transcription_pending","ما زال موضع للتفريغ اليدوي مسجلاً؛ أزل طلب التفريغ بعد استكماله.");
+      const fields={...(input.automationWorkStatus!==undefined?{automationWorkStatus:input.automationWorkStatus}:{}),
+        ...(input.manualWorkStatus!==undefined?{manualWorkStatus:input.manualWorkStatus}:{})};
+      const next=(await db.query(
+        `UPDATE legal_records SET document_review=COALESCE(document_review,'{}'::jsonb)||$1::jsonb,
+          revision=revision+1,updated_by=$2,updated_at=now() WHERE id=$3
+          RETURNING id,revision,document_review,transcription_status`,[JSON.stringify(fields),user.id,recordId])).rows[0];
+      const before=Object.fromEntries(Object.keys(fields).map(k=>[k,old.document_review?.[k]??null]));
+      await audit(db,user,"legal.update","legalRecord",recordId,before,fields);
       return next;
     });
     res.json({record});

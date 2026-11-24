@@ -1,5 +1,5 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
-import { documentImageStates, documentImportanceScores, documentImageLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImageStates, documentImportanceScores, documentImageLabels, documentAutomationWorkLabels, documentManualWorkLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
 import { DocumentReviewCard, DocumentReviewFields, groupDocumentRows, type ReviewEntry } from "./LegalDocumentReview";
 import { Fragment, useState } from "react";
 import "./LegalCasesPage.css";
@@ -81,6 +81,7 @@ export function LegalCasesPage() {
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
  const [imageFilter,setImageFilter]=useState(""),[importanceFilter,setImportanceFilter]=useState(""),[transcriptionFilter,setTranscriptionFilter]=useState("");
  const [importanceOrder,setImportanceOrder]=useState("");
+ const [automationWork,setAutomationWork]=useState(""),[manualWork,setManualWork]=useState("");
  const manual=globalKind==="document"&&params.get("manual")==="1";
  const manualCase=manual?(Number(params.get("manualCase"))||null):null;
  const [expandedId,setExpandedId]=useState<number|null>(null);
@@ -98,7 +99,7 @@ export function LegalCasesPage() {
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
- const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter,importanceOrder],queryFn:({signal})=>{
+ const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter,importanceOrder,automationWork,manualWork],queryFn:({signal})=>{
   const query=new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"});
   if(globalKind==="document"){
    if(manual)query.set("manual","true");
@@ -107,6 +108,8 @@ export function LegalCasesPage() {
    if(importanceFilter)query.set("importanceScore",importanceFilter);
    if(importanceOrder)query.set("importanceOrder",importanceOrder);
    if(transcriptionFilter)query.set("transcriptionState",transcriptionFilter);
+   if(automationWork)query.set("automationWork",automationWork);
+   if(manualWork)query.set("manualWork",manualWork);
   }
   return api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+query,{signal});
  },enabled:!!user&&!!globalKind});
@@ -119,7 +122,7 @@ export function LegalCasesPage() {
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
  const resetGlobalPage=()=>{setGlobalPage(1);setExpandedId(null);setFocus(null);};
- const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImportanceFilter("");setTranscriptionFilter("");setImportanceOrder("");};
+ const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImportanceFilter("");setTranscriptionFilter("");setImportanceOrder("");setAutomationWork("");setManualWork("");};
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
   resetGlobalContext();
   setParams(p=>{const next=new URLSearchParams(p);next.delete("manual");next.delete("manualCase");if(kind)next.set("list",kind);else next.delete("list");return next;});
@@ -181,6 +184,8 @@ export function LegalCasesPage() {
   <Select label="حالة الصورة" value={imageFilter} onChange={e=>{setImageFilter(e.target.value);resetGlobalPage();}}><option value="">كل الصور</option>{documentImageStates.map(s=><option key={s} value={s}>{documentImageLabels[s]}</option>)}</Select>
   <Select label="حالة التفريغ" value={transcriptionFilter} onChange={e=>{setTranscriptionFilter(e.target.value);resetGlobalPage();}}><option value="">كل حالات التفريغ</option>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
   <Select label="أهمية النقص" value={importanceFilter} onChange={e=>{setImportanceFilter(e.target.value);resetGlobalPage();}}><option value="">كل الدرجات</option>{documentImportanceScores.map(score=><option key={score} value={score}>{score} / 10</option>)}<option value="unrated">غير مقيّمة من 10</option></Select>
+  <Select label="المهام الآلية" value={automationWork} onChange={e=>{setAutomationWork(e.target.value);resetGlobalPage();}}><option value="">الكل</option>{(["completed","remaining"] as const).map(s=><option key={s} value={s}>{documentAutomationWorkLabels[s]}</option>)}</Select>
+  <Select label="المهام اليدوية" value={manualWork} onChange={e=>{setManualWork(e.target.value);resetGlobalPage();}}><option value="">الكل</option>{(["remaining","none"] as const).map(s=><option key={s} value={s}>{documentManualWorkLabels[s]}</option>)}</Select>
   <Select label="ترتيب المستندات" value={importanceOrder} onChange={e=>{setImportanceOrder(e.target.value);resetGlobalPage();}}>
    <option value="">الترتيب المعتاد</option><option value="desc">أهمية النقص: الأعلى أولًا</option><option value="asc">أهمية النقص: الأدنى أولًا</option>
   </Select>

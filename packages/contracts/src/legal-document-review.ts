@@ -9,7 +9,30 @@ export const documentImageLabels:Record<DocumentImageState,string> = {
   external:"المصدر الخارجي فقط",
   unverified:"غير متحققة",
 };
+export const documentAutomationWorkStatuses=["unknown","remaining","completed"] as const;
+export const documentManualWorkStatuses=["unknown","remaining","none"] as const;
+export type DocumentAutomationWorkStatus=typeof documentAutomationWorkStatuses[number];
+export type DocumentManualWorkStatus=typeof documentManualWorkStatuses[number];
+export const documentAutomationWorkLabels:Record<DocumentAutomationWorkStatus,string>={
+  unknown:"حالة المهام الآلية غير محددة",remaining:"متبقي مهام آلية",completed:"تمت المهام الآلية",
+};
+export const documentManualWorkLabels:Record<DocumentManualWorkStatus,string>={
+  unknown:"حالة المهام اليدوية غير محددة",remaining:"متبقي مهام يدوية",none:"لا توجد مهام يدوية",
+};
+export function hasPendingManualTranscription(review:LegalDocumentReview|undefined,status:string|null) {
+  return !["complete","duplicate","archived"].includes(status??"unknown") &&
+    !!review?.manualTranscription && !!review.missingPassage?.trim() &&
+    (review.importanceScore!=null || review.priority==="high");
+}
+export function documentWorkStatuses(review:LegalDocumentReview|undefined,transcriptionStatus:string|null) {
+  return {
+    automation:review?.automationWorkStatus??"unknown",
+    manual:hasPendingManualTranscription(review,transcriptionStatus)?"remaining" as const:review?.manualWorkStatus??"unknown",
+  };
+}
 export type LegalDocumentReview = {
+  automationWorkStatus?:DocumentAutomationWorkStatus;
+  manualWorkStatus?:DocumentManualWorkStatus;
   documentTitle?:string;
   sourceFilename?:string;
   sourcePage?:number;
