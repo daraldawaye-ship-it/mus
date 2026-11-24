@@ -92,7 +92,7 @@ test("reactivation notifies the subscribed owner on new episodes, not migration 
     await db.exec("UPDATE notification_settings SET min_interval_hours=NULL WHERE company_id=2");
     await db.exec("UPDATE stock_balances SET quantity_smallest=0 WHERE company_id=2 AND item_id IN (10,20)");
     await scan(2);
-    const resolved = await db.query("SELECT reason FROM notification_auto_resolutions ORDER BY notification_id");
+    const resolved = await db.query<{reason:string}>("SELECT reason FROM notification_auto_resolutions ORDER BY notification_id");
     assert.deepEqual(resolved.rows.map(r=>r.reason),["negative_balance_recovered","negative_balance_recovered"]);
     await db.exec("UPDATE stock_balances SET quantity_smallest=-1 WHERE company_id=2 AND item_id IN (10,20)");
     await scan(2);
