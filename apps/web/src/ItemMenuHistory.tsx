@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
-import { formatWorkPanelOperationQuantity, formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
+import { formatWorkPanelOperationQuantity, formatWorkPanelMovementQuantity, workPanelStockMovementQuantity, isStockAdjustment, stockMovementOperationReference, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
 import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
@@ -48,7 +48,8 @@ type MovementInvoiceDetail = {
 };
 
 type StaffDockMovement={
-  id:number; kind:"sale"|"sales_return"|"purchase"|"purchase_return";
+  id:number; kind:"sale"|"sales_return"|"purchase"|"purchase_return"|"adjustment_surplus"|"adjustment_shortage";
+  operationId:number|null;
   documentDate:string;quantitySmallest:string;postedUnitPrice:string|null;firstUnitMultiplier:string|null;
 };
 
@@ -56,17 +57,18 @@ function StaffWorkPanelMovementTable({rows,beforeFooter,footer,purchaseOnly}:{
   rows:StaffDockMovement[];beforeFooter?:ReactNode;footer?:ReactNode;purchaseOnly:boolean;
 }){
   return <div className="invoice-item-options-scroll work-panel-movement-scroll" role="region" tabIndex={0}
-    aria-label={purchaseOnly?"جدول مشتريات الصنف":"جدول حركات بيع وشراء الصنف"}>
+    aria-label={purchaseOnly?"جدول مشتريات الصنف":"جدول حركات الصنف"}>
     {!!rows.length&&<table className="invoice-item-options-table invoice-item-history-sales-table work-panel-movement-table work-panel-movement-staff" dir="rtl">
       <thead><tr><th scope="col">النوع</th><th scope="col">الكمية</th><th scope="col">السعر</th><th scope="col">التاريخ</th></tr></thead>
       <tbody>{rows.map(row=>{
-        const quantity=formatWorkPanelMovementQuantity(row.quantitySmallest,row.firstUnitMultiplier);
+        const quantity=workPanelStockMovementQuantity(row.kind,row.quantitySmallest,row.firstUnitMultiplier);
         return <tr key={row.id}>
           <td><ScrollableTableCell><span className="work-panel-movement-kind" data-movement-kind={row.kind}>
             <span className="work-panel-movement-kind-dot" aria-hidden="true" />{workPanelMovementKindLabels[row.kind]}
+            {row.operationId!=null&&<bdi title="رقم تسوية المخزون"> #{row.operationId}</bdi>}
           </span></ScrollableTableCell></td>
-          <td className="invoice-item-options-number" title={quantity.exact??"لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
-            <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi></ScrollableTableCell>
+          <td className="invoice-item-options-number" title={isStockAdjustment(row.kind)?"كمية التسوية بأصغر جزء":quantity.exact??"لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
+            <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>{isStockAdjustment(row.kind)&&<small> أصغر جزء</small>}</ScrollableTableCell>
           </td>
           <td className="invoice-item-options-number" title={row.postedUnitPrice??undefined}><ScrollableTableCell><bdi>{formatWholeMoney(row.postedUnitPrice)}</bdi></ScrollableTableCell></td>
           <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
@@ -103,7 +105,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, beforeFooter, footer, sc
         <tbody>{rows.map(row => {
           const detail = invoices.get(row.id);
           const invoice = detail?.invoiceLineId === row.invoiceLineId && detail?.invoiceId === row.invoiceId ? detail : undefined;
-          const quantity = formatWorkPanelMovementQuantity(row.quantitySmallest, invoice?.firstUnitMultiplier);
+          const quantity = workPanelStockMovementQuantity(row.kind,row.quantitySmallest, invoice?.firstUnitMultiplier);
           const purchase = row.kind === "purchase" || row.kind === "purchase_return";
           const sale = row.kind === "sale" || row.kind === "sales_return";
           const counterparty = purchase ? (invoice?.partyName?.trim() || workPanelPurchaseSupplier(row)) :
@@ -114,7 +116,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, beforeFooter, footer, sc
               <ScrollableTableCell><bdi>{formatWholeMoney(value)}</bdi></ScrollableTableCell>
             </td>
           );
-          const reference = !row.invoiceId && row.operationId ? `عملية ${row.operationId}` : null;
+          const reference = !row.invoiceId ? stockMovementOperationReference(row) : null;
           const details = [counterparty, row.createdByName, row.doctorName, row.notes]
             .flatMap(value => value?.trim() ? [value.trim().replace(/\s+/g, " ")] : []);
           return (
@@ -126,8 +128,8 @@ function WorkPanelMovementTable({ rows, invoiceDetails, beforeFooter, footer, sc
                     <span>{workPanelMovementKindLabels[row.kind]}</span>
                   </span></ScrollableTableCell>
                 </td>
-                <td className="invoice-item-options-number" title={quantity.exact ?? "لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
-                  <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi></ScrollableTableCell>
+                <td className="invoice-item-options-number" title={isStockAdjustment(row.kind)?"كمية التسوية بأصغر جزء":quantity.exact ?? "لا يتوفر معامل تاريخي موثّق للتحويل إلى الوحدة الأولى"}>
+                  <ScrollableTableCell><bdi dir="ltr" data-work-panel-quantity={quantity.direction}>{quantity.text}</bdi>{isStockAdjustment(row.kind)&&<small> أصغر جزء</small>}</ScrollableTableCell>
                 </td>
                 {money(invoice?.postedUnitPrice, "سعر الوحدة حسب الفاتورة:")}
                 <td title={row.documentDate}><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
@@ -469,7 +471,7 @@ export function ItemMenuHistory({
               <div className="user-menu-item-history-meta">
                 <span title={row.locationName}>{row.locationName}</span>
                 <span>{row.invoiceId ? `فاتورة ${row.invoiceId}` :
-                  row.operationId ? `عملية ${row.operationId}` : "حركة مخزون"}</span>
+                  stockMovementOperationReference(row) ?? "حركة مخزون"}</span>
               </div>
             </div>
           )) : history.data?.items.map(row => (

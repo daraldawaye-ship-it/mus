@@ -7,11 +7,24 @@ export const workPanelMovementKindLabels: Record<StockMovementKind, string> = {
   purchase_return: "مرتجع شراء",
   transfer_in: "مناقلة",
   transfer_out: "مناقلة",
-  adjustment_surplus: "تسوية",
-  adjustment_shortage: "تسوية",
+  adjustment_surplus: "تسوية زيادة",
+  adjustment_shortage: "تسوية نقص",
   unit_rebase: "تحويل الوحدة",
   reversal: "عكس حركة",
 };
+
+export function isStockAdjustment(kind:StockMovementKind):boolean {
+  return kind==="adjustment_surplus"||kind==="adjustment_shortage";
+}
+export function stockMovementOperationReference(row:Pick<StockMovement,"kind"|"operationId">):string|null {
+  if(row.operationId==null)return null;
+  return (isStockAdjustment(row.kind)?"تسوية رقم ":"عملية ")+row.operationId;
+}
+export function workPanelStockMovementQuantity(kind:StockMovementKind,raw:string,firstUnitMultiplier?:string|null) {
+  // A settlement has no invoice pack-size snapshot. Show the exact posted delta
+  // explicitly in its smallest unit instead of implying a conversion.
+  return formatWorkPanelMovementQuantity(raw,isStockAdjustment(kind)?"1":firstUnitMultiplier);
+}
 
 export function workPanelPurchaseSupplier(row: Pick<StockMovement,
   "kind" | "invoiceId" | "originalMovementId" | "supplierAccountName" | "supplierInferenceSource">): string | null {

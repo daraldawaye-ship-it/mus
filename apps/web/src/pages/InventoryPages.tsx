@@ -44,7 +44,7 @@ import { StagedMovementsPanel } from "../StagedInvoiceViews";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { firstUnitStockText, invoiceSearchStock } from "../sale-stock-quantity";
-import { signedStockMovementQuantity } from "../stock-movement-display";
+import { signedStockMovementQuantity, stockMovementOperationReference } from "../stock-movement-display";
 import { adenInvoiceToday } from "../invoice-save-date";
 import {
   Button,
@@ -845,7 +845,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
               فاتورة {row.original.invoiceId}
             </Link>
           ) : row.original.operationId ? (
-            `عملية ${row.original.operationId}`
+            stockMovementOperationReference(row.original)
           ) : (
             "—"
           ),
