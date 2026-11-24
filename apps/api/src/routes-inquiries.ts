@@ -9,8 +9,9 @@ import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { syncUnansweredInquiryNotifications } from "./services/inquiry-notifications.ts";
+import { hiddenInquiryDailyLimit, hiddenInquiryGroup, hiddenInquiryQuota, lockHiddenInquiries } from "./services/hidden-inquiries.ts";
 
-const requestSchema = z.object({
+export const inquiryCreateSchema = z.object({
   requestType:z.enum(["question","clarification","information","confirmation","execution"]).default("question"),
   requestText:z.string().trim().min(1).max(4000),
   taskName:z.string().trim().max(200).default(""),
@@ -25,7 +26,9 @@ const requestSchema = z.object({
   linkedRecordId:z.number().int().positive().nullable().default(null),
   followUpAction:z.string().trim().max(4000).default(""),
   idempotencyKey:z.string().uuid(),
+  hidden:z.boolean().optional(),
 }).strict();
+export const hiddenInquiryReleaseSchema = z.object({idempotencyKey:z.string().uuid()}).strict();
 export const inquiryTaskNameSchema = z.object({
   taskName:z.string().trim().min(1).max(200),
   expectedUpdatedAt:z.string().datetime({offset:true}),
@@ -124,6 +127,60 @@ async function scope(db:Pool|PoolClient,req:Request,write=false) {
 function managerOnly(manager:boolean) {
   if(!manager)throw new HttpError(403,"forbidden","إنشاء الطلبات ومتابعتها لمالك المنصة أو إدارة الشركة");
 }
+type InquiryInput=z.infer<typeof inquiryCreateSchema>;
+async function duplicateOpenInquiry(db:PoolClient,companyId:number|null,input:InquiryInput) {
+  if(!input.linkedTable || input.linkedRecordId===null)return false;
+  return !!(await db.query(
+    "SELECT id FROM inquiry_requests WHERE company_id IS NOT DISTINCT FROM $1 "+
+    "AND linked_table=$2 AND linked_record_id=$3 AND request_text=$4 AND status='open' LIMIT 1",
+    [companyId,input.linkedTable,input.linkedRecordId,input.requestText])).rowCount;
+}
+async function inquiryRecipients(db:PoolClient,companyId:number|null,input:InquiryInput,strict:boolean) {
+      const selectedUsers=[...new Set(input.userIds)];
+      const candidates=await db.query(
+        "SELECT u.id FROM users u WHERE u.id=ANY($1::int[]) AND NOT u.archived AND NOT u.suspended "+
+        "AND ($2::integer IS NULL OR u.owner OR EXISTS(SELECT 1 FROM employees e "+
+        "WHERE e.company_id=$2 AND e.user_id=u.id AND e.active))",
+        [selectedUsers,companyId]);
+      if(strict && candidates.rowCount!==selectedUsers.length)
+        throw new HttpError(400,"invalid_recipients","بعض المستخدمين ليسوا ضمن نطاق الشركة أو حساباتهم غير نشطة");
+      const assigned=new Set<number>(candidates.rows.map(r=>Number(r.id)));
+      if(companyId!==null && input.positionKeys.length){
+        const found=await db.query(
+          "SELECT DISTINCT e.user_id FROM employees e JOIN users u ON u.id=e.user_id "+
+          "WHERE e.company_id=$1 AND e.active AND NOT u.archived AND NOT u.suspended "+
+          "AND e.position_keys && $2::text[]",
+          [companyId,input.positionKeys]);
+        for(const r of found.rows)assigned.add(Number(r.user_id));
+      }
+      if(strict && !assigned.size)throw new HttpError(400,"no_recipients","اختر مستخدمًا واحدًا أو صفة تضم موظفين نشطين");
+      if(strict && assigned.size>300)throw new HttpError(400,"too_many_recipients","الحد الأقصى 300 مستخدم في الطلب");
+
+  return {assigned,selectedUsers};
+}
+async function publishInquiry(db:PoolClient,user:ReturnType<typeof actor>,creatorId:number,companyId:number|null,
+  input:InquiryInput,taskName:string,recipients:Awaited<ReturnType<typeof inquiryRecipients>>) {
+  const {assigned,selectedUsers}=recipients;
+      const inserted=await db.query(
+        "INSERT INTO inquiry_requests(company_id,request_type,request_text,answer_type,answer_options,"+
+        "response_mode,recipient_selection,priority,due_at,linked_table,linked_record_id,follow_up_action,created_by,idempotency_key,task_name) "+
+        "VALUES($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id",
+        [companyId,input.requestType,input.requestText,input.answerType,JSON.stringify(input.answerOptions),
+        input.responseMode,JSON.stringify({userIds:selectedUsers,positionKeys:input.positionKeys}),
+        input.priority,input.dueAt,input.linkedTable,input.linkedRecordId,input.followUpAction,creatorId,input.idempotencyKey,taskName]);
+      const requestId=Number(inserted.rows[0].id);
+      for(const target of assigned)
+        await db.query("INSERT INTO inquiry_targets(inquiry_id,user_id) VALUES($1,$2)",[requestId,target]);
+      await audit(db,user,"inquiry.create","inquiry",requestId,null,
+        {requestText:input.requestText,responseMode:input.responseMode,recipientCount:assigned.size,taskName},companyId);
+      await syncUnansweredInquiryNotifications(db, companyId, [...assigned]);
+      return {id:requestId,recipientCount:assigned.size,reused:false};
+
+}
+function hiddenInquiryAccess(companyId:number|null,manager:boolean) {
+  if(companyId!==2)missing("قائمة الاستفسارات المخفية غير متاحة في هذا النطاق");
+  managerOnly(manager);
+}
 function formatRow(r:QueryResultRow) {
   return {
     id:Number(r.id),companyId:r.company_id,requestType:r.request_type,
@@ -207,13 +264,92 @@ export function inquiryRoutes(pool:Pool):Router {
       [companyId,canSeeAll,user.id,q,filter,(page-1)*60]);
     res.json({items:await hydrate(pool,rows.rows,user.id,canSeeAll),page,pageSize:60});
   }));
+  router.get("/companies/:companyId/inquiries/hidden",handler(async(req,res)=>{
+    const {companyId,manager,page:access}=await scope(pool,req);
+    hiddenInquiryAccess(companyId,manager);
+    assertDirectoryAccess(access,"edit");
+    const page=req.query.page===undefined?1:Number(req.query.page);
+    if(!Number.isSafeInteger(page)||page<1||page>100000)throw new HttpError(400,"invalid_page","صفحة غير صالحة");
+    const q=await pool.query(
+      `SELECT q.id,q.payload->>'requestText' AS "requestText",q.payload->>'taskName' AS "taskName",
+        q.payload->>'responseMode' AS "responseMode",q.created_at AS "createdAt",q.released_inquiry_id AS "inquiryId",
+        q.released_day::text AS "releasedDay",q.release_group AS "queueGroup"
+        FROM inquiry_hidden_queue q WHERE q.company_id=$1 AND q.released_day IS NULL
+        ORDER BY q.id LIMIT 60 OFFSET $2`,[companyId,(page-1)*60]);
+    const [{total}]= (await pool.query<{total:number}>(
+      "SELECT count(*)::integer AS total FROM inquiry_hidden_queue WHERE company_id=$1 AND released_day IS NULL",[companyId])).rows;
+    const quota=await hiddenInquiryQuota(pool,companyId!);
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({items:q.rows,total,page,pageSize:60,...quota});
+  }));
+  router.post("/companies/:companyId/inquiries/hidden/release",handler(async(req,res)=>{
+    const {idempotencyKey}=parse(hiddenInquiryReleaseSchema,req.body);
+    const result=await transaction(pool,async db=>{
+      const {user,companyId,manager,page}=await scope(db,req,true);
+      hiddenInquiryAccess(companyId,manager);
+      assertDirectoryAccess(page,"create");assertDirectoryAccess(page,"edit");
+      const cid=companyId!;
+      await lockHiddenInquiries(db,cid);
+      const previous=await db.query("SELECT result FROM inquiry_hidden_runs WHERE company_id=$1 AND idempotency_key=$2",[cid,idempotencyKey]);
+      if(previous.rows[0])return previous.rows[0].result;
+      const quota=await hiddenInquiryQuota(db,cid);
+      let matchCapacity=quota.pharmacistRemaining;
+      const released:{queueId:number;inquiryId:number}[]=[];
+      let scanned=0, blocked=0;
+      // Skip quota-blocked item matching at the DB, so it cannot wedge FIFO for other work.
+      if(quota.remainingToday>0){
+        const ready=await db.query(
+          `WITH eligible AS (
+            SELECT q.id,q.payload,q.created_by,q.release_group,
+              row_number() OVER(PARTITION BY q.release_group ORDER BY q.id) AS rank
+            FROM inquiry_hidden_queue q
+            WHERE q.company_id=$1 AND q.released_day IS NULL
+              AND ($2>0 OR q.release_group<>'pharmacist-item-match') AND (
+                EXISTS(SELECT 1 FROM users u WHERE u.id IN
+                  (SELECT value::integer FROM jsonb_array_elements_text(q.payload->'userIds'))
+                  AND NOT u.archived AND NOT u.suspended AND
+                    (u.owner OR EXISTS(SELECT 1 FROM employees e WHERE e.user_id=u.id AND e.company_id=$1 AND e.active)))
+                OR EXISTS(SELECT 1 FROM employees e JOIN users u ON u.id=e.user_id
+                  WHERE e.company_id=$1 AND e.active AND NOT u.archived AND NOT u.suspended
+                  AND e.position_keys && ARRAY(SELECT jsonb_array_elements_text(q.payload->'positionKeys')))
+              )
+            ) SELECT id,payload,created_by,release_group FROM eligible WHERE rank<=120 ORDER BY id`,[cid,matchCapacity]);
+        for(const row of ready.rows){
+          if(released.length>=quota.remainingToday)break;
+          scanned++;
+          if(row.release_group==="pharmacist-item-match" && matchCapacity<=0){blocked++;continue;}
+          const input=parse(inquiryCreateSchema,row.payload);
+          const recipients=await inquiryRecipients(db,cid,input,false);
+          if(!recipients.assigned.size || recipients.assigned.size>300 || await duplicateOpenInquiry(db,cid,input)){blocked++;continue;}
+          const item=await publishInquiry(db,user,Number(row.created_by),cid,input,input.taskName,recipients);
+          const stamped=await db.query(
+            `UPDATE inquiry_hidden_queue
+              SET released_day=$1::date,released_inquiry_id=$2,released_at=clock_timestamp(),released_slot=$5
+              WHERE id=$3 AND company_id=$4 AND released_day IS NULL
+                AND $1::date=(clock_timestamp() AT TIME ZONE 'Asia/Aden')::date RETURNING id`,
+            [quota.day,item.id,row.id,cid,quota.releasedToday+released.length+1]);
+          if(!stamped.rowCount)throw new HttpError(409,"inquiry_release_day_changed","تغير يوم عدن أثناء الإطلاق؛ أعد المحاولة");
+          released.push({queueId:Number(row.id),inquiryId:item.id});
+          if(row.release_group==="pharmacist-item-match")matchCapacity--;
+        }
+      }
+      const releasedToday=quota.releasedToday+released.length;
+      const payload={day:quota.day,releasedToday,remainingToday:hiddenInquiryDailyLimit-releasedToday,
+        pharmacistRemaining:matchCapacity,released,scanned,blocked};
+      await db.query("INSERT INTO inquiry_hidden_runs(company_id,idempotency_key,release_day,result) VALUES($1,$2,$3,$4::jsonb)",
+        [cid,idempotencyKey,quota.day,JSON.stringify(payload)]);
+      if(released.length)await audit(db,user,"inquiry.create","inquiry-hidden-release",null,null,payload,cid);
+      return payload;
+    });
+    res.json(result);
+  }));
   router.get(roots.map(root=>root+"/:inquiryId"),handler(async(req,res)=>{
     const {user,companyId,canSeeAll}=await scope(pool,req);
     const row=await visibleRow(pool,id(req.params.inquiryId),companyId,user.id,canSeeAll);
     res.json({item:(await hydrate(pool,[row],user.id,canSeeAll))[0]});
   }));
   router.post(roots,handler(async(req,res)=>{
-    const input=parse(requestSchema,req.body);
+    const input=parse(inquiryCreateSchema,req.body);
     if(input.answerType==="choice" && (input.answerOptions.length<2||input.answerOptions.length>4))
       throw new HttpError(400,"invalid_options","اختر خيارين إلى أربعة خيارات");
     if(input.answerType!=="choice" && input.answerOptions.length)
@@ -226,34 +362,24 @@ export function inquiryRoutes(pool:Pool):Router {
       const {user,companyId,manager,page}=await scope(db,req,true);
       managerOnly(manager);
       assertDirectoryAccess(page,"create");
+      if(input.hidden){
+        hiddenInquiryAccess(companyId,manager);
+        assertDirectoryAccess(page,"edit");
+      }
+      if(companyId===2)await lockHiddenInquiries(db,companyId);
+      if(companyId===2){
+        const waiting=(await db.query(
+          "SELECT id,released_inquiry_id FROM inquiry_hidden_queue WHERE company_id=$1 AND created_by=$2 AND idempotency_key=$3",
+          [companyId,user.id,input.idempotencyKey])).rows[0];
+        if(waiting)return {id:waiting.id,queueId:waiting.id,inquiryId:waiting.released_inquiry_id,
+          hidden:true,recipientCount:0,reused:true};
+      }
       const existing=(await db.query(
         "SELECT id FROM inquiry_requests WHERE created_by=$1 AND idempotency_key=$2",
         [user.id,input.idempotencyKey])).rows[0];
       if(existing)return {id:existing.id,reused:true};
       if(companyId===null && input.positionKeys.length)
         throw new HttpError(400,"position_scope","الصفات لا تُستخدم إلا داخل الشركة");
-      if(companyId!==null && input.positionKeys.length){
-        // zod guarantees only known employee position keys.
-      }
-      const selectedUsers=[...new Set(input.userIds)];
-      const candidates=await db.query(
-        "SELECT u.id FROM users u WHERE u.id=ANY($1::int[]) AND NOT u.archived AND NOT u.suspended "+
-        "AND ($2::integer IS NULL OR u.owner OR EXISTS(SELECT 1 FROM employees e "+
-        "WHERE e.company_id=$2 AND e.user_id=u.id AND e.active))",
-        [selectedUsers,companyId]);
-      if(candidates.rowCount!==selectedUsers.length)
-        throw new HttpError(400,"invalid_recipients","بعض المستخدمين ليسوا ضمن نطاق الشركة أو حساباتهم غير نشطة");
-      const assigned=new Set<number>(selectedUsers);
-      if(companyId!==null && input.positionKeys.length){
-        const found=await db.query(
-          "SELECT DISTINCT e.user_id FROM employees e JOIN users u ON u.id=e.user_id "+
-          "WHERE e.company_id=$1 AND e.active AND NOT u.archived AND NOT u.suspended "+
-          "AND e.position_keys && $2::text[]",
-          [companyId,input.positionKeys]);
-        for(const r of found.rows)assigned.add(Number(r.user_id));
-      }
-      if(!assigned.size)throw new HttpError(400,"no_recipients","اختر مستخدمًا واحدًا أو صفة تضم موظفين نشطين");
-      if(assigned.size>300)throw new HttpError(400,"too_many_recipients","الحد الأقصى 300 مستخدم في الطلب");
       if(input.linkedTable&&input.linkedRecordId!==null){
         const duplicate=await db.query(
           "SELECT id FROM inquiry_requests WHERE company_id IS NOT DISTINCT FROM $1 "+
@@ -268,20 +394,29 @@ export function inquiryRoutes(pool:Pool):Router {
         /(سرنج|سيرنج|إبرة|ابرة|IV Set|موصل|طقم تسريب|تسريب وريدي)/i.test(input.requestText);
       const taskName=input.taskName || (legacyTask402 ? "متابعة ملحقات الامبولات والمحاليل" :
         await linkedCompanyInquiryTaskName(db,companyId,input.linkedTable,input.linkedRecordId));
-      const inserted=await db.query(
-        "INSERT INTO inquiry_requests(company_id,request_type,request_text,answer_type,answer_options,"+
-        "response_mode,recipient_selection,priority,due_at,linked_table,linked_record_id,follow_up_action,created_by,idempotency_key,task_name) "+
-        "VALUES($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id",
-        [companyId,input.requestType,input.requestText,input.answerType,JSON.stringify(input.answerOptions),
-        input.responseMode,JSON.stringify({userIds:selectedUsers,positionKeys:input.positionKeys}),
-        input.priority,input.dueAt,input.linkedTable,input.linkedRecordId,input.followUpAction,user.id,input.idempotencyKey,taskName]);
-      const requestId=Number(inserted.rows[0].id);
-      for(const target of assigned)
-        await db.query("INSERT INTO inquiry_targets(inquiry_id,user_id) VALUES($1,$2)",[requestId,target]);
-      await audit(db,user,"inquiry.create","inquiry",requestId,null,
-        {requestText:input.requestText,responseMode:input.responseMode,recipientCount:assigned.size,taskName},companyId);
-      await syncUnansweredInquiryNotifications(db, companyId, [...assigned]);
-      return {id:requestId,recipientCount:assigned.size,reused:false};
+
+      const group=hiddenInquiryGroup(input.linkedTable,input.linkedRecordId);
+      if(input.hidden){
+        if(!input.userIds.length && !input.positionKeys.length)
+          throw new HttpError(400,"no_recipients","اختر مستخدمًا واحدًا أو صفة موظف");
+        // Validate named users without inviting them; positions can be staffed only at release.
+        if(input.userIds.length)await inquiryRecipients(db,companyId,{...input,positionKeys:[]},true);
+        if(input.linkedTable&&input.linkedRecordId!==null && (await db.query(
+          `SELECT 1 FROM inquiry_hidden_queue WHERE company_id=$1 AND released_day IS NULL
+           AND payload->>'linkedTable'=$2 AND payload->>'linkedRecordId'=$3 AND payload->>'requestText'=$4 LIMIT 1`,
+          [companyId,input.linkedTable,String(input.linkedRecordId),input.requestText])).rowCount)
+          throw new HttpError(409,"duplicate_hidden_inquiry","يوجد استفسار مخفي مطابق لهذا السجل");
+        const queued=await db.query(
+          "INSERT INTO inquiry_hidden_queue(company_id,created_by,idempotency_key,payload,release_group) VALUES($1,$2,$3,$4::jsonb,$5) RETURNING id",
+          [companyId,user.id,input.idempotencyKey,JSON.stringify({...input,taskName}),group]);
+        const queueId=Number(queued.rows[0].id);
+        await audit(db,user,"inquiry.create","inquiry-hidden-queue",queueId,null,{queueId},companyId);
+        return {id:queueId,queueId,hidden:true,recipientCount:0,reused:false};
+      }
+      if(companyId===2&&group==="pharmacist-item-match"&&(await hiddenInquiryQuota(db,companyId)).pharmacistRemaining===0)
+        throw new HttpError(409,"inquiry_open_limit","وصلت استفسارات مطابقة الأصناف إلى الحد؛ احفظ الطلب كمخفي أو انتظر إغلاق استفسار");
+      const recipients=await inquiryRecipients(db,companyId,input,true);
+      return publishInquiry(db,user,user.id,companyId,input,taskName,recipients);
     });
     res.status(201).json(item);
   }));

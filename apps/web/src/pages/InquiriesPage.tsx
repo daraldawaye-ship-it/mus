@@ -28,7 +28,7 @@ const when=(v:string|null)=>v?new Date(v).toLocaleString("ar-YE",{dateStyle:"sho
 const fresh=()=>({
  requestType:"question",requestText:"",answerType:"text",answerOptions:["",""],responseMode:"first" as "first"|"all",
  userIds:[] as number[],positionKeys:[] as string[],priority:"normal",dueAt:"",
- taskName:"",linkedTable:"",linkedRecordId:"",followUpAction:""
+ taskName:"",linkedTable:"",linkedRecordId:"",followUpAction:"",hidden:false
 });
 function EnumField({label,value,options,onChange}:{label:string;value:string;options:[string,string][];onChange:(v:string)=>void}) {
  return <label className="field"><span>{label}</span>
@@ -121,6 +121,9 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
  const root=companyId?'/companies/'+companyId+'/inquiries':"/inquiries";
  const [filter,setFilter]=useState(""),[search,setSearch]=useState("");
  const [creating,setCreating]=useState(false),[draft,setDraft]=useState(fresh);
+ const [showHidden,setShowHidden]=useState(false),[hiddenPage,setHiddenPage]=useState(1);
+ const canUseHidden=manager&&companyId===2;
+ const releaseKey=useRef(crypto.randomUUID());
  const [recipientSearch,setRecipientSearch]=useState("");
  const [selectedId,setSelectedId]=useState<number|null>(null);
  const followUp=useRef<HTMLElement>(null);
@@ -132,6 +135,12 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
    queryKey:["inquiries",user?.id,companyId,filter,search],
    queryFn:()=>api<{items:Inquiry[]}>(root+"?status="+encodeURIComponent(filter)+"&q="+encodeURIComponent(search)),
    enabled:!!user,networkMode:"always"
+ });
+ const queue=useQuery({
+   queryKey:["hidden-inquiries",user?.id,companyId,hiddenPage],
+   queryFn:()=>api<{items:{id:number;requestText:string;taskName:string;createdAt:string}[];total:number;pageSize:number;remainingToday:number}>(
+     root+"/hidden?page="+hiddenPage),
+   enabled:!!user&&canUseHidden&&showHidden,networkMode:"always"
  });
  const people=useQuery({
    queryKey:["inquiry-recipients",user?.id,companyId,recipientSearch],
@@ -158,10 +167,28 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
        linkedRecordId:draft.linkedRecordId?Number(draft.linkedRecordId):null,
        dueAt:draft.dueAt?new Date(draft.dueAt).toISOString():null,
        idempotencyKey:createKey.current};
-     const result=await api<{id:number;recipientCount:number}>(root,{method:"POST",body});
-     setSuccess("أُنشئ الطلب رقم "+result.id+" لـ "+result.recipientCount+" مستخدمًا");
+     const result=await api<{id:number;recipientCount:number;hidden?:boolean}>(root,{method:"POST",body});
+     setSuccess(result.hidden?"حُفظ الاستفسار مخفيًا دون إرساله إلى المعنيين":"أُنشئ الطلب رقم "+result.id+" لـ "+result.recipientCount+" مستخدمًا");
+     if(result.hidden){
+       setHiddenPage(1);setShowHidden(true);
+       await client.invalidateQueries({queryKey:["hidden-inquiries",user?.id,companyId]});
+     }
      setCreating(false);setDraft(fresh());createKey.current=crypto.randomUUID();
      await client.invalidateQueries({queryKey:["inquiries",user?.id,companyId]});
+   }catch(e){invalid(e);}finally{setBusy(false);}
+ }
+ async function releaseHidden(){
+   if(busy||!canUseHidden)return;
+   setBusy(true);setError("");setSuccess("");
+   try{
+     const result=await api<{released:unknown[];remainingToday:number}>(root+"/hidden/release",
+       {method:"POST",body:{idempotencyKey:releaseKey.current}});
+     releaseKey.current=crypto.randomUUID();
+     setSuccess(result.released.length?"ظهر "+result.released.length+" استفسار للمعنيين":result.remainingToday===0?"بلغت حد اليوم":"لا توجد استفسارات مؤهلة للإطلاق الآن");
+     await Promise.all([
+       client.invalidateQueries({queryKey:["hidden-inquiries",user?.id,companyId]}),
+       client.invalidateQueries({queryKey:["inquiries",user?.id,companyId]}),
+     ]);
    }catch(e){invalid(e);}finally{setBusy(false);}
  }
  async function changeStatus(record:Inquiry,status:"in_progress"|"done"|"closed"){
@@ -176,11 +203,25 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
  return <div className="inquiries-page">
   <PageHeader title="الاستفسارات والطلبات"
     description={"طلبات مرتبطة بالمهام والسجلات؛ لكل موظف رد محفوظ باسمه. طلباتك المعلقة: "+pending}
-    actions={manager?<Button onClick={()=>{setCreating(v=>!v);setError("");setSuccess("");}}>+ طلب جديد</Button>:undefined}/>
+    actions={manager?<><Button onClick={()=>{setCreating(v=>!v);setError("");setSuccess("");}}>+ طلب جديد</Button>
+      {canUseHidden&&<Button variant="secondary" onClick={()=>setShowHidden(v=>!v)}>استفسارات مخفية</Button>}</>:undefined}/>
   {error&&<Notice tone="error">{error}</Notice>}
   {success&&<Notice tone="success">{success}</Notice>}
+  {showHidden&&canUseHidden&&<Card title="استفسارات مخفية">
+    <p>لا يراها المعنيون قبل الإطلاق. الحد الأقصى خمسة يوميًا بتوقيت عدن.</p>
+    {queue.isPending?<Notice>جارٍ تحميل الاستفسارات المخفية…</Notice>:queue.isError?<Notice tone="error">تعذر عرض القائمة المخفية.</Notice>:<>
+      <p>بانتظار الإطلاق: {queue.data.total}. المتاح اليوم: {queue.data.remainingToday}.</p>
+      {!!queue.data.items.length&&<ul>{queue.data.items.map(row=><li key={row.id}>{row.requestText} {row.taskName&&<small>({row.taskName})</small>}</li>)}</ul>}
+      {queue.data.total>queue.data.pageSize&&<div className="form-actions">
+        <Button variant="secondary" disabled={hiddenPage<=1} onClick={()=>setHiddenPage(p=>p-1)}>السابق</Button>
+        <Button variant="secondary" disabled={hiddenPage*queue.data.pageSize>=queue.data.total} onClick={()=>setHiddenPage(p=>p+1)}>التالي</Button>
+      </div>}
+      <Button disabled={busy||queue.data.remainingToday===0||queue.data.total===0} onClick={()=>void releaseHidden()}>إظهار الاستفسارات المؤهلة</Button>
+    </>}
+  </Card>}
   {creating&&manager&&<Card title="إنشاء استفسار أو طلب">
     <form onSubmit={create} style={{display:"grid",gap:12}}>
+      {canUseHidden&&<label><input type="checkbox" checked={draft.hidden} onChange={event=>update("hidden",event.target.checked)}/> حفظ كمخفي دون إرساله الآن</label>}
       <div className="form-grid">
         <EnumField label="نوع الطلب" value={draft.requestType}
           options={["question","clarification","information","confirmation","execution"].map(x=>[x,labels[x]]) as [string,string][]}

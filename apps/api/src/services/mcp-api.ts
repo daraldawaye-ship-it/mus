@@ -15,7 +15,7 @@ import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
 import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput, aiTaskCadenceInput } from "../routes-ai-tasks.ts";
 
-import { inquiryTaskNameSchema, shortenCashboxQuestionSchema } from "../routes-inquiries.ts";
+import { inquiryTaskNameSchema, shortenCashboxQuestionSchema, inquiryCreateSchema, hiddenInquiryReleaseSchema } from "../routes-inquiries.ts";
 import {
   expectedCardCreateSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema,
 } from "../../../../packages/contracts/src/expected.ts";
@@ -55,6 +55,17 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "POST /companies/:companyId/expected-movements/:id/complete": {
     source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
     bodyContract: "expectedMovementCompleteSchema", bodySchema: z.toJSONSchema(expectedMovementCompleteSchema),
+  },
+  "GET /companies/:companyId/inquiries/hidden": {
+    source: "routes-inquiries.ts", queryFields: ["page"], pathParams: ["companyId"],
+  },
+  "POST /companies/:companyId/inquiries/hidden/release": {
+    source: "routes-inquiries.ts", queryFields: [], pathParams: ["companyId"],
+    bodyContract: "hiddenInquiryReleaseSchema", bodySchema: z.toJSONSchema(hiddenInquiryReleaseSchema, { io: "input" }),
+  },
+  "POST /companies/:companyId/inquiries": {
+    source: "routes-inquiries.ts", queryFields: [], pathParams: ["companyId"],
+    bodyContract: "inquiryCreateSchema", bodySchema: z.toJSONSchema(inquiryCreateSchema, { io: "input" }),
   },
   "PATCH /companies/:companyId/inquiries/:inquiryId/shorten-cashbox-question": {
     source: "routes-inquiries.ts", queryFields: [], pathParams: ["companyId", "inquiryId"],
