@@ -1,6 +1,17 @@
 export const documentPriorities = ["high","medium","low"] as const;
 export type DocumentPriority = typeof documentPriorities[number];
 export const documentPriorityLabels:Record<DocumentPriority,string> = {high:"عالية",medium:"متوسطة",low:"منخفضة"};
+export const documentImageTransferStates=["needs-transfer","covered","partial","not-applicable","unknown","attached"] as const;
+export type DocumentImageTransferState=typeof documentImageTransferStates[number];
+export const documentImageTransferLabels:Record<DocumentImageTransferState,string>={
+ "needs-transfer":"تحتاج نقل الصورة",
+ covered:"مكتمل رفع الصور في السجلات المرتبطة",
+ partial:"تغطية جزئية، راجع الصفحات الناقصة",
+ "not-applicable":"لا يحتاج إرفاق صورة",
+ unknown:"بانتظار التحقق من حاجة النقل",
+ attached:"الصورة محفوظة داخليًا",
+};
+export type DocumentImageTransferReview={state:Exclude<DocumentImageTransferState,"attached">;evidence:string};
 export const documentImageStates = ["internal","canonical","external","unverified"] as const;
 export type DocumentImageState = typeof documentImageStates[number];
 export const documentImageLabels:Record<DocumentImageState,string> = {
@@ -31,6 +42,7 @@ export function documentWorkStatuses(review:LegalDocumentReview|undefined,transc
   };
 }
 export type LegalDocumentReview = {
+  imageTransferReview?:DocumentImageTransferReview;
   automationWorkStatus?:DocumentAutomationWorkStatus;
   manualWorkStatus?:DocumentManualWorkStatus;
   documentTitle?:string;

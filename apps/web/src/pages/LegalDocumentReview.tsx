@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { documentImportanceScores, documentImageLabels, documentPriorityLabels, documentWorkStatuses, documentAutomationWorkStatuses, documentAutomationWorkLabels, documentManualWorkStatuses, documentManualWorkLabels, type DocumentAutomationWorkStatus, type DocumentManualWorkStatus, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImageTransferStates, documentImageTransferLabels, type DocumentImageTransferState, type DocumentImageTransferReview, documentImportanceScores, documentImageLabels, documentPriorityLabels, documentWorkStatuses, documentAutomationWorkStatuses, documentAutomationWorkLabels, documentManualWorkStatuses, documentManualWorkLabels, type DocumentAutomationWorkStatus, type DocumentManualWorkStatus, type LegalDocumentReview, type DocumentImageState } from "../../../../packages/contracts/src/legal-document-review";
 import { transcriptionLabels, type TranscriptionState } from "../../../../packages/contracts/src/legal-transcription";
 import { Field, Select } from "../ui";
 
 export type ReviewEntry = {
  id:number; title:string; document_review?:LegalDocumentReview; document_image_state?:DocumentImageState|null;
+ document_image_transfer_state?:DocumentImageTransferState|null;
  document_image_id?:number|null; document_case_ids?:number[]|null; transcription_status:TranscriptionState|null;
  drive_file_id:string; pdf_url:string; image_urls:string[];
 };
@@ -13,12 +14,14 @@ export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
  const review=entry.document_review;
  const work=documentWorkStatuses(review,entry.transcription_status);
  const state=entry.document_image_state??"unverified";
+ const transfer=entry.document_image_transfer_state??(state==="internal"||state==="canonical"?"attached":review?.imageTransferReview?.state??"unknown");
  const source=review?.sourceUrl||(entry.drive_file_id?"https://drive.google.com/file/d/"+encodeURIComponent(entry.drive_file_id)+"/view":"")||entry.pdf_url||entry.image_urls?.find(Boolean);
  const filename=review?.sourceFilename??entry.title.match(/(?:^|[\s—–])(\d{4}\.gif)\s*$/i)?.[1];
  return <section className="legal-review-card" aria-label="بطاقة بيانات المستند">
   {review?.documentTitle&&review.documentTitle!==entry.title&&<strong>{review.documentTitle}</strong>}
   <div className="legal-tags">
-   <span>الصورة: {documentImageLabels[state]}</span>
+   <span>الصورة: {transfer==="covered"||transfer==="partial"||transfer==="not-applicable"?documentImageTransferLabels[transfer]:documentImageLabels[state]}</span>
+   {(transfer==="needs-transfer"||transfer==="unknown")&&<span>نقل الصور: {documentImageTransferLabels[transfer]}</span>}
    <span>التفريغ: {transcriptionLabels[entry.transcription_status??"unknown"]}</span>
    <span>{documentAutomationWorkLabels[work.automation]}</span>
    <span>{documentManualWorkLabels[work.manual]}</span>
@@ -32,6 +35,7 @@ export function DocumentReviewCard({entry}:{entry:ReviewEntry}) {
    {filename&&<span>الملف: <bdi>{filename}</bdi></span>}
    {review?.sourcePage&&<span>صفحة المصدر: {review.sourcePage}</span>}
   </div>
+  {review?.imageTransferReview?.evidence&&transfer!=="attached"&&<p className="legal-preserve"><strong>دليل تصنيف الصورة: </strong>{review.imageTransferReview.evidence}</p>}
   {review?.missingPassage&&<p className="legal-preserve"><strong>موضع النقص: </strong>{review.missingPassage}</p>}
   {review?.nextAction&&<p className="legal-preserve"><strong>الخطوة التالية: </strong>{review.nextAction}</p>}
   {!!(review?.evidenceSummary||review?.verifiedOn||review?.keywords?.length)&&<details>
@@ -70,6 +74,10 @@ export function DocumentReviewFields({value,change,isNew}:{value:LegalDocumentRe
     {documentManualWorkStatuses.map(s=><option value={s} key={s}>{documentManualWorkLabels[s]}</option>)}
    </Select>
    <small className="legal-wide">حدد الحالة حسب العمل المتحقق، وليس من مجرد وجود الصورة أو النص. لا يُغلق طلب تفريغ يدوي قائم تلقائيًا.</small>
+   <Select label="تصنيف نقل الصور" value={value.imageTransferReview?.state??"unknown"} onChange={e=>set("imageTransferReview",{state:e.target.value as DocumentImageTransferReview["state"],evidence:value.imageTransferReview?.evidence??""})}>
+    {documentImageTransferStates.filter(s=>s!=="attached").map(s=><option value={s} key={s}>{documentImageTransferLabels[s]}</option>)}
+   </Select>
+   <Field label="دليل التغطية أو سبب الحاجة إلى نقل الصورة" value={value.imageTransferReview?.evidence??""} maxLength={2000} onChange={e=>set("imageTransferReview",{state:value.imageTransferReview?.state??"unknown",evidence:e.target.value})}/>
    <Field label="عنوان المستند كما يظهر في المصدر" value={value.documentTitle??""} maxLength={300} onChange={e=>set("documentTitle",e.target.value||undefined)}/>
    <Field label="اسم ملف المصدر" value={value.sourceFilename??""} maxLength={250} onChange={e=>set("sourceFilename",e.target.value||undefined)}/>
    <Field label="رابط المصدر المؤكد (HTTPS)" value={value.sourceUrl??""} onChange={e=>set("sourceUrl",e.target.value||undefined)}/>

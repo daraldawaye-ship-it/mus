@@ -1,5 +1,5 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
-import { documentImageStates, documentImportanceScores, documentImageLabels, documentAutomationWorkLabels, documentManualWorkLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
+import { documentImageTransferStates, documentImageTransferLabels, documentImageStates, documentImportanceScores, documentImageLabels, documentAutomationWorkLabels, documentManualWorkLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
 import { DocumentReviewCard, DocumentReviewFields, groupDocumentRows, type ReviewEntry } from "./LegalDocumentReview";
 import { Fragment, useState } from "react";
 import "./LegalCasesPage.css";
@@ -79,6 +79,7 @@ export function LegalCasesPage() {
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
  const globalKind=globalLists.find(k=>k.id===params.get("list"))?.id??null;
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
+ const [imageTransfer,setImageTransfer]=useState("");
  const [imageFilter,setImageFilter]=useState(""),[importanceFilter,setImportanceFilter]=useState(""),[transcriptionFilter,setTranscriptionFilter]=useState("");
  const [importanceOrder,setImportanceOrder]=useState("");
  const [automationWork,setAutomationWork]=useState(""),[manualWork,setManualWork]=useState("");
@@ -99,7 +100,7 @@ export function LegalCasesPage() {
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
- const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter,importanceOrder,automationWork,manualWork],queryFn:({signal})=>{
+ const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter,importanceOrder,automationWork,manualWork,imageTransfer],queryFn:({signal})=>{
   const query=new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"});
   if(globalKind==="document"){
    if(manual)query.set("manual","true");
@@ -109,6 +110,7 @@ export function LegalCasesPage() {
    if(importanceOrder)query.set("importanceOrder",importanceOrder);
    if(transcriptionFilter)query.set("transcriptionState",transcriptionFilter);
    if(automationWork)query.set("automationWork",automationWork);
+   if(imageTransfer)query.set("imageTransfer",imageTransfer);
    if(manualWork)query.set("manualWork",manualWork);
   }
   return api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+query,{signal});
@@ -122,7 +124,7 @@ export function LegalCasesPage() {
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
  const resetGlobalPage=()=>{setGlobalPage(1);setExpandedId(null);setFocus(null);};
- const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImportanceFilter("");setTranscriptionFilter("");setImportanceOrder("");setAutomationWork("");setManualWork("");};
+ const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImageTransfer("");setImportanceFilter("");setTranscriptionFilter("");setImportanceOrder("");setAutomationWork("");setManualWork("");};
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
   resetGlobalContext();
   setParams(p=>{const next=new URLSearchParams(p);next.delete("manual");next.delete("manualCase");if(kind)next.set("list",kind);else next.delete("list");return next;});
@@ -182,6 +184,7 @@ export function LegalCasesPage() {
   <Button variant={manual?"primary":"secondary"} aria-pressed={manual} onClick={()=>manual?openGlobal("document"):openManual()}>{manual?"عرض كل المستندات":"يحتاج تفريغًا يدويًا"}</Button>
   {manualCase&&<Button variant="secondary" onClick={()=>openManual()}>كل القضايا</Button>}
   <Select label="حالة الصورة" value={imageFilter} onChange={e=>{setImageFilter(e.target.value);resetGlobalPage();}}><option value="">كل الصور</option>{documentImageStates.map(s=><option key={s} value={s}>{documentImageLabels[s]}</option>)}</Select>
+  <Select label="نقل الصور" value={imageTransfer} onChange={e=>{setImageTransfer(e.target.value);resetGlobalPage();}}><option value="">الكل</option>{documentImageTransferStates.map(s=><option value={s} key={s}>{documentImageTransferLabels[s]}</option>)}</Select>
   <Select label="حالة التفريغ" value={transcriptionFilter} onChange={e=>{setTranscriptionFilter(e.target.value);resetGlobalPage();}}><option value="">كل حالات التفريغ</option>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
   <Select label="أهمية النقص" value={importanceFilter} onChange={e=>{setImportanceFilter(e.target.value);resetGlobalPage();}}><option value="">كل الدرجات</option>{documentImportanceScores.map(score=><option key={score} value={score}>{score} / 10</option>)}<option value="unrated">غير مقيّمة من 10</option></Select>
   <Select label="المهام الآلية" value={automationWork} onChange={e=>{setAutomationWork(e.target.value);resetGlobalPage();}}><option value="">الكل</option>{(["completed","remaining"] as const).map(s=><option key={s} value={s}>{documentAutomationWorkLabels[s]}</option>)}<option value="unknown">غير محدد</option></Select>

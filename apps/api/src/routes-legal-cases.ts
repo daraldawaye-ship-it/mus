@@ -42,7 +42,7 @@ const caseSchema = z.object({
   priority: z.number().int().min(0).max(10).default(0),
   summary: z.string().max(100000).default(""),
 }).strict();
-import { documentImageStates, documentPriorities, documentAutomationWorkStatuses, documentManualWorkStatuses, hasPendingManualTranscription } from "../../../packages/contracts/src/legal-document-review.ts";
+import { documentImageStates, documentImageTransferStates, documentPriorities, documentAutomationWorkStatuses, documentManualWorkStatuses, hasPendingManualTranscription } from "../../../packages/contracts/src/legal-document-review.ts";
 
 import { automationWorkStateSql, manualWorkStateSql, pendingManualTranscriptionSql, preserveDocumentWorkStatuses } from "./services/legal-document-work-status.ts";
 
@@ -58,7 +58,14 @@ export const legalAutomationWorkBulkSchema=z.discriminatedUnion("mode",[
   z.object({mode:z.literal("execute"),ids:bulkWorkIds,previewDigest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
 ]);
 
+const imageTransferReviewSchema=z.object({
+  state:z.enum(["needs-transfer","covered","partial","not-applicable","unknown"]),
+  evidence:z.string().trim().max(2000),
+}).strict().refine(v=>v.state==="unknown"||v.evidence.length>0,"اذكر دليل التغطية أو سبب التصنيف");
+export const legalDocumentImageTransferSchema=z.object({revision:positive,imageTransferReview:imageTransferReviewSchema}).strict();
+
 const documentReviewSchema=z.object({
+  imageTransferReview:imageTransferReviewSchema.optional(),
   automationWorkStatus:z.enum(documentAutomationWorkStatuses).optional(),
   manualWorkStatus:z.enum(documentManualWorkStatuses).optional(),
   documentTitle:z.string().trim().min(1).max(300).optional(),
@@ -229,7 +236,9 @@ const documentImageState=`CASE
   WHEN r.drive_file_id<>'' OR r.pdf_url<>'' OR COALESCE(r.document_review->>'sourceUrl','')<>'' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(r.image_urls) AS href(value) WHERE href.value<>'')
     THEN 'external'
   ELSE 'unverified' END`;
-const documentViewColumns=`${documentImageState} AS document_image_state,
+const documentImageTransferState=`CASE WHEN r.kind<>'document' THEN NULL WHEN local_image.id IS NOT NULL OR canonical_image.id IS NOT NULL THEN 'attached' ELSE COALESCE(r.document_review->'imageTransferReview'->>'state','unknown') END`;
+const documentViewColumns=`${documentImageTransferState} AS document_image_transfer_state,
+${documentImageState} AS document_image_state,
 COALESCE(local_image.id, canonical_image.id) AS document_image_id,
 CASE WHEN r.kind='document' THEN ARRAY(SELECT rc.case_id FROM legal_record_cases rc WHERE rc.record_id=r.id ORDER BY rc.case_id) END AS document_case_ids`;
 
@@ -559,7 +568,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const importanceOrder=req.query.importanceOrder;
     const imageState=req.query.imageState;
     const transcriptionState=req.query.transcriptionState;
-    const automationWork=req.query.automationWork, manualWork=req.query.manualWork;
+    const automationWork=req.query.automationWork, manualWork=req.query.manualWork, imageTransfer=req.query.imageTransfer;
     const caseParam=req.query.caseId;
     const selectedCase=caseParam===undefined?null:Number(caseParam);
     if ((manual!==undefined&&manual!=="true"&&manual!=="false")||
@@ -567,6 +576,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       (importanceOrder!==undefined&&importanceOrder!=="asc"&&importanceOrder!=="desc")||
       (importanceScore!==undefined&&(typeof importanceScore!=="string"||!/^(?:[1-9]|10|unrated)$/.test(importanceScore)))||
       (imageState!==undefined&&!z.enum(documentImageStates).safeParse(imageState).success)||
+      (imageTransfer!==undefined&&!z.enum(documentImageTransferStates).safeParse(imageTransfer).success)||
       (transcriptionState!==undefined&&!z.enum(transcriptionStates).safeParse(transcriptionState).success)||
       (automationWork!==undefined&&!z.enum(documentAutomationWorkStatuses).safeParse(automationWork).success)||
       (manualWork!==undefined&&!z.enum(documentManualWorkStatuses).safeParse(manualWork).success)||
@@ -592,7 +602,11 @@ export function legalCaseRoutes(pool:Pool):Router {
     if (selectedCase!==null) filter("EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id AND rc.case_id=?)",selectedCase);
     if (priority!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'priority','unrated')=?",priority);
     if (importanceScore!==undefined) filter("r.kind='document' AND COALESCE(r.document_review->>'importanceScore','unrated')=?",importanceScore);
-    if (imageState!==undefined) filter("("+documentImageState+")=?",imageState);
+    if (imageTransfer!==undefined) filter("("+documentImageTransferState+")=?",imageTransfer);
+    if (imageState!==undefined) {
+      filter("("+documentImageState+")=?",imageState);
+      if(imageState==="external")where+=" AND ("+documentImageTransferState+") NOT IN ('covered','partial','not-applicable')";
+    }
     if (transcriptionState!==undefined) filter("r.kind='document' AND COALESCE(r.transcription_status,'unknown')=?",transcriptionState);
     if (automationWork!==undefined) filter("r.kind='document' AND ("+automationWorkStateSql+")=?",automationWork);
     if (manualWork!==undefined) filter("r.kind='document' AND ("+manualWorkStateSql+")=?",manualWork);
@@ -602,10 +616,11 @@ export function legalCaseRoutes(pool:Pool):Router {
       manual==="true" ? "document_case_ids, r.document_review->>'hearingDate' DESC NULLS LAST, r.document_review->>'hearingGroup' NULLS LAST, r.id DESC" : "r.id DESC";
     const orderBy=importanceOrder===undefined?usualOrder:
       "(r.document_review->>'importanceScore')::int "+(importanceOrder==="asc"?"ASC":"DESC")+" NULLS LAST, "+usualOrder;
-    const docs=kind==="document"||manual==="true"||imageState!==undefined;
+    const imageFiltered=imageState!==undefined||imageTransfer!==undefined;
+    const docs=kind==="document"||manual==="true"||imageFiltered;
     const compact=req.query.compact==="true"&&!unlinked&&(kind==="fact"||kind==="document");
     const cols=compact?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.drive_file_id,r.document_review,r.transcription_status,r.transcription_file,r.revision":"r.*";
-    const filteredImages=imageState!==undefined?documentImageJoin("$1","$2"):"";
+    const filteredImages=imageFiltered?documentImageJoin("$1","$2"):"";
     const [rows,count]=await Promise.all([
       pool.query("SELECT "+cols+(docs?", "+documentViewColumns:"")+" FROM legal_records r "+(docs?documentImageJoin("$1","$2"):"")+" WHERE "+where+" ORDER BY "+orderBy+" LIMIT $"+(args.length+1)+" OFFSET $"+(args.length+2),[...args,limit,(page-1)*limit]),
       pool.query("SELECT COUNT(*)::int AS total FROM legal_records r "+filteredImages+" WHERE "+where,args),
@@ -662,7 +677,10 @@ export function legalCaseRoutes(pool:Pool):Router {
       const state=input.kind==="document"?(input.transcriptionStatus??old.transcription_status??"unknown"):null;
       await validateDocumentReview(db,user,{...input,caseIds:[]},recordId);
       const review=input.documentReview===undefined?old.document_review:
-        preserveDocumentWorkStatuses(old.document_review,input.documentReview??{});
+        preserveDocumentWorkStatuses(old.document_review,{
+          ...(old.document_review?.imageTransferReview===undefined?{}:{imageTransferReview:old.document_review.imageTransferReview}),
+          ...(input.documentReview??{}),
+        });
       if(input.documentReview?.manualWorkStatus==="none"&&hasPendingManualTranscription(review,state))
         throw new HttpError(409,"manual_transcription_pending","ما زال موضع للتفريغ اليدوي مسجلاً؛ أزل طلب التفريغ بعد استكماله.");
       const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",transcription_status=$17,transcription_file=$18,revision=revision+1,updated_by=$19,updated_at=now(),document_review=$21 WHERE id=$20 RETURNING *",[...recordValues({...input,caseIds:[]}),state,file,user.id,recordId,JSON.stringify(review??{})])).rows[0];
@@ -703,6 +721,26 @@ export function legalCaseRoutes(pool:Pool):Router {
       return {...scope,changedCount:changed.length,changedIds:changed};
     });
     res.json(result);
+  }));
+  router.patch("/legal/records/:id/image-transfer-review",handler(async(req,res)=>{
+    const recordId=number(req.params.id),input=parse(legalDocumentImageTransferSchema,req.body);
+    const record=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      await canRecord(db,user,recordId,"editor");
+      await forbidIfDisabled(db);
+      const old=(await db.query("SELECT id,kind,revision,document_review FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
+      if(!old)missing();
+      if(old.kind!=="document")throw new HttpError(400,"invalid_kind","مراجعة نقل الصور لسجلات المستندات فقط");
+      if(old.revision!==input.revision)throw new HttpError(409,"conflict","تغير السجل؛ أعد تحميله");
+      const fields={imageTransferReview:input.imageTransferReview};
+      const next=(await db.query(
+        `UPDATE legal_records SET document_review=COALESCE(document_review,'{}'::jsonb)||$1::jsonb,
+            revision=revision+1,updated_by=$2,updated_at=now() WHERE id=$3 RETURNING id,revision,document_review`,
+        [JSON.stringify(fields),user.id,recordId])).rows[0];
+      await audit(db,user,"legal.update","legalRecord",recordId,{imageTransferReview:old.document_review?.imageTransferReview??null},fields);
+      return next;
+    });
+    res.json({record});
   }));
   router.patch("/legal/records/:id/work-status",handler(async(req,res)=>{
     const recordId=number(req.params.id),input=parse(legalDocumentWorkStatusSchema,req.body);
