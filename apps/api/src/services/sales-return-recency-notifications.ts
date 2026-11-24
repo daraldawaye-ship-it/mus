@@ -18,6 +18,7 @@ export async function notifyReturnWithoutRecentSales(
   companyId: number,
   invoiceId: number,
   invoiceNumber: string,
+  actorName: string,
 ): Promise<void> {
   const result = await client.query<ReturnedItem>(
     `WITH returned AS (
@@ -47,6 +48,8 @@ export async function notifyReturnWithoutRecentSales(
        ) last_sale ON true`,
     [companyId, invoiceId],
   );
+  const actor = actorName.trim();
+  const actorSuffix = actor ? ` بواسطة: ${actor}.` : "";
   for (const row of result.rows) {
     const days = row.days_since_last_sale;
     if (days !== null && days <= 3) continue;
@@ -59,7 +62,7 @@ export async function notifyReturnWithoutRecentSales(
       subjectKey: `sales-return:${invoiceId}:item:${row.item_id}`,
       eventKey: `sales-return:no-recent-sales:${invoiceId}:${row.item_id}`,
       title: isMonth ? "إرجاع صنف بلا مبيعات خلال شهر" : "إرجاع صنف بلا مبيعات خلال 3 أيام",
-      message: `أُرجع الصنف «${row.item_name}» في فاتورة المبيعات رقم ${invoiceNumber}، ولم تُسجل له مبيعات خلال آخر ${period}.${row.last_sale_date ? ` آخر بيع مسجل: ${row.last_sale_date}.` : " لا توجد مبيعات سابقة مسجلة."}`,
+      message: `أُرجع الصنف «${row.item_name}» في فاتورة المبيعات رقم ${invoiceNumber}، ولم تُسجل له مبيعات خلال آخر ${period}.${row.last_sale_date ? ` آخر بيع مسجل: ${row.last_sale_date}.` : " لا توجد مبيعات سابقة مسجلة."}${actorSuffix}`,
       href: `/companies/${companyId}/invoices/${invoiceId}`,
     });
   }

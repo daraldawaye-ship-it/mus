@@ -52,7 +52,7 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
       const actor = await client.query("SELECT * FROM users WHERE id=$1", [job.created_by]);
       if (!actor.rows[0]) throw new Error("invoice_post_followup_missing_user");
       const user = userDTO(actor.rows[0]);
-      // Name of the employee who CREATED this sale, not the background worker.
+      // Resolve the authenticated invoice actor, not the background worker.
       const creator = await client.query<{ name: string }>(
         `SELECT e.name FROM employees e
          WHERE e.company_id=$1 AND e.user_id=$2
@@ -64,7 +64,9 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
         user, invoice.number, job.customer_reward_kind, job.doctor_reward_eligible);
       if (invoice.kind === "sale") {
         await accrueInvoiceClearance(client, job.company_id, job.invoice_id, user);
-        await notifyReturnWithoutRecentSales(client, job.company_id, job.invoice_id, invoice.number);
+        await notifyReturnWithoutRecentSales(
+          client, job.company_id, job.invoice_id, invoice.number, creatorName,
+        );
       } else if (invoice.kind === "purchase") {
         await notifyPurchaseOfStoppedOrderItem(client, job.company_id, job.invoice_id, invoice.number);
       }
