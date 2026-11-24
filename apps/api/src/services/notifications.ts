@@ -85,7 +85,6 @@ export async function effectiveTemplate(
       [companyId, code],
     )
   ).rows[0];
-  if (companyId === 2 && code === 'INVENTORY_NEGATIVE') return r ? { ...templateDTO(r), enabled: false } : null;
   return r ? templateDTO(r) : null;
 }
 export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
@@ -97,7 +96,11 @@ export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can
  LEFT JOIN notification_settings s ON s.code=n.code AND s.company_id IS NOT DISTINCT FROM n.company_id
  LEFT JOIN notification_auto_resolutions auto_resolution ON auto_resolution.notification_id=n.id`;
 // Recipient identity is necessary but not sufficient: membership and current follow grants are checked again.
-export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND (
+// Preserve legacy Dar Al-Dawaa notices as history without reviving them in inbox, reminders or push.
+export const darAldawaaNegativeStockEventPrefix = "INVENTORY_NEGATIVE:reactivated:";
+const nonLegacyNegativeStockNotice = `NOT (n.company_id IS NOT DISTINCT FROM 2 AND n.code='INVENTORY_NEGATIVE'
+ AND n.event_key NOT LIKE '${darAldawaaNegativeStockEventPrefix}%')`;
+export const inboxFilter = `n.recipient_user_id=$1 AND ${nonLegacyNegativeStockNotice} AND (
  (n.company_id IS NULL AND COALESCE((SELECT enabled FROM page_settings WHERE company_id IS NULL AND page_key='public.notifications'),true)) OR n.company_id=$2::integer)
  AND (n.company_id IS NULL OR $4::boolean OR n.assigned
  OR (COALESCE(s.notify_subject,true) AND n.subject_employee_id=$3::integer)
@@ -238,8 +241,9 @@ async function lockDelivery(client: PoolClient, companyId: number | null, code: 
 async function insideDeliveryWindow(client: PoolClient, companyId: number | null, code: string, userId: number, hours: number | null) {
   if (!hours) return false;
   const result = await client.query(
-    `SELECT EXISTS (SELECT 1 FROM notifications
+    `SELECT EXISTS (SELECT 1 FROM notifications n
       WHERE COALESCE(company_id,0)=$1 AND code=$2 AND recipient_user_id=$3
+        AND ${nonLegacyNegativeStockNotice}
         AND ((NOT silent_update AND created_at>clock_timestamp()-$4*interval '1 hour')
           OR last_reminded_at>clock_timestamp()-$4*interval '1 hour')) AS blocked`,
     [companyId ?? 0, code, userId, hours]);
@@ -443,7 +447,7 @@ export async function refreshNotificationReminders(
   const rows = (
     await client.query(
       notificationSelect +
-        ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND n.completed_at IS NULL
+        ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND ${nonLegacyNegativeStockNotice} AND n.completed_at IS NULL
  AND n.code<>'${companyExternalDesktopActivityCode}'
  AND ${currentNotification} AND ((n.next_reminder_at<=clock_timestamp() AND COALESCE(s.allow_repeat,false) AND COALESCE(s.enabled,t.implemented)) OR n.snoozed_until<=clock_timestamp())
  AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp()) ORDER BY n.id FOR UPDATE OF n`,

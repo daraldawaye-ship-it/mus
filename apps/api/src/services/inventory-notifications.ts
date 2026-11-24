@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { emitNotification } from "./notifications.ts";
+import { darAldawaaNegativeStockEventPrefix, emitNotification } from "./notifications.ts";
 
 // Values are displayed as plain text; strip controls that could obscure an alert.
 const name = (value: string): string =>
@@ -81,15 +81,19 @@ export async function scanInventoryNotifications(
                           THEN negative_stock_notification_incidents.episode
                           ELSE negative_stock_notification_incidents.episode+1 END,
              active=true,updated_at=clock_timestamp()
-         RETURNING episode`,
+         RETURNING episode,suppressed_episode`,
       [companyId,row.item_id,row.location_id],
     )).rows[0];
+    // Do not create a notice for balances already negative at reactivation.
+    // A proved recovery makes the next incident a distinct, eligible episode.
+    if (companyId === 2 && incident.suppressed_episode === incident.episode) continue;
     const subjectKey = `item:${row.item_id}:location:${row.location_id}`;
     await emitNotification(client, {
       code: "INVENTORY_NEGATIVE",
       companyId,
       subjectKey,
-      eventKey: `INVENTORY_NEGATIVE:${subjectKey}:episode:${incident.episode}`,
+      eventKey: `${companyId === 2 ? darAldawaaNegativeStockEventPrefix : "INVENTORY_NEGATIVE:"}${subjectKey}:episode:${incident.episode}`,
+      ...(companyId === 2 ? { streamKey: darAldawaaNegativeStockEventPrefix } : {}),
       message: `رصيد الصنف «${name(row.item_name)}» في «${name(row.location_name)}» أصبح سالبًا: ${row.quantity} ${name(row.unit_name)}.`,
       href: `/companies/${companyId}/stock-balances?itemId=${row.item_id}&locationId=${row.location_id}`,
     });
