@@ -6,6 +6,7 @@ import { HttpError, missing } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
+import { pageAiTaskHistory, isHistoricalAiTaskReceipt } from "./services/ai-task-history-page.ts";
 
 const tasksTable = "مهام الذكاء الاصطناعي";
 const journalTable = "سجل إنجاز مهام الذكاء الاصطناعي";
@@ -43,6 +44,7 @@ type Run = {
   durationSeconds?: number | null;
   recordedAt: string;
   resumeFrom: string | null;
+  historicalReceipt?: boolean;
 };
 
 const endStates = /^(?:finished|completed|stopped|aborted|failed|partial|verified|done|closed)/i;
@@ -109,6 +111,7 @@ function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
       finishedAt,
       durationSeconds: elapsedSeconds(startedAt, recordedFinish),
       resumeFrom: typeof entry?.resumeFrom === "string" ? entry.resumeFrom : null,
+      historicalReceipt: isHistoricalAiTaskReceipt(row.general_table_category,title) || (entry?.status != null && !terminal && !/^started/i.test(String(entry.status))),
     };
     for (const linkedTask of linkedTasks) {
       const existing = byTask.get(linkedTask);
@@ -121,7 +124,7 @@ function auditRuns(rows: QueryResultRow[], tasks: QueryResultRow[]) {
 
 async function readJournal(pool: Pool) {
   const result = await pool.query(
-    `SELECT general_table_id,general_table_title,general_table_description,created_at,
+    `SELECT general_table_id,general_table_title,general_table_description,general_table_category,created_at,
        general_table_text1,general_table_text2,general_table_text8,general_table_text9
        FROM general_table WHERE general_table_table_name=$1 ORDER BY created_at DESC,general_table_id DESC`,
     [journalTable],
@@ -221,8 +224,20 @@ export function aiTaskRoutes(pool: Pool) {
     const taskId = id(req.params.id);
     const task = await pool.query(taskQuery + " AND t.task_id=$2", [tasksTable, taskId]);
     if (!task.rowCount) missing();
+    const view=req.query.view;
+    const page=req.query.page===undefined?1:Number(req.query.page);
+    if((view!==undefined&&view!=="recent"&&view!=="older")||
+      !Number.isSafeInteger(page)||page<1||page>100000||(view!=="older"&&page!==1))
+      throw new HttpError(400,"invalid_history_page","صفحة سجل الإنجاز غير صالحة");
     const byTask = auditRuns(await readJournal(pool), task.rows);
-    res.json({ history: byTask.get(taskId) ?? [] });
+    const history=byTask.get(taskId)??[];
+    if(view===undefined) {
+      // The original unpaged API keeps its shape and recorded order.
+      res.json({history:history.map(({historicalReceipt:_historical,...run})=>run)});
+      return;
+    }
+    const state=taskDTO(task.rows[0]!,history);
+    res.json(pageAiTaskHistory(history,view,page,state.latestRunInProgress?state.lastStartedAt:null));
   }));
 
   router.post("/ai-tasks", handler(async (req, res) => {

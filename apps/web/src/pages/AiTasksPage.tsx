@@ -33,6 +33,7 @@ type Task = {
 };
 
 type Run = {
+  historical?: boolean;
   id: number;
   title: string;
   detail: string;
@@ -56,6 +57,7 @@ export function AiTasksPage() {
   const [showNew, setShowNew] = useState(false);
   const [details, setDetails] = useState<Task | null>(null);
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
+  const [olderHistoryPage,setOlderHistoryPage]=useState<number|null>(null);
   const [archiveTask, setArchiveTask] = useState<Task | null>(null);
   const query = useQuery({
     queryKey: ["owner-ai-tasks"],
@@ -71,8 +73,9 @@ export function AiTasksPage() {
     },
   });
   const history = useQuery({
-    queryKey: ["owner-ai-tasks", "history", historyTask?.id],
-    queryFn: ({ signal }) => api<{ history: Run[] }>(`/ai-tasks/${historyTask!.id}/history`, { signal }),
+    queryKey: ["owner-ai-tasks", "history", historyTask?.id, olderHistoryPage],
+    queryFn: ({ signal }) => api<{history: Run[];olderCount:number;hasMore:boolean}>(
+      `/ai-tasks/${historyTask!.id}/history?${olderHistoryPage===null?"view=recent":"view=older&page="+olderHistoryPage}`, { signal }),
     enabled: historyTask !== null,
   });
   const tasks = query.data?.tasks ?? [];
@@ -109,7 +112,7 @@ export function AiTasksPage() {
       </span>;
     } },
     { accessorKey: "lastResult", header: "بيان آخر إنجاز", cell: ({ row }) =>
-      <button type="button" className="table-value" onClick={() => setHistoryTask(row.original)}
+      <button type="button" className="table-value" onClick={() => { setOlderHistoryPage(null); setHistoryTask(row.original); }}
         title="فتح سجل الإنجاز">
         <span className="truncate">{row.original.lastResult || "فتح سجل الإنجاز"}</span>
       </button> },
@@ -178,17 +181,29 @@ export function AiTasksPage() {
     {historyTask && <Dialog open title={`سجل إنجاز · ${historyTask.title}`} onClose={() => setHistoryTask(null)}>
       {history.isPending && <Notice>جارٍ تحميل الجولات…</Notice>}
       {history.error && <Notice tone="error">{errorMessage(history.error)}</Notice>}
-      {history.data && (historyTask.latestRunInProgress || !history.data.history.some(run =>
-        run.finishedAt !== null && run.finishedAt === historyTask.lastFinishedAt)) &&
-        <p className="full-value">{historyTask.lastResult || "لا توجد جولات مرتبطة."}</p>}
-      {history.data?.history.map(run => <details key={run.id} open={run.finishedAt !== null && run.finishedAt === historyTask.lastFinishedAt}>
-        <summary>#{run.id} · {run.title} · {run.finishedAt
-          ? `انتهت ${formatDate(run.finishedAt)}`
-          : `سُجّلت ${formatDate(run.recordedAt)}`}</summary>
+      {olderHistoryPage===null&&history.data&&historyTask.latestRunInProgress&&!history.data.history.some(run=>
+        !run.finishedAt&&run.startedAt===historyTask.lastStartedAt)&&
+        <p className="full-value">{historyTask.lastResult || "بدأت الجولة."}</p>}
+      {olderHistoryPage===null&&history.data&&!historyTask.latestRunInProgress&&history.data.history.length===0&&
+        <Notice>لا توجد جولات حديثة موثقة.</Notice>}
+      {history.data?.history.map(run => <details key={run.id} open={!run.historical&&run.finishedAt !== null && run.finishedAt === historyTask.lastFinishedAt}>
+        <summary>#{run.id} · {run.title} · {run.historical
+          ? `سجل سابق · ${formatDate(run.recordedAt)}`
+          : run.finishedAt ? `انتهت ${formatDate(run.finishedAt)}` : `سُجّلت ${formatDate(run.recordedAt)}`}</summary>
         {run.startedAt && <p>بدأت {formatDate(run.startedAt)}</p>}
         <p className="full-value">{run.detail}</p>
         {run.resumeFrom && <p>الاستئناف من {run.resumeFrom}</p>}
       </details>)}
+      {history.data&&<div className="form-actions">
+        {olderHistoryPage===null
+          ? history.data.olderCount>0&&<Button variant="secondary" onClick={()=>setOlderHistoryPage(1)}>عرض السجلات الأقدم ({history.data.olderCount})</Button>
+          : <>
+            <Button variant="secondary" onClick={()=>setOlderHistoryPage(null)}>الأحدث</Button>
+            <Button variant="secondary" disabled={olderHistoryPage<=1} onClick={()=>setOlderHistoryPage(Math.max(1,olderHistoryPage-1))}>السابق</Button>
+            <span aria-live="polite">السجلات الأقدم · صفحة {olderHistoryPage}</span>
+            <Button variant="secondary" disabled={!history.data.hasMore} onClick={()=>setOlderHistoryPage(olderHistoryPage+1)}>التالي</Button>
+          </>}
+      </div>}
     </Dialog>}
     {archiveTask && <Dialog open title={archiveTask.archived ? "استرجاع المهمة" : "أرشفة المهمة"}
       onClose={() => { if (!archiveMutation.isPending) setArchiveTask(null); }}

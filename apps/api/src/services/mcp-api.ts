@@ -80,7 +80,7 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
     bodyContract: "inquiryTaskNameSchema", bodySchema: z.toJSONSchema(inquiryTaskNameSchema),
   },
   "GET /ai-tasks": { source: "routes-ai-tasks.ts", queryFields: [] },
-  "GET /ai-tasks/:id/history": { source: "routes-ai-tasks.ts", queryFields: [], pathParams: ["id"] },
+  "GET /ai-tasks/:id/history": { source: "routes-ai-tasks.ts", queryFields: ["view","page"], pathParams: ["id"] },
   "POST /ai-tasks": {
     source: "routes-ai-tasks.ts", queryFields: [], bodyContract: "aiTaskInput",
     bodySchema: z.toJSONSchema(aiTaskInput),
