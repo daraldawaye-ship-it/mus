@@ -24,6 +24,9 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { rememberRecentEntity } from "../recent-entities";
+import { useDockTableUpdate } from "../DockTableContext";
+import { isDockRowClick } from "../dock-row-interaction";
+import { stoppedPurchaseDockSource } from "../dock-table-references";
 import { notificationChatOpenState } from "../notification-chat-open";
 import { useNotificationClickAction } from "../use-notification-click-action";
 import { errorMessage } from "../phase2";
@@ -111,6 +114,7 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
     guard = useScopeGuard(`${scope}:notifications`);
   const [params, setParams] = useSearchParams();
   const clickAction = useNotificationClickAction();
+  const updateDock = useDockTableUpdate();
   const state = ["active", "snoozed", "done", "all"].includes(
     params.get("state") ?? "",
   )
@@ -346,11 +350,15 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             </p>
           </Card>
         )}
-        {list.data?.items.map((record) => (
-          <article
+        {list.data?.items.map((record) => {
+          const dockItem = updateDock && stoppedPurchaseDockSource(record, companyId);
+          return <article
             key={record.id}
             className={`card notification-record${record.groupUnread>0 ? " is-unread" : ""}${record.code.startsWith("QUICK_") ? " is-quick-message" : ""}`}
             data-notification-id={record.id}
+            onClick={dockItem && updateDock ? event => {
+              if (isDockRowClick(event, ".notification-record")) updateDock(dockItem);
+            } : undefined}
           >
             <div className="notification-heading">
               <h2>{record.completeOnClick && !record.completedAt ? (
@@ -497,8 +505,8 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
                 </>
               )}
             </div>
-          </article>
-        ))}
+          </article>;
+        })}
       </div>
       {list.data && list.data.total > 0 && (
         <div className="notification-pagination">

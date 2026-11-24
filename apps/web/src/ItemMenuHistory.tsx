@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
-import { formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
+import { formatWorkPanelOperationQuantity, formatWorkPanelMovementQuantity, signedStockMovementQuantity, workPanelMovementKindLabels, workPanelPurchaseSupplier } from "./stock-movement-display";
 import { api } from "./api";
 import { connectionSnapshot, subscribeConnection } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
@@ -192,7 +192,7 @@ function WorkPanelOperationsTable({rows, label, footer, showAdjustmentDetails}: 
           <td><ScrollableTableCell>{row.description || "—"}</ScrollableTableCell></td>
           <td className="invoice-item-options-number"><ScrollableTableCell><bdi dir="ltr"
             data-work-panel-quantity={quantity > 0 ? "positive" : quantity < 0 ? "negative" : "zero"}>
-            {row.quantityFirstUnit}
+            {showAdjustmentDetails ? formatWorkPanelOperationQuantity(row.quantityFirstUnit) : row.quantityFirstUnit}
           </bdi></ScrollableTableCell></td>
           <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
           {showAdjustmentDetails && <>

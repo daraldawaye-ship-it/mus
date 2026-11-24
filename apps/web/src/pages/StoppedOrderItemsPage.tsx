@@ -122,7 +122,7 @@ export function StoppedOrderItemsPage({context}:{context:CompanyContext}) {
           key={tableScope} storageKey={tableScope} allowColumnVisibility visibleColumns={visibleColumns}
           ariaLabel="الأصناف المتوقف طلبها" emptyMessage="لا توجد أصناف مطابقة."
           columns={columns} rows={data.items} rowKey={row=>row.itemId}
-          dockRowSource={row=>({itemId:row.itemId,itemName:row.name})}
+          dockRowSource={row=>({companyId,itemId:row.itemId,itemName:row.name})}
           sortKey={sortBy} sortDirection={sortDir} onSort={key=>{
             if(key==="quantity"||key==="status")return;
             update({sortBy:key,sortDir:sortBy===key&&sortDir==="asc"?"desc":"asc",page:""});

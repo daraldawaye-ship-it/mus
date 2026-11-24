@@ -45,3 +45,15 @@ export function formatWorkPanelMovementQuantity(raw: string, firstUnitMultiplier
   const tenths = (stockUnits * 20n + divisor) / (divisor * 2n);
   return { text: `${prefix}${tenths / 10n}.${tenths % 10n}`, direction, exact };
 }
+
+/** Adjustment row text only: round the decimal string to at most one place.
+ * Keep the source value and its sign/visual direction outside this formatter. */
+export function formatWorkPanelOperationQuantity(raw: string): string {
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(raw);
+  if (!match) return raw;
+  const [,sign,whole,fraction=""] = match;
+  const tenths = BigInt(whole!) * 10n + BigInt(fraction[0] ?? "0") +
+    ((fraction[1] ?? "0") >= "5" ? 1n : 0n);
+  const decimal = tenths % 10n;
+  return sign + (tenths / 10n).toString() + (decimal ? `.${decimal}` : "");
+}

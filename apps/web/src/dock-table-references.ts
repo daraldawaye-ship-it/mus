@@ -51,3 +51,21 @@ export function dockReferences(row:unknown,scope:DockReferenceScope,ownKind?:Doc
 }
 
 export const dockInteractiveSelector="button,input,select,textarea,a,label,summary,[contenteditable]:not([contenteditable=false]),[role=button],[role=link],[role=checkbox],[role=switch],[role=combobox],[role=slider],[draggable=true],[data-no-dock-sync]";
+
+/** A stopped-purchase alert's canonical in-company link identifies its item.
+ * The stored alert supplies only the label; item code or message text is never the ID. */
+export function stoppedPurchaseDockSource(
+  record: {code:string;companyId:number|null;href?:string|null;message:string},
+  companyId?:number,
+) {
+  if (!companyId || record.companyId !== companyId || record.code !== "PURCHASE_STOPPED_ORDER" || !record.href) return;
+  const prefix = `/companies/${companyId}/stopped-order-items?`;
+  if (!record.href.startsWith(prefix)) return;
+  const params = new URLSearchParams(record.href.slice(prefix.length));
+  const ids = params.getAll("itemId");
+  const itemId = Number(ids[0]);
+  if (ids.length !== 1 || !/^[1-9]\d*$/.test(ids[0]!) || !Number.isSafeInteger(itemId)) return;
+  const itemName = /^تم شراء الصنف «([\s\S]+?)»\s*\(الرمز\s*[:：]/u.exec(record.message)?.[1]?.trim();
+  if (!itemName) return;
+  return {companyId,itemId,itemName};
+}
