@@ -63,6 +63,10 @@ export function expectedRoutes(pool:Pool):Router {
     res.set("Cache-Control","private, no-store");
     res.json(await authorized(req,"company.expected-movements","view",(client,_user,companyId)=>listExpectedMovements(client,companyId,req.query)));
   }));
+  router.get(`${base}/expected-movements/cashboxes`,handler(async(req,res)=>{
+    res.set("Cache-Control","private, no-store");
+    res.json(await authorized(req,"company.expected-movements","view",(client,_user,companyId)=>expectedCashboxes(client,companyId,req.query,true)));
+  }));
   router.get(`${base}/expected-movements/sections`,handler(async(req,res)=>{
     res.set("Cache-Control","private, no-store");
     res.json(await authorized(req,"company.expected-movements","view",(client,_user,companyId)=>expectedSections(client,companyId,req.query.q)));

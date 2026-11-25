@@ -39,6 +39,9 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "GET /companies/:companyId/expected-sections": {
     source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["q"],
   },
+  "GET /companies/:companyId/expected-movements/cashboxes": {
+    source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["page", "pageSize", "q", "sort"],
+  },
   "GET /companies/:companyId/expected-movements/sections": {
     source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["q"],
   },
@@ -50,7 +53,7 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   },
   "GET /companies/:companyId/expected-movements": {
     source: "routes-expected.ts", pathParams: ["companyId"],
-    queryFields: ["page", "pageSize", "q", "sort", "cardId", "accountId", "section", "status", "dateFrom", "dateTo"],
+    queryFields: ["page", "pageSize", "q", "sort", "cardId", "accountId", "cashAccountId", "section", "status", "dateFrom", "dateTo"],
   },
   "PATCH /companies/:companyId/expected-movements/:id": {
     source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],

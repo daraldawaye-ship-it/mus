@@ -177,6 +177,13 @@ export async function listExpectedMovements(db: Database, companyId: number, inp
     if(typeof input.cardId!=="string" || !/^[1-9]\d*$/.test(input.cardId) || Number(input.cardId)>2_147_483_647) invalid("الكرت المحدد غير صالح");
     values.push(Number(input.cardId));clauses.push(`m.card_id=$${values.length}`);
   }
+  if(input.cashAccountId!==undefined) {
+    if(input.cashAccountId==="none") clauses.push("c.cash_account_id IS NULL");
+    else {
+      if(typeof input.cashAccountId!=="string" || !/^[1-9]\d*$/.test(input.cashAccountId) || Number(input.cashAccountId)>2_147_483_647) invalid("الصندوق المحدد غير صالح");
+      values.push(Number(input.cashAccountId));clauses.push(`c.cash_account_id=$${values.length}`);
+    }
+  }
   if(input.status!==undefined) {
     if(typeof input.status!=="string" || !["pending","completed"].includes(input.status)) invalid("الحالة غير صالحة");
     values.push(input.status);clauses.push(`m.status=$${values.length}`);
@@ -210,10 +217,12 @@ export async function expectedAccounts(db:Database,companyId:number,input:Record
   return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};
 }
 /** Same technical cash/bank eligibility as vouchers, with only identity fields exposed. */
-export async function expectedCashboxes(db:Database,companyId:number,input:Record<string,unknown>) {
+export async function expectedCashboxes(db:Database,companyId:number,input:Record<string,unknown>,includePreviouslyLinked=false) {
   const query=listQuery(input,{id:"a.id",name:"a.name",code:"a.code"},"name:asc");
   const values=[companyId,searchPattern(query.q)];
-  const where="a.company_id=$1 AND a.active AND a.kind='posting' AND a.category='asset' AND a.cash_or_bank AND (a.name ILIKE $2 OR a.code ILIKE $2)";
+  const eligible="a.active AND a.kind='posting' AND a.category='asset' AND a.cash_or_bank";
+  const historical=includePreviouslyLinked ? " OR EXISTS (SELECT 1 FROM expected_cards c WHERE c.company_id=a.company_id AND c.cash_account_id=a.id)" : "";
+  const where=`a.company_id=$1 AND ((${eligible})${historical}) AND (a.name ILIKE $2 OR a.code ILIKE $2)`;
   const count=await db.query<{total:number}>(`SELECT count(*)::integer AS total FROM accounts a WHERE ${where}`,values);
   const rows=await db.query<{id:number;name:string;code:string}>(`SELECT a.id,a.name,a.code FROM accounts a WHERE ${where} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,[...values,query.pageSize,query.offset]);
   return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};

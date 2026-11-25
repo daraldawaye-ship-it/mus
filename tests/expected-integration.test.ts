@@ -27,6 +27,7 @@ test("expected routes publish complete contracts on the shared browser and OAuth
     "PATCH /companies/:companyId/expected-movements/:id",
     "POST /companies/:companyId/expected-movements/:id/complete",
     "GET /companies/:companyId/expected-movements/sections",
+    "GET /companies/:companyId/expected-movements/cashboxes",
   ];
   for (const operation of paths) {
     const result = apiCatalog(router, { operation });
@@ -71,6 +72,7 @@ test("expected authorization keeps completion as editing and lookups under card 
     ["GET", "expected-sections", "company.expected-cards", "view"],
     ["GET", "expected-movements", "company.expected-movements", "view"],
     ["GET", "expected-movements/sections", "company.expected-movements", "view"],
+    ["GET", "expected-movements/cashboxes", "company.expected-movements", "view"],
     ["PATCH", "expected-movements/7", "company.expected-movements", "edit"],
     ["POST", "expected-movements/7/complete", "company.expected-movements", "edit"],
   ];

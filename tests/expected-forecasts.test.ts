@@ -134,6 +134,16 @@ test("optional card cashbox uses technical eligibility, company isolation and ex
   await assert.rejects(db.query("UPDATE expected_cards SET cash_account_id=13 WHERE id=$1",[original.card.id]),/foreign key/i);
   assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM expected_cards")).rows[0].n,3);
   assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n,3);
+  const matching=await listExpectedMovements(pool,1,{cashAccountId:"7",dateFrom:"2026-11-22",dateTo:"2026-11-29"});
+  assert.equal(matching.total,2);
+  assert(matching.items.every(row=>row.cardId===original.card.id));
+  assert.equal((await listExpectedMovements(pool,1,{cashAccountId:"none"})).total,3);
+  assert.equal((await listExpectedMovements(pool,1,{cashAccountId:"13"})).total,0);
+  await assert.rejects(listExpectedMovements(pool,1,{cashAccountId:"7.5"}),/الصندوق المحدد غير صالح/);
+  await db.query("UPDATE accounts SET active=false WHERE company_id=1 AND id=7");
+  assert.equal((await expectedCashboxes(pool,1,{q:"1000000007"})).total,0);
+  assert.equal((await expectedCashboxes(pool,1,{q:"1000000007"},true)).total,1);
+  await db.query("UPDATE accounts SET active=true WHERE company_id=1 AND id=7");
   await transaction(pool,client=>completeExpectedMovement(client,owner,1,rows[0].id,rows[0].revision));
   assert.equal((await readExpectedCard(pool,1,original.card.id)).cashAccountId,7);
   assert.deepEqual(await snapshot(),before,"cashbox metadata never changes its balance, target account or ledger");

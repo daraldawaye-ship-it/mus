@@ -47,10 +47,11 @@ const scheduleText = (card: ExpectedCard) => {
   if (card.recurrence === "once") return card.onceDate ? `مرة واحدة — ${dateText(card.onceDate)}` : "مرة واحدة";
   return "يومي";
 };
-function changeFilter(setParams: ReturnType<typeof useSearchParams>[1], key: string, value: string) {
+function changeFilter(setParams: ReturnType<typeof useSearchParams>[1], key: string, value: string, keepEmpty = false) {
   setParams(previous => {
     const next = new URLSearchParams(previous);
-    value ? next.set(key, value) : next.delete(key);
+    if (value || keepEmpty) next.set(key, value);
+    else next.delete(key);
     next.delete("page");
     return next;
   });
@@ -489,13 +490,32 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     editingRef.current = null;
     setEditing(null);
   }, [editScope]);
+  const today = nowInAden();
+  const dateFrom = params.get("dateFrom") ?? today;
+  const dateTo = params.get("dateTo") ?? expectedEndDateLimit(today);
+  const cashAccountId = params.get("cashAccountId") ?? "";
+  const cashboxes = useQuery({
+    queryKey: ["expected", user?.id, companyId, "movement-cashboxes"],
+    enabled: !!user,
+    queryFn: async ({signal}) => {
+      const items: ExpectedAccountOption[] = [];
+      for (let page = 1; ; page++) {
+        const result = await api<{items: ExpectedAccountOption[]; total: number; pageSize: number}>(
+          `/companies/${companyId}/expected-movements/cashboxes?page=${page}&pageSize=100&sort=name:asc,id:asc`, {signal});
+        items.push(...result.items);
+        if (!result.items.length || page * result.pageSize >= result.total) return items;
+      }
+    },
+  });
   const filters = new URLSearchParams();
-  for (const key of ["cardId", "accountId", "status", "dateFrom", "dateTo", "section"]) {
+  for (const key of ["cardId", "accountId", "cashAccountId", "status", "section"]) {
     if (params.get(key)) filters.set(key, params.get(key)!);
   }
+  if (dateFrom) filters.set("dateFrom", dateFrom);
+  if (dateTo) filters.set("dateTo", dateTo);
   const list = usePagedQuery<ExpectedMovement>(`/companies/${companyId}/expected-movements?${filters}`,
     `company:${companyId}:expected-movements`, "date:asc,id:asc");
-  const setFilter = (key: string, value: string) => changeFilter(setParams, key, value);
+  const setFilter = (key: string, value: string) => changeFilter(setParams, key, value, key === "dateFrom" || key === "dateTo");
   useEffect(() => {
     const edit = editingRef.current;
     if (!edit || inFlight.current || list.loading || list.error || !list.data) return;
@@ -669,13 +689,22 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
         <Field type="search" label="بحث بالحساب أو البيان" value={list.query} disabled={busy !== null} onChange={event => list.setQuery(event.target.value)} />
         <SectionField source="movements" companyId={companyId} value={params.get("section") ?? ""}
           onChange={value => setFilter("section", value)} disabled={busy !== null} filter />
+        <Select label="الصندوق" value={cashAccountId} disabled={busy !== null}
+          onChange={event => setFilter("cashAccountId", event.target.value)}>
+          <option value="">كل الصناديق</option>
+          <option value="none">بدون صندوق</option>
+          {cashAccountId && cashAccountId !== "none" && !cashboxes.data?.some(option => String(option.id) === cashAccountId) &&
+            <option value={cashAccountId}>صندوق رقم {cashAccountId}</option>}
+          {cashboxes.data?.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+        </Select>
         <Select label="الحالة" value={params.get("status") ?? ""} disabled={busy !== null} onChange={event => setFilter("status", event.target.value)}>
           <option value="">الكل</option><option value="pending">لم يتم</option><option value="completed">تم</option>
         </Select>
-        <DateField label="من تاريخ الحركة" value={params.get("dateFrom") ?? ""} disabled={busy !== null} onCommit={value => setFilter("dateFrom", value)} />
-        <DateField label="إلى تاريخ الحركة" value={params.get("dateTo") ?? ""} disabled={busy !== null} onCommit={value => setFilter("dateTo", value)} />
+        <DateField label="من تاريخ الحركة" value={dateFrom} disabled={busy !== null} onCommit={value => setFilter("dateFrom", value)} />
+        <DateField label="إلى تاريخ الحركة" value={dateTo} disabled={busy !== null} onCommit={value => setFilter("dateTo", value)} />
         <Button type="button" size="compact" variant="secondary" onClick={() => void refresh()} disabled={list.loading || busy !== null}>تحديث</Button>
       </div>
+      {cashboxes.error && <Notice tone="error">تعذر تحميل قائمة الصناديق.</Notice>}
       {(params.get("cardId") || params.get("accountId")) && <div className="expected-filter-note">
         <span>{params.get("cardId") ? `حركات الكرت #${params.get("cardId")}` : `حركات الحساب #${params.get("accountId")}`}</span>
         <Button type="button" size="compact" variant="ghost" disabled={busy !== null} onClick={() => setParams(previous => {
