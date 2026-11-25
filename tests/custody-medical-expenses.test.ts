@@ -35,11 +35,13 @@ test('medical marking includes old child cards, separates tenants/categories, sk
       INSERT INTO doctors VALUES
         (2,1,'أحمد صباح','أحمد','nurse',true),(2,2,'أحمد مساء','أحمد','nurse',true),
         (2,3,'د أحمد','أحمد','doctor',true),(2,4,'جهة','جهة','entity',true),
-        (3,1,'أحمد','أحمد','nurse',true),(2,5,'قديم','قديم','nurse',false);
+        (3,1,'أحمد','أحمد','nurse',true),(2,5,'قديم','قديم','nurse',false),
+        (2,6,'أحمد غير معين','أحمد',null,true),(2,7,'مؤرشف','مؤرشف',null,false),(2,8,' ',' ',null,true);
       INSERT INTO invoices VALUES
         (2,1,1,'sale',true,'2020-01-01'),(2,2,2,'sale',true,'2026-11-13'),
         (2,3,3,'sale',true,'2026-11-13'),(2,4,1,'sale',false,'2026-11-13'),
-        (2,5,1,'purchase',true,'2026-11-13'),(3,1,1,'sale',true,'2026-11-13');
+        (2,5,1,'purchase',true,'2026-11-13'),(3,1,1,'sale',true,'2026-11-13'),
+        (2,7,6,'sale',true,'2026-11-13');
     `);
     await db.exec(await readFile(new URL('../apps/api/migrations/20261107_medical_sales_accounted.sql',import.meta.url),'utf8'));
     const client={query:async(sql:string,params?:unknown[])=>{const r=await db.query(sql,params);return {...r,rowCount:r.rows.length};}} as unknown as PoolClient;
@@ -50,6 +52,13 @@ test('medical marking includes old child cards, separates tenants/categories, sk
     await assert.rejects(()=>custodyMedicalBeneficiary(client,2,{...medical,doctorId:5}));
     await assert.rejects(()=>custodyMedicalBeneficiary(client,2,{...medical,doctorId:99}));
     await assert.rejects(()=>custodyMedicalBeneficiary(client,2,{...medical,expenseKind:'slips',doctorId:3,slipCount:1}));
+    const namedUnassigned = {...medical,doctorId:6};
+    await assert.rejects(()=>custodyMedicalBeneficiary(client,2,namedUnassigned), "direct payment remains unchanged");
+    const unassigned=await custodyMedicalBeneficiary(client,2,namedUnassigned,true);
+    assert.equal(unassigned?.kind,'unassigned');
+    assert.deepEqual(await custodyMedicalBeneficiary(client,2,{...namedUnassigned,expenseKind:'slips',slipCount:1},true),unassigned);
+    for (const doctorId of [4,5,7,8,99]) await assert.rejects(()=>custodyMedicalBeneficiary(client,2,{...medical,doctorId},true));
+    assert.deepEqual(await markCustodyMedicalSales(client,2,1,unassigned,'medical'),{cutoffInvoiceId:null,newlyMarked:0});
     assert.deepEqual(await markCustodyMedicalSales(client,2,1,nurse,'slips'),{cutoffInvoiceId:null,newlyMarked:0});
     assert.deepEqual((await db.query('SELECT * FROM doctor_sales_accounted_invoices')).rows,[]);
     // Any later posting or receipt failure must roll back classification too.
@@ -110,5 +119,19 @@ test('migration preserves old transfers and independently stores beneficiary, co
     assert.equal(slip.defaultVoucherAccountName,'القصاصات');
     assert.match(slip.notes,/عدد القصاصات: 3/);
     assert.equal(listed.items.find(row=>row.sourceDocumentId===1)!.defaultVoucherAccountId,null);
+    await db.exec(await readFile(new URL('../apps/api/migrations/20261126_custody_named_unassigned_beneficiary.sql',import.meta.url),'utf8'));
+    const put = (kind:string, snapshot:string, slipCount:number|null, cutoff:number|null = null) => db.query(
+      `INSERT INTO administrative_custody_transfers(company_id,custody_account_id,pouch_account_id,amount,financial_document_id,idempotency_key,request_payload,created_by,expense_kind,doctor_id,doctor_name,doctor_main_name,doctor_kind,slip_count,accounted_cutoff_invoice_id)
+      VALUES(2,1,2,10,3,$1,'{}',1,$2,1,'اسم','اسم',$3,$4,$5)`,
+      [randomUUID(),kind,snapshot,slipCount,cutoff],
+    );
+    await assert.rejects(()=>put('slips','doctor',3));
+    await assert.rejects(()=>put('slips','unassigned',null));
+    await assert.rejects(()=>put('medical','unassigned',null,99));
+    await db.exec("BEGIN");
+    await put('medical','unassigned',null);
+    await db.exec("ROLLBACK");
+    await put('slips','unassigned',3);
+    assert.equal((await db.query<{doctor_kind:string}>('SELECT doctor_kind FROM administrative_custody_transfers WHERE financial_document_id=3')).rows[0].doctor_kind,'unassigned');
   } finally {await db.close();}
 });

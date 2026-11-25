@@ -1100,8 +1100,8 @@ function DocumentEditor({
         )}
         {document?.custodyExpense?.doctorId && (
           <div className="financial-document-meta">
-            <span>{document.custodyExpense.kind === "slips" ? "صرف للقصاصة" : "صرف لطبيب أو ممرض"}</span>
-            <span>المستفيد: {document.custodyExpense.doctorName}</span>
+            <span>{document.custodyExpense.kind === "slips" ? "صرف للقصاصة" : document.custodyExpense.doctorKind === "unassigned" ? "صرف عمولة" : "صرف لطبيب أو ممرض"}</span>
+            <span>المستفيد: {document.custodyExpense.doctorName}{document.custodyExpense.doctorKind === "unassigned" ? " (غير معين)" : ""}</span>
             {document.custodyExpense.slipCount !== null && <span>عدد القصاصات: {document.custodyExpense.slipCount}</span>}
             {document.custodyExpense.kind === "medical" && <span>الفواتير المؤشرة عند الصرف: {document.custodyExpense.accountedInvoiceCount}</span>}
           </div>

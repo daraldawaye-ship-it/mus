@@ -42,7 +42,7 @@ export function AdministrativeCustodyTransferButton({
 
   const doctors = useQuery({
     queryKey: ["custody-beneficiaries", user?.id, companyId, draft?.expenseKind, draft?.doctorQuery],
-    queryFn: ({ signal }) => api<Page<Doctor>>(`/companies/${companyId}/doctors?active=true&medicalKind=${draft?.expenseKind === "slips" ? "nurse" : "medical"}&q=${encodeURIComponent(draft?.doctorQuery ?? "")}&page=1&pageSize=20&sort=name:asc`, { signal }),
+    queryFn: ({ signal }) => api<Page<Doctor>>(`/companies/${companyId}/doctors?active=true&medicalKind=${draft?.expenseKind === "slips" ? "custody-slips" : "custody-medical"}&q=${encodeURIComponent(draft?.doctorQuery ?? "")}&page=1&pageSize=20&sort=name:asc`, { signal }),
     enabled: !!draft && draft.expenseKind !== "other" && !draft.doctor && !unknown,
   });
 
@@ -107,9 +107,11 @@ export function AdministrativeCustodyTransferButton({
     if (!window.confirm(correcting
       ? `تأكيد عكس قيد صرف ${draft.doctor!.name} رقم ${selectedCorrection?.documentNumber ?? draft.correctionSourceId} بمبلغ ${amount.slice(1)} ريال؟ لن يتغيّر تأشير المبيعات.`
       : draft.expenseKind === "medical"
-      ? `تأكيد صرف المبلغ إلى ${draft.doctor!.name} وتأشير جميع مبيعاته السابقة «محاسب حتى هنا»؟`
+      ? draft.doctor!.kind === null
+        ? `تأكيد صرف العمولة إلى ${draft.doctor!.name} (غير معين) دون تأشير المبيعات؟`
+        : `تأكيد صرف المبلغ إلى ${draft.doctor!.name} وتأشير جميع مبيعاته السابقة «محاسب حتى هنا»؟`
       : draft.expenseKind === "slips"
-      ? `تأكيد صرف القصاصات للممرض ${draft.doctor!.name}، العدد ${slipCount}، دون تأشير المبيعات كمحاسبة؟`
+      ? `تأكيد صرف القصاصات إلى ${draft.doctor!.name}، العدد ${slipCount}، دون تأشير المبيعات كمحاسبة؟`
       : amount.startsWith("-")
       ? "هل تريد إعادة المبلغ من حافظة العهدة الإدارية إلى حساب العهدة؟"
       : "هل تريد ترحيل المبلغ من العهدة الإدارية إلى حافظتها؟")) return;
@@ -163,19 +165,19 @@ export function AdministrativeCustodyTransferButton({
       {choosing && createPortal(<Dialog open={true} title="الصرف من العهدة الإدارية"
         onClose={() => setChoosing(false)}>
         <div className="form-stack">
-          <Button onClick={() => choose("medical")}>صرف لطبيب أو ممرض</Button>
+          <Button onClick={() => choose("medical")}>صرف عمولة</Button>
           <Button onClick={() => choose("slips")}>صرف للقصاصة</Button>
           <Button variant="secondary" onClick={() => choose("other")}>نثريات أخرى</Button>
         </div>
       </Dialog>, document.body)}
       {draft && createPortal(<Dialog open={true} title={draft.expenseKind === "medical"
-        ? "صرف لطبيب أو ممرض" : draft.expenseKind === "slips" ? "صرف للقصاصة" : "ترحيل العهدة الإدارية"}
+        ? "صرف عمولة" : draft.expenseKind === "slips" ? "صرف للقصاصة" : "ترحيل العهدة الإدارية"}
         onClose={() => { if (!busy && !unknown) setDraft(null); }}>
         {draft && (
           <form className="form-stack" onSubmit={event => void submit(event)}>
             {draft.expenseKind === "other" && <p>الترحيل بين حساب العهدة الإدارية وحافظتها المستقلة، دون المساس بصندوق الموظف أو حوافظه أو المحفظة الإلكترونية.</p>}
             {draft.expenseKind !== "other" && <>
-              <Field label={draft.expenseKind === "slips" ? "البحث عن ممرض" : "البحث عن طبيب أو ممرض"}
+              <Field label="البحث عن المستفيد"
                 type="search" autoFocus required value={draft.doctorQuery} disabled={busy || unknown}
                 onChange={event => setDraft(previous => previous ? { ...previous, doctorQuery: event.target.value, doctor: null, correctionSourceId: null } : previous)} />
               {!draft.doctor && <div className="form-stack" style={{ maxHeight: 180, overflowY: "auto" }}>
@@ -183,8 +185,8 @@ export function AdministrativeCustodyTransferButton({
                 {doctors.isError && <Notice tone="error">تعذر البحث عن المستفيد. <Button variant="secondary" size="compact" onClick={() => void doctors.refetch()}>إعادة المحاولة</Button></Notice>}
                 {doctors.data?.items.map(doctor => <Button key={doctor.id} variant="secondary" size="compact"
                   disabled={busy || unknown} onClick={() => setDraft(previous => previous
-                    ? { ...previous, doctor, doctorQuery: doctor.name, correctionSourceId: null } : previous)}>
-                  {doctor.name}{doctor.sharedName && doctor.sharedName !== doctor.name ? ` — ${doctor.sharedName}` : ""}
+                    ? { ...previous, doctor, doctorQuery: doctor.kind === null ? doctor.name + " (غير معين)" : doctor.name, correctionSourceId: null } : previous)}>
+                  {doctor.name}{doctor.sharedName && doctor.sharedName !== doctor.name ? ` — ${doctor.sharedName}` : ""}{doctor.kind === null ? " (غير معين)" : ""}
                 </Button>)}
                 {doctors.data?.items.length === 0 && <small>لا توجد نتائج مطابقة.</small>}
               </div>}
@@ -194,8 +196,10 @@ export function AdministrativeCustodyTransferButton({
               <small className="muted">{draft.expenseKind === "medical"
                 ? correcting
                   ? "المبلغ السالب يصحّح قيد صرف مطابقًا، ولا يغيّر تأشير المبيعات."
-                  : "بعد حفظ الصرف تُؤشّر جميع المبيعات السابقة للاسم الرئيسي وكروته الفرعية بأنها محاسب."
-                : "يحفظ العدد للممرض دون تأشير مبيعاته كمحاسبة."}</small>
+                  : draft.doctor?.kind === null
+                    ? "صرف العمولة للمستفيد غير المعين لا يؤشّر المبيعات."
+                    : "بعد حفظ الصرف تُؤشّر المبيعات السابقة للطبيب أو الممرض بأنها محاسب."
+                : "يحفظ العدد للمستفيد دون تأشير مبيعاته كمحاسبة."}</small>
             </>}
             <Field label="المبلغ" money inputMode="decimal" autoFocus={draft.expenseKind === "other"} required
               value={draft.amount} disabled={busy || unknown}

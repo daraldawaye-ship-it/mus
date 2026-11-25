@@ -58,7 +58,7 @@ export async function postAdministrativeCustodyTransfer(
     conflict("custody_amount_excess", "المبلغ يتجاوز الحد المدعوم");
 
   const expenseKind = input.expenseKind ?? "other";
-  const beneficiary = await custodyMedicalBeneficiary(client, companyId, input);
+  const beneficiary = await custodyMedicalBeneficiary(client, companyId, input, true);
 
   // Resolve both accounts server-side and only from the company's system links.
   // Never accept arbitrary account IDs from the invoice browser.
@@ -87,9 +87,11 @@ export async function postAdministrativeCustodyTransfer(
   const direction = amount > 0n
     ? "ترحيل من العهدة الإدارية إلى حافظتها"
     : "استلام من حافظة العهدة الإدارية إلى العهدة";
+  const beneficiaryLabel = beneficiary?.kind === "doctor" ? "الطبيب"
+    : beneficiary?.kind === "nurse" ? "الممرض" : "المستفيد غير المعيّن";
   const purpose = beneficiary ? (expenseKind === "slips"
-    ? `صرف للقصاصة — الممرض ${beneficiary.name} — عدد القصاصات: ${input.slipCount}`
-    : `صرف لـ${beneficiary.kind === "doctor" ? "الطبيب" : "الممرض"} ${beneficiary.name}`) : direction;
+    ? `صرف للقصاصة — ${beneficiaryLabel} ${beneficiary.name} — عدد القصاصات: ${input.slipCount}`
+    : `صرف لـ${beneficiaryLabel} ${beneficiary.name}`) : direction;
   const memo = (purpose + (input.notes ? " — " + input.notes : "")).slice(0, 1000);
   const marking = await markCustodyMedicalSales(client, companyId, user.id, beneficiary, expenseKind);
   const lines = amount > 0n

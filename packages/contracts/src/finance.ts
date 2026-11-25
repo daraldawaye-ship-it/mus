@@ -133,7 +133,7 @@ export interface FinancialDocument {
     doctorId: number | null;
     doctorName: string | null;
     mainName: string | null;
-    doctorKind: "doctor" | "nurse" | null;
+    doctorKind: "doctor" | "nurse" | "unassigned" | null;
     slipCount: number | null;
     accountedInvoiceCount: number;
     cutoffInvoiceId: number | null;

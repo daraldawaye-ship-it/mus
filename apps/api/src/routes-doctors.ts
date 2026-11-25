@@ -25,7 +25,7 @@ export function doctorRoutes(pool: Pool): Router {
     if (active !== undefined && active !== "true" && active !== "false")
       throw new HttpError(400,"invalid_filter","حالة الطبيب غير صالحة");
     const medicalKind = req.query.medicalKind;
-    if (medicalKind !== undefined && medicalKind !== "medical" && medicalKind !== "nurse")
+    if (medicalKind !== undefined && !["medical","nurse","custody-medical","custody-slips"].some(kind => kind === medicalKind))
       throw new HttpError(400,"invalid_filter","نوع المستفيد غير صالح");
     const page = Number(req.query.page ?? 1), pageSize = Number(req.query.pageSize ?? 20);
     if (!Number.isInteger(page) || page < 1 || ![10,20,50,100].includes(pageSize))
@@ -46,7 +46,9 @@ export function doctorRoutes(pool: Pool): Router {
       `SELECT *,count(*) OVER()::int AS total FROM doctors
         WHERE company_id=$1 AND ($2::boolean IS NULL OR active=$2)
         AND ($3::text='' OR name ILIKE $4 OR shared_name ILIKE $4 OR department ILIKE $4 OR phone ILIKE $4 OR search_keys ILIKE $4 OR notes ILIKE $4)
-        AND ($7::text IS NULL OR kind='nurse' OR ($7='medical' AND kind='doctor'))
+        AND ($7::text IS NULL OR kind='nurse'
+          OR ($7 IN ('medical','custody-medical') AND kind='doctor')
+          OR ($7 IN ('custody-medical','custody-slips') AND kind IS NULL AND btrim(name)<>''))
         ORDER BY ${sorts[sort]} LIMIT $5 OFFSET $6`,
       [companyId, active===undefined?null:active==="true", query, "%" + query.replace(/[\\%_]/g,"\\$&") + "%",
        pageSize, (page-1)*pageSize, medicalKind ?? null],

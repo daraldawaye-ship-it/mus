@@ -2,15 +2,18 @@ import type { PoolClient } from "pg";
 import type { AdministrativeCustodyTransferInput } from "../../../../packages/contracts/src/administrative-custody.ts";
 import { HttpError } from "../errors.ts";
 
-export async function custodyMedicalBeneficiary(client: PoolClient, companyId: number, input: AdministrativeCustodyTransferInput) {
+export async function custodyMedicalBeneficiary(client: PoolClient, companyId: number, input: AdministrativeCustodyTransferInput, allowUnassigned = false) {
   if (!input.expenseKind || input.expenseKind === "other") return null;
-  const result = await client.query<{ id: number; name: string; mainName: string; kind: "doctor" | "nurse" }>(
-    `SELECT id,name,COALESCE(NULLIF(btrim(shared_name),''),name) AS "mainName",kind
+  const result = await client.query<{ id: number; name: string; mainName: string; kind: "doctor" | "nurse" | "unassigned" }>(
+    `SELECT id,name,COALESCE(NULLIF(btrim(shared_name),''),name) AS "mainName",COALESCE(kind,'unassigned') AS kind
      FROM doctors WHERE company_id=$1 AND id=$2 AND active=true
-     AND (kind='nurse' OR (kind='doctor' AND $3='medical')) FOR SHARE`,
-    [companyId, input.doctorId, input.expenseKind],
+     AND btrim(name)<>''
+     AND (kind='nurse' OR (kind='doctor' AND $3='medical') OR ($4::boolean AND kind IS NULL)) FOR SHARE`,
+    [companyId, input.doctorId, input.expenseKind, allowUnassigned],
   );
-  if (!result.rows[0]) throw new HttpError(400, "custody_beneficiary_invalid", "اختر مستفيدًا نشطًا: طبيبًا أو ممرضًا للصرف، وممرضًا للقصاصات.");
+  if (!result.rows[0]) throw new HttpError(400, "custody_beneficiary_invalid", allowUnassigned
+    ? "اختر مستفيدًا نشطًا: طبيبًا أو ممرضًا أو غير معين للعمولة، وممرضًا أو غير معين للقصاصات."
+    : "اختر مستفيدًا نشطًا: طبيبًا أو ممرضًا للصرف، وممرضًا للقصاصات.");
   return result.rows[0];
 }
 
@@ -18,7 +21,7 @@ export async function custodyMedicalBeneficiary(client: PoolClient, companyId: n
 // while the primary name includes child cards and all earlier dates.
 export async function markCustodyMedicalSales(client: PoolClient, companyId: number, userId: number,
   beneficiary: { mainName: string; kind: string } | null, expenseKind: string) {
-  if (expenseKind !== "medical" || !beneficiary) return { cutoffInvoiceId: null, newlyMarked: 0 };
+  if (expenseKind !== "medical" || !beneficiary || !["doctor","nurse"].includes(beneficiary.kind)) return { cutoffInvoiceId: null, newlyMarked: 0 };
   const latest = await client.query<{ id: number }>(
     `SELECT i.id FROM invoices i JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id
      WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true AND d.kind=$2
