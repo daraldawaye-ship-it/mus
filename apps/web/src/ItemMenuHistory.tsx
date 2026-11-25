@@ -37,11 +37,11 @@ const actions: { key: ItemMenuView; label: string }[] = [
   { key: "alternatives", label: "البدائل" },
 ];
 
-type MovementLineAmounts = {
+type MovementAmounts = {
   unitPriceFirstUnit: string | null;
   lineValue: string | null;
-  lineDiscount: string | null;
-  lineNet: string | null;
+  invoiceDiscount: string | null;
+  invoiceNet: string | null;
 };
 
 const movementMoney = (value: string | null | undefined, description: string) => (
@@ -57,20 +57,20 @@ function MovementLineHead() {
     <th scope="col" className="invoice-item-options-number" title="سعر الصنف بالوحدة الأولى قبل الخصم">السعر</th>
     <th scope="col">التاريخ</th>
     <th scope="col" className="invoice-item-options-number" title="قيمة الكمية المدفوعة للصنف، قبل الخصم ودون البونص">القيمة</th>
-    <th scope="col" className="invoice-item-options-number" title="الخصم المخصّص للصنف، لا خصم الفاتورة بالكامل">الخصم</th>
-    <th scope="col" className="invoice-item-options-number" title="صافي قيمة الصنف بعد الخصم">الصافي</th>
+    <th scope="col" className="invoice-item-options-number" title="إجمالي خصم الفاتورة كاملة">الخصم</th>
+    <th scope="col" className="invoice-item-options-number" title="صافي الفاتورة كاملة بعد الخصم">الصافي</th>
   </tr></thead>;
 }
 
-function movementLineCells(line?: MovementLineAmounts) {
+function movementAmountCells(line?: MovementAmounts) {
   return <>
     {movementMoney(line?.lineValue, "قيمة الصنف قبل الخصم")}
-    {movementMoney(line?.lineDiscount, "خصم الصنف")}
-    {movementMoney(line?.lineNet, "صافي قيمة الصنف")}
+    {movementMoney(line?.invoiceDiscount, "خصم الفاتورة")}
+    {movementMoney(line?.invoiceNet, "صافي الفاتورة")}
   </>;
 }
 
-type MovementInvoiceDetail = MovementLineAmounts & {
+type MovementInvoiceDetail = MovementAmounts & {
   movementId: number;
   invoiceLineId: number;
   invoiceId: number;
@@ -78,7 +78,7 @@ type MovementInvoiceDetail = MovementLineAmounts & {
   firstUnitMultiplier: string | null;
 };
 
-type StaffDockMovement=MovementLineAmounts & {
+type StaffDockMovement=MovementAmounts & {
   id:number; kind:"sale"|"sales_return"|"purchase"|"purchase_return"|"adjustment_surplus"|"adjustment_shortage";
   operationId:number|null;
   documentDate:string;quantitySmallest:string;firstUnitMultiplier:string|null;
@@ -103,7 +103,7 @@ function StaffWorkPanelMovementTable({rows,beforeFooter,footer,purchaseOnly}:{
           </td>
           {movementMoney(row.unitPriceFirstUnit, "سعر الوحدة الأولى")}
           <td><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
-          {movementLineCells(row)}
+          {movementAmountCells(row)}
         </tr>;
       })}</tbody>
     </table>}
@@ -153,7 +153,7 @@ function WorkPanelMovementTable({ rows, invoiceDetails, beforeFooter, footer, sc
                 </td>
                 {movementMoney(invoice?.unitPriceFirstUnit, "سعر الوحدة الأولى")}
                 <td title={row.documentDate}><ScrollableTableCell><bdi dir="ltr">{row.documentDate}</bdi></ScrollableTableCell></td>
-                {movementLineCells(invoice)}
+                {movementAmountCells(invoice)}
               </tr>
               <tr className="invoice-item-history-details-row">
                 <td colSpan={7}>

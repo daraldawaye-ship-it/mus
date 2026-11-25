@@ -32,21 +32,21 @@ test("workboard invoice lookup uses exact company, item and posted invoice lines
     const r = await db.query<{ movementId: number }>(workPanelMovementInvoiceSql, [1, 8, [21,22,23,24,25,26,27,28,30]]);
     assert.deepEqual(r.rows.sort((a, b) => Number(a.movementId)-Number(b.movementId)), [
       { movementId: 21, invoiceLineId: 11, invoiceId: 2, partyName: "صندوق البيع", postedUnitPrice: "500",
-        firstUnitMultiplier: "1", unitPriceFirstUnit:"500", lineValue:"500", lineDiscount:"33", lineNet:"467" },
+        firstUnitMultiplier: "1", unitPriceFirstUnit:"500", lineValue:"500", invoiceDiscount:"15", invoiceNet:"700" },
       { movementId: 22, invoiceLineId: 12, invoiceId: 3, partyName: "المورد الفعلي", postedUnitPrice: "85",
-        firstUnitMultiplier: "10", unitPriceFirstUnit:"85", lineValue:"-170", lineDiscount:"-10", lineNet:"-160" },
+        firstUnitMultiplier: "10", unitPriceFirstUnit:"85", lineValue:"-170", invoiceDiscount:"7", invoiceNet:"300" },
       { movementId: 23, invoiceLineId: 13, invoiceId: 4, partyName: null, postedUnitPrice: "10",
-        firstUnitMultiplier: "1", unitPriceFirstUnit:"10", lineValue:"50", lineDiscount:"0", lineNet:"50" },
+        firstUnitMultiplier: "1", unitPriceFirstUnit:"10", lineValue:"50", invoiceDiscount:"3", invoiceNet:"200" },
       { movementId: 30, invoiceLineId: 15, invoiceId: 2, partyName: "صندوق البيع", postedUnitPrice: "70",
-        firstUnitMultiplier: "20", unitPriceFirstUnit:"1400", lineValue:"-70", lineDiscount:"-10", lineNet:"-60" },
+        firstUnitMultiplier: "20", unitPriceFirstUnit:"1400", lineValue:"-70", invoiceDiscount:"15", invoiceNet:"700" },
     ]);
     const visible = (await db.query<Record<string, unknown>>(workPanelStaffMovementInvoiceSql,[1,8,[21,22,30]])).rows;
     assert.equal(visible.length,3);
-    assert.ok(visible.every(row => !("partyName" in row) && !("invoiceNet" in row)
-      && !("invoiceDiscount" in row) && "lineNet" in row));
+    assert.ok(visible.every(row => !("partyName" in row) && !("lineNet" in row)
+      && "invoiceDiscount" in row && "invoiceNet" in row));
     assert.deepEqual((await db.query(workPanelStaffMovementInvoiceSql,[2,8,[28]])).rows,[]);
     assert.deepEqual((await db.query(workPanelStaffMovementInvoiceSql,[3,8,[21]])).rows,[]);
-    const remainder = (await db.query<{ lineValue: string; lineDiscount: string; lineNet: string }>(workPanelMovementInvoiceSql,[1,8,[29]])).rows[0];
-    assert.deepEqual([remainder.lineValue,remainder.lineDiscount,remainder.lineNet],["1000","67","933"]);
+    const remainder = (await db.query<{ lineValue: string; invoiceDiscount: string; invoiceNet: string }>(workPanelMovementInvoiceSql,[1,8,[29]])).rows[0];
+    assert.deepEqual([remainder.lineValue,remainder.invoiceDiscount,remainder.invoiceNet],["1000","15","700"]);
   } finally { await db.close(); }
 });

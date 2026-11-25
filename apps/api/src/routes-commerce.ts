@@ -65,7 +65,7 @@ export const workPanelMovementInvoiceSql = `SELECT m.id AS "movementId", il.id A
 // The staff route is scoped to items selectable in the item container.
 export const workPanelStaffMovementInvoiceSql =
   `SELECT "movementId", "invoiceLineId", "invoiceId", "postedUnitPrice", "firstUnitMultiplier",
-          "unitPriceFirstUnit", "lineValue", "lineDiscount", "lineNet"
+          "unitPriceFirstUnit", "lineValue", "invoiceDiscount", "invoiceNet"
    FROM (${workPanelMovementInvoiceSql}) AS exact_movements
    WHERE EXISTS (SELECT 1 FROM items WHERE company_id=$1 AND id=$2 AND active)`;
 
@@ -352,8 +352,8 @@ export function commerceRoutes(pool: Pool): Router {
         throw new HttpError(400, "invalid_query", "حدد حتى 10 حركات مخزون");
       const movementIds = [...new Set(tokens.map(value => id(value)))];
       const items = await readStaffDock(req, async (client, companyId, user) => {
-        // Item-container access covers its line amounts, not invoice totals
-        // or private counterparty fields.
+        // The item container exposes invoice discount and net, but not
+        // private counterparty fields to staff.
         const sql = user.owner ? workPanelMovementInvoiceSql : workPanelStaffMovementInvoiceSql;
         const { rows } = await client.query(
           sql,
