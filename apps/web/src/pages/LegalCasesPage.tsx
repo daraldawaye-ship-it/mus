@@ -1,9 +1,10 @@
 import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
 import { documentImageTransferStates, documentImageTransferLabels, documentImageStates, documentImportanceScores, documentImageLabels, documentAutomationWorkLabels, documentManualWorkLabels, type LegalDocumentReview } from "../../../../packages/contracts/src/legal-document-review";
 import { DocumentReviewCard, DocumentReviewFields, groupDocumentRows, type ReviewEntry } from "./LegalDocumentReview";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { LegalCaseProfile } from "../../../../packages/contracts/src/legal-case-organization";
 import "./LegalCasesPage.css";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
@@ -11,8 +12,15 @@ import { errorMessage } from "../phase2";
 import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from "./LegalTaskBoard";
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing"|"instruction";
-type Case = {id:number;title:string;case_number:string;case_type:string;last_hearing:string|null;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
+type Case = {id:number;title:string;case_number:string;case_type:string;last_hearing:string|null;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number;case_profile?:LegalCaseProfile|null;open_task_count?:number;has_manual_work?:boolean;has_known_gaps?:boolean};
 type Entry = ReviewEntry & Partial<LegalTaskPriority> & {id:number;kind:Kind;transcription_status:TranscriptionState|null;transcription_file:boolean;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
+type CaseRelation = {
+ id:number;
+ relation_type:string;
+ evidence:string;
+ source_record_ids:number[];
+ related_case:Pick<Case,"id"|"title"|"case_number">;
+};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;caseType:string;lastHearing:string|null;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
 type RecordForm = {documentReview?:LegalDocumentReview;kind:Kind;transcriptionStatus?:TranscriptionState;transcriptionFile?:boolean;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
@@ -74,6 +82,43 @@ function EntryFields({value,change,people,isNew}:{value:RecordForm;change:(v:Rec
  {value.kind==="task"&&<Select label="الحالة" value={value.status||"pending"} onChange={e=>set("status",e.target.value)}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option><option value="verified">تم التحقق</option></Select>}
  </div>;
 }
+function CaseRelationEditor({caseId,existingIds}:{caseId:number;existingIds:number[]}) {
+ const {user}=useSession(),client=useQueryClient();
+ const [search,setSearch]=useState(""),[other,setOther]=useState<Pick<Case,"id"|"title">|null>(null);
+ const [relationType,setRelationType]=useState(""),[evidence,setEvidence]=useState(""),[sources,setSources]=useState("");
+ const query=useQuery({
+  queryKey:["legal","relation-candidates",user?.id,search],
+  queryFn:({signal})=>api<{items:Case[]}>("/legal/cases?"+new URLSearchParams({q:search}),{signal}),
+  enabled:!!user&&search.trim().length>=2&&!other,
+ });
+ const sourceTokens=sources.trim().split(/[\s,،]+/).filter(Boolean);
+ const ids=sourceTokens.map(Number);
+ const validSources=sourceTokens.every(token=>/^\d+$/.test(token))
+  &&ids.every(id=>Number.isSafeInteger(id)&&id>0&&id<=2147483647)&&ids.length<=100;
+ const save=useMutation({
+  mutationFn:()=>api("/legal/cases/"+caseId+"/relations/"+other!.id,{
+   method:"PUT",body:{revision:0,relationType,evidence,sourceRecordIds:[...new Set(ids)]},
+  }),
+  onSuccess:()=>{setOther(null);setSearch("");setRelationType("");setEvidence("");setSources("");
+   void client.invalidateQueries({queryKey:["legal","relations"]});},
+ });
+ return <details className="legal-case-profile-row"><summary>ربط قضية</summary>
+  <form onSubmit={event=>{event.preventDefault();if(other&&validSources)save.mutate();}}>
+   {other?<div className="legal-actions"><strong>{other.title}</strong><Button type="button" variant="secondary" onClick={()=>setOther(null)}>تغيير القضية</Button></div>:
+    <><Field label="ابحث عن القضية" value={search} onChange={event=>setSearch(event.target.value)}/>
+    {query.error&&<Notice tone="error">{errorMessage(query.error)}</Notice>}
+    {query.data?.items.filter(item=>item.id!==caseId&&!existingIds.includes(item.id)).map(item=>
+     <Button key={item.id} type="button" variant="secondary" onClick={()=>setOther(item)}>{item.title}</Button>)}</>}
+   <Field label="نوع العلاقة" value={relationType} required maxLength={120} onChange={event=>setRelationType(event.target.value)}/>
+   <TextField label="دليل العلاقة" value={evidence} onChange={setEvidence}/>
+   <Field label="أرقام سجلات الدليل" value={sources} onChange={event=>setSources(event.target.value)}/>
+   {!validSources&&<Notice tone="warning">استخدم أرقام سجلات صحيحة، تفصل بينها فاصلة أو مسافة.</Notice>}
+   {save.error&&<Notice tone="error">{errorMessage(save.error)}</Notice>}
+   {save.isSuccess&&<Notice>حُفظت العلاقة.</Notice>}
+   <Button type="submit" disabled={!other||!relationType.trim()||!evidence.trim()||evidence.length>4000||!validSources||save.isPending}>حفظ العلاقة</Button>
+  </form>
+ </details>;
+}
 export function LegalCasesPage() {
  const {user}=useSession(),owner=!!user?.owner,client=useQueryClient(),[params,setParams]=useSearchParams();
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
@@ -88,6 +133,8 @@ export function LegalCasesPage() {
  const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [caseSort,setCaseSort]=useState({key:"",direction:"asc"});
+ const [caseFilters,setCaseFilters]=useState({status:"",agency:"",caseType:"",work:""});
+ const updateCaseFilter=(key:keyof typeof caseFilters,value:string)=>{setCaseFilters(filters=>({...filters,[key]:value}));setPage(1);};
  const sortCases=(key:string)=>{setCaseSort(current=>({key,direction:current.key===key&&current.direction==="asc"?"desc":"asc"}));setPage(1);};
  const [activePanel,setActivePanel]=useState<"cases"|"tasks">(caseId>0?"cases":"tasks");
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
@@ -96,8 +143,34 @@ export function LegalCasesPage() {
  const [editingRevision,setEditingRevision]=useState(0);
  const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
  const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
- const list=useQuery({queryKey:["legal","cases",search,page,caseSort],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page),sortBy:caseSort.key,sortDir:caseSort.direction})),enabled:!!user});
- const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
+ const list=useQuery({
+  queryKey:["legal","cases",user?.id,search,page,caseSort,caseFilters],
+  queryFn:({signal})=>{
+   const query=new URLSearchParams({q:search,page:String(page),sortBy:caseSort.key,sortDir:caseSort.direction});
+   Object.entries(caseFilters).forEach(([name,value])=>{if(value)query.set(name,value);});
+   return api<{items:Case[];total:number;filters:{agencies:(string|null)[]|null;case_types:(string|null)[]|null}}>("/legal/cases?"+query,{signal});
+  },
+  enabled:!!user,
+ });
+ const selected=useQuery({queryKey:["legal","case",caseId,user?.id],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
+ const relations=useQuery({
+  queryKey:["legal","relations",caseId,user?.id],
+  queryFn:({signal})=>api<{items:CaseRelation[]}>("/legal/cases/"+caseId+"/relations",{signal}),
+  enabled:!!user&&caseId>0&&!globalKind&&activePanel==="cases",
+ });
+ const [sourceId,setSourceId]=useState<number|null>(null);
+ const sourcePanel=useRef<HTMLDivElement>(null);
+ const selectedPanel=useRef<HTMLDivElement>(null);
+ const selectedCaseId=selected.data?.record.id;
+ useEffect(()=>{if(selectedCaseId) selectedPanel.current?.scrollIntoView({block:"start"});},[selectedCaseId]);
+ useEffect(()=>{if(sourceId!==null) sourcePanel.current?.scrollIntoView({block:"nearest"});},[sourceId]);
+ const profile=selected.data?.record.case_profile;
+ const canonical=relations.data?.items.find(item=>item.related_case.id===profile?.canonicalCaseId);
+ const source=useQuery({
+  queryKey:["legal","case-source",caseId,sourceId,user?.id],
+  queryFn:({signal})=>api<{record:Entry}>("/legal/records/"+sourceId,{signal}),
+  enabled:!!user&&sourceId!==null&&!globalKind&&activePanel==="cases",
+ });
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
  const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch,manual,manualCase,imageFilter,importanceFilter,transcriptionFilter,importanceOrder,automationWork,manualWork,imageTransfer],queryFn:({signal})=>{
@@ -122,7 +195,7 @@ export function LegalCasesPage() {
  const access=useQuery({queryKey:["legal","access",caseId],queryFn:()=>api<{items:{user_id:number;user_name:string;role:string}[]}>("/legal/cases/"+caseId+"/access"),enabled:owner&&caseId>0&&tab==="access"});
  const editor=owner||selected.data?.role==="editor",reporter=editor||selected.data?.role==="reporter";
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
- const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
+ const go=(key:string,value:string)=>{if(key==="case")setSourceId(null);setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});};
  const resetGlobalPage=()=>{setGlobalPage(1);setExpandedId(null);setFocus(null);};
  const resetGlobalContext=()=>{resetGlobalPage();setGlobalSearch("");setEntryEdit(null);setImageFilter("");setImageTransfer("");setImportanceFilter("");setTranscriptionFilter("");setImportanceOrder("");setAutomationWork("");setManualWork("");};
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
@@ -251,47 +324,98 @@ export function LegalCasesPage() {
  </Card>:<>
  {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><div className="legal-case-list-controls">
  <Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+ <Select label="الحالة الإدارية" value={caseFilters.status} onChange={e=>updateCaseFilter("status",e.target.value)}>
+  <option value="">الكل</option><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="unknown">غير محددة</option>
+ </Select>
+ <Select label="الجهة" value={caseFilters.agency} onChange={e=>updateCaseFilter("agency",e.target.value)}>
+  <option value="">الكل</option>{list.data?.filters?.agencies?.map(value=>value&&<option key={value}>{value}</option>)}
+ </Select>
+ <Select label="النوع" value={caseFilters.caseType} onChange={e=>updateCaseFilter("caseType",e.target.value)}>
+  <option value="">الكل</option>{list.data?.filters?.case_types?.map(value=>value&&<option key={value}>{value}</option>)}
+ </Select>
+ <Select label="المتابعة" value={caseFilters.work} onChange={e=>updateCaseFilter("work",e.target.value)}>
+  <option value="">الكل</option><option value="tasks">مهام قائمة</option><option value="gaps">نواقص مثبتة</option><option value="manual">متابعة يدوية</option>
+ </Select>
  <button type="button" className="legal-case-summary-sort" aria-pressed={caseSort.key==="summary"} onClick={()=>sortCases("summary")}>فرز حسب الشرح <span aria-hidden="true">{caseSort.key==="summary"?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button>
  </div>
  <div className="legal-case-table-scroll" role="region" aria-label="قائمة القضايا" tabIndex={0}>
  <table className="legal-case-table"><thead><tr>{[
- ["title","اسم القضية"],["case_number","رقم القضية"],["agency","جهة القضية"],["case_type","النوع"],["stage","الحالة"],["priority","الأولوية"],["start_date","تاريخ البداية"],["next_hearing","تاريخ الجلسة القادمة"],["last_hearing","تاريخ آخر جلسة"]
- ].map(([key,label])=><th scope="col" key={key} aria-sort={caseSort.key===key?(caseSort.direction==="asc"?"ascending":"descending"):"none"}><button className="legal-case-sort" onClick={()=>sortCases(key)}>{label}<span aria-hidden="true">{caseSort.key===key?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button></th>)}</tr></thead>
+ ["title","اسم القضية"],["case_number","رقم القضية"],["agency","جهة القضية"],["case_type","النوع"],["stage","الحالة"],["priority","الأولوية"],["start_date","تاريخ البداية"],["next_hearing","تاريخ الجلسة القادمة"],["last_hearing","تاريخ آخر جلسة"],["last_action","آخر إجراء"]
+ ].map(([key,label])=><th scope="col" key={key} aria-sort={caseSort.key===key?(caseSort.direction==="asc"?"ascending":"descending"):"none"}><button className="legal-case-sort" onClick={()=>sortCases(key)}>{label}<span aria-hidden="true">{caseSort.key===key?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button></th>)}<th scope="col">المتابعة</th></tr></thead>
  <tbody>{(list.data?.items??[]).map(c=><Fragment key={c.id}>
  <tr className={caseId===c.id?"selected":""}>
  <td><button className="legal-case-title-button" aria-pressed={caseId===c.id} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}>{c.title}</button></td>
  <td>{c.case_number||"—"}</td><td>{c.agency||"—"}</td><td>{c.case_type||"—"}</td>
- <td>{c.stage||(c.status==="closed"?"منتهية":c.status==="active"?"نشطة إداريًا":"غير محددة")}{c.stage&&<small className="legal-case-admin-status">حالة البطاقة: {c.status==="closed"?"مغلقة":c.status==="active"?"نشطة":"غير محددة"}</small>}</td>
+ <td>{c.case_profile?.currentStatusDescription||c.stage||(c.status==="closed"?"منتهية":c.status==="active"?"نشطة إداريًا":"غير محددة")}{c.stage&&<small className="legal-case-admin-status">حالة البطاقة: {c.status==="closed"?"مغلقة":c.status==="active"?"نشطة":"غير محددة"}</small>}</td>
  <td>{c.priority||"غير محددة"}</td><td>{c.start_date?.slice(0,10)||"—"}</td><td>{c.next_hearing?.slice(0,10)||"—"}</td><td>{c.last_hearing?.slice(0,10)||"—"}</td>
+ <td>{c.case_profile?.lastAction?<><span>{c.case_profile.lastAction.description}</span>{c.case_profile.lastAction.date&&<small className="legal-case-admin-status">{c.case_profile.lastAction.date}</small>}</>:"—"}</td>
+ <td><span>{c.open_task_count?c.open_task_count+" مهام قائمة":"—"}</span>{c.has_known_gaps&&<small className="legal-case-admin-status">نواقص مثبتة</small>}{c.has_manual_work&&<small className="legal-case-admin-status">متابعة يدوية</small>}</td>
  </tr>
  <tr className={`legal-case-description-row${caseId===c.id?" selected":""}`}>
-  <td colSpan={9}>
-   {c.summary?.trim()
+  <td colSpan={11}>
+   {c.case_profile?.executiveSummary?.trim()
+    ?<div className="legal-case-summary-short"><strong>الملخص:</strong> <span>{c.case_profile.executiveSummary}</span></div>
+    :c.summary?.trim()
     ?c.summary.trim().length>150
       ?<details className="legal-case-summary"><summary><strong>الشرح:</strong> <span className="legal-case-summary-preview">{c.summary.trim().slice(0,150)}…</span><span className="legal-case-summary-more">إظهار المزيد</span><span className="legal-case-summary-less">إظهار أقل</span></summary><div className="legal-preserve">{c.summary}</div></details>
       :<div className="legal-case-summary-short"><strong>الشرح:</strong> <span>{c.summary}</span></div>
     :<div className="legal-case-summary-short"><strong>الشرح:</strong> <span>—</span></div>}
   </td>
  </tr>
- </Fragment>)}{!list.isPending&&!list.error&&!list.data?.items.length&&<tr><td colSpan={9}>لا توجد قضايا مطابقة</td></tr>}</tbody></table></div>
+ </Fragment>)}{!list.isPending&&!list.error&&!list.data?.items.length&&<tr><td colSpan={11}>لا توجد قضايا مطابقة</td></tr>}</tbody></table></div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
  <p>عدد القضايا: {list.data?.total??"…"}</p>
  {owner&&<Button variant="secondary" onClick={()=>go("tab","unlinked")}>سجلات تحتاج ربطًا</Button>}
  </Card>
- <div className="legal-content">
+ <div className="legal-content" ref={selectedPanel}>
  {caseNew?<Card title="إضافة قضية"><CaseFields value={caseDraft} change={setCaseDraft}/><div className="legal-actions"><Button disabled={busy||!caseDraft.title} onClick={submitCase}>حفظ القضية</Button><Button variant="secondary" onClick={()=>{setCaseNew(false);setCaseEdit(false);}}>إلغاء</Button></div></Card>:
  selected.data?<><Card title={selected.data.record.title}>
  {selected.data.record.needs_review&&<Notice tone="warning">هذا السجل منقول من الجدول العام ويحتاج استكمال بياناته ومراجعتها؛ الأصل محفوظ.</Notice>}
  {caseEdit?<><CaseFields value={caseDraft} change={setCaseDraft} disabled={!owner}/><div className="legal-actions"><Button disabled={busy||!caseDraft.title} onClick={submitCase}>حفظ</Button><Button variant="secondary" onClick={()=>setCaseEdit(false)}>إلغاء</Button></div></>:
  <><div className="legal-tags"><span>{selected.data.record.case_number||"لم يحدد الرقم"}</span><span>{selected.data.record.agency||"لم تحدد الجهة"}</span><span>{selected.data.record.status==="closed"?"منتهية":selected.data.record.status==="active"?"فعالة":"غير محددة"}</span><span>صورة الملف: {({unknown:"غير محددة",yes:"موجودة",no:"غير موجودة",partial:"ناقصة"} as Record<string,string>)[selected.data.record.file_copy_status]??"غير محددة"}</span></div>
- <div className="legal-tags"><span>النوع: {selected.data.record.case_type||"—"}</span><span>آخر جلسة: {selected.data.record.last_hearing?.slice(0,10)||"—"}</span><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div><p className="legal-preserve">{selected.data.record.summary}</p>{selected.data.record.drive_folder_url&&<p><a href={selected.data.record.drive_folder_url} rel="noreferrer" target="_blank">فتح مجلد القضية في Google Drive</a></p>}
+ <div className="legal-tags"><span>النوع: {selected.data.record.case_type||"—"}</span><span>آخر جلسة: {selected.data.record.last_hearing?.slice(0,10)||"—"}</span><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div>{canonical&&<Notice><Link to={"/legal-cases?case="+canonical.related_case.id} onClick={()=>{setSourceId(null);setCaseEdit(false);setEntryEdit(null);}}>فتح البطاقة المعتمدة: {canonical.related_case.title}</Link></Notice>}
+ {profile?.currentStatusDescription&&<p className="legal-preserve">{profile.currentStatusDescription}</p>}
+ {profile?.executiveSummary&&<p className="legal-preserve">{profile.executiveSummary}</p>}
+ {profile?.lastAction&&<div className="legal-case-profile-row">
+  <strong>آخر إجراء{profile.lastAction.date?" · "+profile.lastAction.date:""}</strong>
+  <p className="legal-preserve">{profile.lastAction.description}</p>
+  {profile.lastAction.sourceRecordIds.map(id=><button type="button" className="legal-case-title-button" key={id} onClick={()=>setSourceId(id)}>المصدر #{id}</button>)}
+ </div>}
+ {profile?.currentAction&&<div className="legal-case-profile-row"><strong>الإجراء التالي</strong><p className="legal-preserve">{profile.currentAction}</p></div>}
+ {profile?.proceedingNumbers?.length?<details className="legal-case-profile-row"><summary>الأرقام الإجرائية</summary>
+  <ul>{profile.proceedingNumbers.map((number,index)=><li key={index}>{number.kind} · {number.number}
+   {number.sourceRecordIds.map(id=><button type="button" className="legal-case-title-button" key={id} onClick={()=>setSourceId(id)}>المصدر #{id}</button>)}
+  </li>)}</ul>
+ </details>:null}
+ {profile?.organizationalNotes?.length?<details className="legal-case-profile-row"><summary>النواقص والملاحظات</summary><ul>{profile.organizationalNotes.map((note,index)=><li key={index}>{note}</li>)}</ul></details>:null}
+ {selected.data.record.summary&&(profile?.executiveSummary
+  ?<details className="legal-case-profile-row"><summary>الشرح الأصلي</summary><p className="legal-preserve">{selected.data.record.summary}</p></details>
+  :<p className="legal-preserve">{selected.data.record.summary}</p>)}{selected.data.record.drive_folder_url&&<p><a href={selected.data.record.drive_folder_url} rel="noreferrer" target="_blank">فتح مجلد القضية في Google Drive</a></p>}
  {Boolean(selected.data.record.legacy_snapshot)&&<details className="legal-legacy"><summary>البيانات الأصلية المنقولة من الجدول العام</summary><pre>{JSON.stringify(selected.data.record.legacy_snapshot,null,2)}</pre></details>}
  <div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>{setCaseDraft(caseForm(selected.data!.record));setCaseEdit(true);}}>تعديل بيانات القضية</Button>}
  <Button variant="secondary" onClick={()=>void action(async()=>{const data=await api<unknown>("/legal/cases/"+caseId+"/ai-export");await navigator.clipboard.writeText(JSON.stringify(data,null,2));setNotice("تم نسخ البيانات المترابطة");})}>نسخ ملف القضية للذكاء الاصطناعي</Button></div></>}
  </Card>
- <div className="legal-tabs">{[{id:"overview",label:"نظرة عامة"},...kinds,...(owner?[{id:"access",label:"الصلاحيات"},{id:"unlinked",label:"السجلات القديمة"}]:[])].map(k=><Button key={k.id} variant={tab===k.id?"primary":"secondary"} onClick={()=>{go("tab",k.id);setEntryEdit(null);}}>{k.label}{k.id!=="overview"&&(records.data?.items??[]).filter(r=>r.kind===k.id).length?" ("+(records.data?.items??[]).filter(r=>r.kind===k.id).length+")":""}</Button>)}</div>
+ {sourceId!==null&&<div ref={sourcePanel}><Card title={source.data?.record.title??"المصدر #"+sourceId}>
+  <Button variant="secondary" onClick={()=>setSourceId(null)}>إغلاق المصدر</Button>
+  {source.isPending&&<Notice>جارٍ تحميل المصدر…</Notice>}
+  {source.error&&<Notice tone="error">{errorMessage(source.error)}</Notice>}
+  {source.data&&<><p className="legal-preserve">{source.data.record.body}</p>
+  {source.data.record.content_text&&<details><summary>المحتوى الأصلي</summary><p className="legal-preserve">{source.data.record.content_text}</p></details>}</>}
+ </Card></div>}
+ <div className="legal-tabs">{[{id:"overview",label:"نظرة عامة"},...kinds,{id:"relations",label:"القضايا المرتبطة"},...(owner?[{id:"access",label:"الصلاحيات"},{id:"unlinked",label:"السجلات القديمة"}]:[])].map(k=><Button key={k.id} variant={tab===k.id?"primary":"secondary"} onClick={()=>{go("tab",k.id);setEntryEdit(null);}}>{k.label}{k.id!=="overview"&&(records.data?.items??[]).filter(r=>r.kind===k.id).length?" ("+(records.data?.items??[]).filter(r=>r.kind===k.id).length+")":""}</Button>)}</div>
  {tab==="overview"?<Card title="محتويات الملف"><div className="legal-overview">{kinds.map(k=><button key={k.id} onClick={()=>go("tab",k.id)}><strong>{k.label}</strong><span>{(records.data?.items??[]).filter(r=>r.kind===k.id).length}</span></button>)}</div></Card>:
+ tab==="relations"?<Card title="القضايا المرتبطة">
+ {relations.isPending&&<Notice>جارٍ تحميل العلاقات…</Notice>}
+ {relations.error&&<Notice tone="error">{errorMessage(relations.error)}</Notice>}
+ {relations.data?.items.length===0&&<Notice>لا توجد علاقات ظاهرة لهذه القضية.</Notice>}
+ {editor&&relations.data&&<CaseRelationEditor key={caseId} caseId={caseId} existingIds={relations.data.items.map(item=>item.related_case.id)}/>}
+ {relations.data?.items.map(item=><article className="legal-entry" key={item.id}>
+  <Link to={"/legal-cases?case="+item.related_case.id} onClick={()=>{setSourceId(null);setCaseEdit(false);setEntryEdit(null);}}>{item.related_case.title}</Link>
+  <div className="legal-case-profile-row"><strong>{item.relation_type}</strong><p className="legal-preserve">{item.evidence}</p></div>
+  {item.source_record_ids.map(id=><button type="button" className="legal-case-title-button" key={id} onClick={()=>setSourceId(id)}>المصدر #{id}</button>)}
+ </article>)}
+ </Card>:
  tab==="access"&&owner?<Card title="منح صلاحيات القضايا">
  <p>الوصول لك وحدك افتراضيًا. اختر المستخدم الذي تريد تفويضه لهذه القضية تحديدًا. لن يستطيع الاطلاع على القضايا الأخرى دون إذن مستقل.</p>
  <div className="legal-actions">

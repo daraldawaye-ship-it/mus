@@ -16,11 +16,14 @@ test("case list fields persist, preserve omitted values for older clients and en
  CREATE TABLE general_table(general_table_id integer PRIMARY KEY);
  CREATE TABLE page_settings(page_key text,company_id integer,enabled boolean);
  CREATE TABLE legal_case_access(case_id integer,user_id integer,role text);
+ CREATE TABLE legal_records(id integer PRIMARY KEY,kind text,status text,document_review jsonb);
+ CREATE TABLE legal_record_cases(record_id integer,case_id integer);
  CREATE TABLE audit_events(actor_id integer,actor_name text,scope text,company_id integer,action text,target_type text,target_id integer,before_value jsonb,after_value jsonb);`);
  const original=await readFile("apps/api/migrations/118_legal_case_management.sql","utf8");
  await db.exec(original.slice(0,original.indexOf("CREATE INDEX")));
  const migration=await readFile("apps/api/migrations/20261116_legal_case_list_fields.sql","utf8");
  await db.exec(migration);await db.exec(migration);
+ await db.exec(await readFile("apps/api/migrations/20261125_legal_case_organization.sql","utf8"));
  const client={query:async(sql:string,params:unknown[]=[])=>{const r=await db.query(sql,params);return {...r,rowCount:r.rows.length||r.affectedRows||0};},release(){}};
  const pool={...client,connect:async()=>client} as unknown as Pool;
  const app=express();app.use(express.json());
@@ -43,7 +46,20 @@ test("case list fields persist, preserve omitted values for older clients and en
  const cleared=await call("PUT",`/legal/cases/${id}`,{title:"Updated",revision:2,caseType:"",lastHearing:null});
  assert.equal(cleared.status,200);assert.equal(cleared.data.record.case_type,"");assert.equal(cleared.data.record.last_hearing,null);
  assert.equal((await call("PUT",`/legal/cases/${id}`,{title:"Invalid",revision:3,lastHearing:"2026-02-30"})).status,400);
- const listed=await call("GET","/legal/cases");assert.equal(listed.data.items[0].last_hearing,null);
+ const listed=await call("GET","/legal/cases");assert.equal(listed.status,200,JSON.stringify(listed.data));
+ assert.equal(listed.data.items[0].last_hearing,null);
+ await db.query("UPDATE legal_cases SET agency=$2,case_type=$3,case_profile=$4 WHERE id=$1",
+  [id,"جهة الاختبار","تجارية",{proceedingNumbers:[{kind:"حكم",number:"70/1447"}],lastAction:{date:"2026-11-08"}}]);
+ await db.exec(`INSERT INTO legal_records VALUES(1,'task','pending','{}'),(2,'task','verified','{}'),(3,'document','','{"manualWorkStatus":"remaining"}')`);
+ await db.query("INSERT INTO legal_record_cases VALUES(1,$1),(2,$1),(3,$1)",[id]);
+ const work=new URLSearchParams({q:"حكم 70/1447",agency:"جهة الاختبار",caseType:"تجارية",work:"manual"});
+ const filtered=await call("GET","/legal/cases?"+work);
+ assert.equal(filtered.status,200,JSON.stringify(filtered.data));
+ assert.equal(filtered.data.total,1);
+ assert.equal(filtered.data.items[0].open_task_count,1);
+ assert.equal(filtered.data.items[0].has_known_gaps,true);
+ assert.equal(filtered.data.items[0].has_manual_work,true);
+ assert.ok(filtered.data.filters.agencies.includes("جهة الاختبار"));
  await db.exec("INSERT INTO legal_cases(title,priority,start_date,created_by,updated_by) SELECT 'Sort '||n, ((n-1)%10)+1, DATE '2026-01-01'+n,1,1 FROM generate_series(1,35) n");
  const asc=await call("GET","/legal/cases?sortBy=start_date&sortDir=asc");
  assert.equal(asc.data.items[0].priority,1);assert.equal(asc.data.items[29].title,"Sort 30");
@@ -51,7 +67,7 @@ test("case list fields persist, preserve omitted values for older clients and en
  assert.equal(second.data.items[0].title,"Sort 31");assert.equal(second.data.items.at(-1).priority,0);
  const desc=await call("GET","/legal/cases?sortBy=start_date&sortDir=desc");
  assert.equal(desc.data.items[0].title,"Sort 35");
- for(const sortBy of ["title","case_number","agency","case_type","stage","summary","last_hearing","next_hearing"])
+ for(const sortBy of ["title","case_number","agency","case_type","stage","summary","last_hearing","next_hearing","last_action"])
   assert.equal((await call("GET","/legal/cases?sortBy="+sortBy)).status,200);
  assert.equal((await call("GET","/legal/cases?sortBy=__proto__")).status,400);
  assert.equal((await call("GET","/legal/cases?sortDir=invalid")).status,400);

@@ -17,7 +17,8 @@ test("organization preserves source data and case relationships enforce both per
     CREATE TABLE general_table(general_table_id integer PRIMARY KEY);
     CREATE TABLE page_settings(page_key text,company_id integer,enabled boolean);
     CREATE TABLE legal_case_access(case_id integer,user_id integer,role text);
-    CREATE TABLE legal_records(id integer PRIMARY KEY);
+    CREATE TABLE legal_records(id integer PRIMARY KEY,created_by integer NOT NULL DEFAULT 1,kind text NOT NULL DEFAULT 'document',sort_order integer DEFAULT 0,record_date date);
+    CREATE TABLE legal_record_links(first_record_id integer,second_record_id integer);
     CREATE TABLE legal_record_cases(record_id integer,case_id integer);
     CREATE TABLE audit_events(actor_id integer,actor_name text,scope text,company_id integer,
       action text,target_type text,target_id integer,before_value jsonb,after_value jsonb);`);
@@ -62,7 +63,7 @@ test("organization preserves source data and case relationships enforce both per
   const c=third.data.record.id as number;
   await db.query("UPDATE legal_cases SET needs_review=true WHERE id=$1",[a]);
   await db.query("INSERT INTO legal_case_access VALUES($1,2,'editor')",[a]);
-  await db.exec("INSERT INTO legal_records VALUES(10),(11)");
+  await db.exec("INSERT INTO legal_records(id) VALUES(10),(11)");
   await db.query("INSERT INTO legal_record_cases VALUES(10,$1),(11,$2)",[a,c]);
   const profile={executiveSummary:"ملخص إداري موجز",currentAction:"استكمال الصورة",
     organizationalNotes:["صورة الصفحة الأخيرة ناقصة"],
@@ -106,6 +107,13 @@ test("organization preserves source data and case relationships enforce both per
   assert.equal((await call("GET",`/legal/cases/${a}/relations`,undefined,2)).data.items.length,0,
     "relationship and the other case must stay hidden without access to both ends");
   assert.equal((await call("GET",`/legal/cases/${b}/relations`,undefined,2)).status,403);
+  const ownerExport=await call("GET",`/legal/cases/${a}/ai-export`);
+  assert.equal(ownerExport.status,200,JSON.stringify(ownerExport.data));
+  assert.deepEqual(ownerExport.data.relations,fromA.data.items);
+  const editorExport=await call("GET",`/legal/cases/${a}/ai-export`,undefined,2);
+  assert.equal(editorExport.status,200,JSON.stringify(editorExport.data));
+  assert.deepEqual(editorExport.data.relations,[]);
+
   await db.query("INSERT INTO legal_case_access VALUES($1,2,'viewer')",[b]);
   assert.equal((await call("GET",`/legal/cases/${a}/relations`,undefined,2)).data.items.length,1);
   assert.equal((await call("PUT",`/legal/cases/${b}/relations/${a}`,{...relation,revision:1},2)).status,403);

@@ -196,6 +196,19 @@ async function canCase(db:Database,user:User,caseId:number,min:"viewer"|"reporte
   const role=await level(db,user,caseId);
   if((userRoleRank[role]??0)<userRoleRank[min]) throw new HttpError(403,"legal_forbidden","لا تملك صلاحية هذه القضية");
 }
+async function caseRelations(db:Database,user:User,caseId:number) {
+    const rows=await db.query(`SELECT relation.*,
+        json_build_object('id',other.id,'title',other.title,'case_number',other.case_number,
+          'case_type',other.case_type,'agency',other.agency,'status',other.status) AS related_case
+      FROM legal_case_relations relation
+      JOIN legal_cases other ON other.id=CASE WHEN relation.first_case_id=$1
+        THEN relation.second_case_id ELSE relation.first_case_id END
+      WHERE (relation.first_case_id=$1 OR relation.second_case_id=$1)
+        AND ($2::boolean OR EXISTS(SELECT 1 FROM legal_case_access a
+          WHERE a.case_id=other.id AND a.user_id=$3))
+      ORDER BY other.title,other.id`,[caseId,user.owner,user.id]);
+  return rows.rows;
+}
 async function recordCases(db:Database,recordId:number) {
   const rows=await db.query("SELECT case_id FROM legal_record_cases WHERE record_id=$1 ORDER BY case_id",[recordId]);
   return rows.rows.map(r=>r.case_id as number);
@@ -343,19 +356,53 @@ export function legalCaseRoutes(pool:Pool):Router {
     const user=actor(req),q=String(req.query.q??"").trim().slice(0,150);
     const status=req.query.status;
     if(status!==undefined && !["active","closed","unknown"].includes(String(status))) throw new HttpError(400,"invalid_query","حالة غير صالحة");
-    const page=Math.max(1,Math.min(100000,Number(req.query.page)||1));
-    const sortColumns:Record<string,string>={title:"NULLIF(c.title,'')",case_number:"NULLIF(c.case_number,'')",agency:"NULLIF(c.agency,'')",case_type:"NULLIF(c.case_type,'')",stage:"COALESCE(NULLIF(c.stage,''),CASE c.status WHEN 'closed' THEN 'منتهية' WHEN 'active' THEN 'نشطة إداريًا' ELSE 'غير محددة' END)",summary:"NULLIF(c.summary,'')",priority:"NULLIF(c.priority,0)",start_date:"c.start_date",next_hearing:"c.next_hearing",last_hearing:"c.last_hearing"};
+    const page=Math.max(1,Math.min(100000,Math.trunc(Number(req.query.page)||1)));
+    const agency=String(req.query.agency??"").trim().slice(0,250);
+    const caseType=String(req.query.caseType??"").trim().slice(0,120);
+    const work=String(req.query.work??"");
+    if(work&&!["tasks","gaps","manual"].includes(work)) throw new HttpError(400,"invalid_query","مرشح المتابعة غير صالح");
+    const sortColumns:Record<string,string>={
+      title:"NULLIF(c.title,'')",case_number:"NULLIF(c.case_number,'')",agency:"NULLIF(c.agency,'')",
+      case_type:"NULLIF(c.case_type,'')",stage:`COALESCE(NULLIF(c.case_profile->>'currentStatusDescription',''),NULLIF(c.stage,''),c.status)`,
+      summary:`COALESCE(NULLIF(c.case_profile->>'executiveSummary',''),NULLIF(c.summary,''))`,
+      priority:"NULLIF(c.priority,0)",start_date:"c.start_date",next_hearing:"c.next_hearing",last_hearing:"c.last_hearing",
+      last_action:`NULLIF(c.case_profile#>>'{lastAction,date}','')`,
+    };
     const sortBy=String(req.query.sortBy??""),sortDir=String(req.query.sortDir??"asc");
     if((sortBy&&!Object.hasOwn(sortColumns,sortBy))||!["asc","desc"].includes(sortDir)) throw new HttpError(400,"invalid_query","ترتيب غير صالح");
     const orderBy=sortBy?sortColumns[sortBy]+(sortDir==="asc"?" ASC":" DESC")+" NULLS LAST,c.id DESC":"(c.priority=0) ASC,c.priority ASC,c.id DESC";
     const limit=30;
-    const where="($1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2)) AND (c.title ILIKE $3 OR c.case_number ILIKE $3 OR c.agency ILIKE $3 OR c.summary ILIKE $3) AND ($4::text IS NULL OR c.status=$4)";
-    const args=[user.owner,user.id,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",status??null];
-    const [rows,count]=await Promise.all([
-      pool.query("SELECT c.* FROM legal_cases c WHERE "+where+" ORDER BY "+orderBy+" LIMIT $5 OFFSET $6",[...args,limit,(page-1)*limit]),
-      pool.query("SELECT count(*)::int AS total FROM legal_cases c WHERE "+where,args),
+    const missing=`(c.file_copy_status IN ('no','partial') OR work.has_document_gap)`;
+    const from=` FROM legal_cases c CROSS JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE r.kind='task' AND r.status IN ('pending','working','submitted','blocked','مفتوحة','قيد المتابعة'))::int AS open_task_count,
+        COALESCE(bool_or(r.kind='document' AND r.document_review->>'manualWorkStatus'='remaining'),false) AS has_manual_work,
+        COALESCE(bool_or(r.kind='document' AND (
+          r.document_review->>'automationWorkStatus'='remaining' OR r.document_review->>'manualWorkStatus'='remaining'
+        )),false) AS has_document_gap
+      FROM legal_record_cases rc JOIN legal_records r ON r.id=rc.record_id
+      WHERE rc.case_id=c.id AND ($1::boolean OR NOT EXISTS(
+        SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id
+          AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)
+      ))
+    ) work`;
+    const where=` WHERE ($1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2))
+      AND (c.title ILIKE $3 OR c.case_number ILIKE $3 OR c.agency ILIKE $3 OR c.case_type ILIKE $3 OR c.summary ILIKE $3
+        OR c.case_profile->>'executiveSummary' ILIKE $3
+        OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(c.case_profile->'proceedingNumbers','[]'::jsonb)) AS number
+          WHERE concat_ws(' ',number->>'kind',number->>'number') ILIKE $3))
+      AND ($4::text IS NULL OR c.status=$4)
+      AND ($5::text='' OR c.agency=$5)
+      AND ($6::text='' OR c.case_type=$6)
+      AND ($7::text='' OR ($7='tasks' AND work.open_task_count>0) OR ($7='gaps' AND ${missing}) OR ($7='manual' AND work.has_manual_work))`;
+    const args=[user.owner,user.id,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",status??null,agency,caseType,work];
+    const [rows,count,filters]=await Promise.all([
+      pool.query(`SELECT c.*,work.open_task_count,work.has_manual_work,${missing} AS has_known_gaps`+from+where+" ORDER BY "+orderBy+" LIMIT $8 OFFSET $9",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT count(*)::int AS total"+from+where,args),
+      pool.query(`SELECT array_agg(DISTINCT NULLIF(c.agency,'') ORDER BY NULLIF(c.agency,'')) AS agencies,
+        array_agg(DISTINCT NULLIF(c.case_type,'') ORDER BY NULLIF(c.case_type,'')) AS case_types
+        FROM legal_cases c WHERE $1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2)`,[user.owner,user.id]),
     ]);
-    res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
+    res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit,filters:filters.rows[0]});
   }));
   router.post("/legal/cases",handler(async(req,res)=>{
     const input=parse(caseSchema,req.body),requested=actor(req);
@@ -442,17 +489,7 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.get("/legal/cases/:id/relations",handler(async(req,res)=>{
     const user=actor(req),caseId=number(req.params.id);
     await canCase(pool,user,caseId);
-    const rows=await pool.query(`SELECT relation.*,
-        json_build_object('id',other.id,'title',other.title,'case_number',other.case_number,
-          'case_type',other.case_type,'agency',other.agency,'status',other.status) AS related_case
-      FROM legal_case_relations relation
-      JOIN legal_cases other ON other.id=CASE WHEN relation.first_case_id=$1
-        THEN relation.second_case_id ELSE relation.first_case_id END
-      WHERE (relation.first_case_id=$1 OR relation.second_case_id=$1)
-        AND ($2::boolean OR EXISTS(SELECT 1 FROM legal_case_access a
-          WHERE a.case_id=other.id AND a.user_id=$3))
-      ORDER BY other.title,other.id`,[caseId,user.owner,user.id]);
-    res.json({items:rows.rows});
+    res.json({items:await caseRelations(pool,user,caseId)});
   }));
   router.put("/legal/cases/:id/relations/:otherId",handler(async(req,res)=>{
     const caseId=number(req.params.id),otherId=number(req.params.otherId);
@@ -1008,12 +1045,13 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.get("/legal/cases/:id/ai-export",handler(async(req,res)=>{
     const caseId=number(req.params.id),user=actor(req);
     await canCase(pool,user,caseId);
-    const [record,records,linked]=await Promise.all([
+    const [record,records,linked,relations]=await Promise.all([
       pool.query("SELECT * FROM legal_cases WHERE id=$1",[caseId]),
       pool.query("SELECT r.*,u.display_name AS creator_name FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 AND ($2::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$3))) ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 ELSE 2 END,r.sort_order,r.record_date NULLS LAST,r.id",[caseId,user.owner,user.id]),
       pool.query("SELECT l.first_record_id,l.second_record_id FROM legal_record_links l WHERE l.first_record_id IN(SELECT record_id FROM legal_record_cases WHERE case_id=$1) OR l.second_record_id IN(SELECT record_id FROM legal_record_cases WHERE case_id=$1)",[caseId]),
+      caseRelations(pool,user,caseId),
     ]);
-    res.json({version:1,case:record.rows[0],records:records.rows,links:linked.rows,notes:"Original scans and external PDFs require separately authorized retrieval; text is not inferred from links."});
+    res.json({version:1,case:record.rows[0],records:records.rows,links:linked.rows,relations,notes:"Original scans and external PDFs require separately authorized retrieval; text is not inferred from links."});
   }));
   return router;
 }

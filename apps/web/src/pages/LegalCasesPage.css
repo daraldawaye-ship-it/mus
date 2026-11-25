@@ -137,3 +137,11 @@
 .legal-review-high { font-weight:700; border:1px solid currentColor; }
 .legal-review-group { margin:.55rem 0 .2rem; padding-block:.25rem; border-block-end:1px solid #cbd5e1; font-size:1rem; }
 .legal-review-check { display:flex; align-items:center; gap:.35rem; }
+
+.legal-case-profile-row{margin-block:8px;overflow-wrap:anywhere}
+.legal-case-profile-row p{margin-block:4px}
+.legal-case-profile-row button + button,.legal-entry > button + button{margin-inline-start:8px}
+.legal-case-table{min-width:1340px}
+.legal-case-table th:nth-child(10){width:210px}
+.legal-case-profile-row form{display:grid;gap:8px;margin-block:8px}
+.legal-case-profile-row form > button{justify-self:start}
