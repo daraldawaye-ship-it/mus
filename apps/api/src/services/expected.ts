@@ -1,7 +1,7 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import type { ExpectedCard, ExpectedCardCreate, ExpectedCardLifecycle, ExpectedMovement, ExpectedMovementPatch } from "../../../../packages/contracts/src/expected.ts";
-import { expectedAmountSchema, expectedDateSchema, expectedEndDateLimit } from "../../../../packages/contracts/src/expected.ts";
+import { expectedDateSchema, expectedEndDateLimit } from "../../../../packages/contracts/src/expected.ts";
 import { transaction, type Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
 import { audit } from "./audit.ts";
@@ -232,10 +232,10 @@ export async function updateExpectedMovement(client:PoolClient,user:User,company
   if(before.revision!==input.revision) conflict("تغيرت الحركة منذ فتحها؛ حدّثها وراجع القيم قبل الحفظ");
   if(before.status!=="pending") conflict("الحركة منجزة ولا تقبل التعديل");
   if(before.cardArchived) {
-    if(input.amount!==expectedAmountSchema.parse(before.amount) || input.description!==before.description)
-      conflict("الكرت مؤرشف؛ يمكن تعديل تاريخ الحركة فقط");
-    await client.query(`UPDATE expected_movements SET movement_date=$3,revision=revision+1,updated_at=clock_timestamp()
-      WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date]);
+    if(input.description!==before.description)
+      conflict("الكرت مؤرشف؛ يمكن تعديل تاريخ الحركة ومبلغها فقط");
+    await client.query(`UPDATE expected_movements SET movement_date=$3,amount=$4,revision=revision+1,updated_at=clock_timestamp()
+      WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date,input.amount]);
   } else {
     await client.query(`UPDATE expected_movements SET movement_date=$3,amount=$4,description=$5,revision=revision+1,updated_at=clock_timestamp()
       WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date,input.amount,input.description]);
