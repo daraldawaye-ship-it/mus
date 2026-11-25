@@ -493,7 +493,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   const today = nowInAden();
   const dateFrom = params.get("dateFrom") ?? today;
   const dateTo = params.get("dateTo") ?? expectedEndDateLimit(today);
-  const cashAccountId = params.get("cashAccountId") ?? "";
+  const requestedCashAccountId = params.get("cashAccountId") ?? "";
   const cashboxes = useQuery({
     queryKey: ["expected", user?.id, companyId, "movement-cashboxes"],
     enabled: !!user,
@@ -507,10 +507,13 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
       }
     },
   });
+  const cashAccountId = requestedCashAccountId === "none" || cashboxes.data?.some(option => String(option.id) === requestedCashAccountId)
+    ? requestedCashAccountId : "";
   const filters = new URLSearchParams();
-  for (const key of ["cardId", "accountId", "cashAccountId", "status", "section"]) {
+  for (const key of ["cardId", "accountId", "status", "section"]) {
     if (params.get(key)) filters.set(key, params.get(key)!);
   }
+  if (cashAccountId) filters.set("cashAccountId", cashAccountId);
   if (dateFrom) filters.set("dateFrom", dateFrom);
   if (dateTo) filters.set("dateTo", dateTo);
   const list = usePagedQuery<ExpectedMovement>(`/companies/${companyId}/expected-movements?${filters}`,
@@ -693,8 +696,6 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
           onChange={event => setFilter("cashAccountId", event.target.value)}>
           <option value="">كل الصناديق</option>
           <option value="none">بدون صندوق</option>
-          {cashAccountId && cashAccountId !== "none" && !cashboxes.data?.some(option => String(option.id) === cashAccountId) &&
-            <option value={cashAccountId}>صندوق رقم {cashAccountId}</option>}
           {cashboxes.data?.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
         </Select>
         <Select label="الحالة" value={params.get("status") ?? ""} disabled={busy !== null} onChange={event => setFilter("status", event.target.value)}>

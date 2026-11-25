@@ -117,7 +117,10 @@ test("optional card cashbox uses technical eligibility, company isolation and ex
   assert.equal((await expectedCashboxes(pool,1,{q:"1000000013"})).total,0);
   assert.equal((await expectedCashboxes(pool,1,{q:"بالاسم"})).total,0,"account_choice and names never turn an account into a cashbox");
   assert.deepEqual((await expectedCashboxes(pool,2,{})).items.map(row=>row.id),[13]);
+  assert.equal((await expectedCashboxes(pool,1,{},true)).total,0,"eligible but unlinked cashboxes do not appear in the movement filter");
   const original=await create({cashAccountId:7,amount:"-1250.123456"});
+  assert.deepEqual((await expectedCashboxes(pool,1,{},true)).items.map(row=>row.id),[7]);
+  assert.equal((await expectedCashboxes(pool,2,{},true)).total,0);
   assert.equal(original.card.accountId,4);assert.equal(original.card.cashAccountId,7);
   assert.equal(original.card.cashAccountName,"صندوق رئيسي");assert.equal(original.card.cashAccountCode,"1000000007");
   assert.equal(original.card.currencyCode,"YER");assert.equal(original.card.amount,"-1250.123456");
