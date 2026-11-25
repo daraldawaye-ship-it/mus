@@ -8243,7 +8243,9 @@
             "working",
             "submitted",
             "verified",
-            "blocked"
+            "blocked",
+            "waiting_human",
+            "waiting_source"
           ]
         }
       },

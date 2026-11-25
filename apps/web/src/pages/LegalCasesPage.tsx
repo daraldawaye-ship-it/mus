@@ -79,7 +79,8 @@ function EntryFields({value,change,people,isNew}:{value:RecordForm;change:(v:Rec
  {(value.kind==="task"||value.kind==="hearing")&&<Field label="موعد المتابعة" type="datetime-local" value={value.dueAt?.slice(0,16)??""} onChange={e=>set("dueAt",e.target.value?new Date(e.target.value).toISOString():null)}/>}
  {value.kind==="task"&&<Select label="المكلف" value={value.assignedTo??""} onChange={e=>set("assignedTo",e.target.value?Number(e.target.value):null)}>
  <option value="">غير محدد</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select>}
- {value.kind==="task"&&<Select label="الحالة" value={value.status||"pending"} onChange={e=>set("status",e.target.value)}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option><option value="verified">تم التحقق</option></Select>}
+ {value.kind==="task"&&<TextField label="نتيجة الإنجاز ودليلها" value={value.contentText} onChange={v=>set("contentText",v)}/>}
+ {value.kind==="task"&&<Select label="الحالة" value={value.status||"pending"} onChange={e=>set("status",e.target.value)}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option><option value="waiting_human">بانتظار تدخل بشري</option><option value="waiting_source">بانتظار مصدر</option><option value="verified">تم التحقق</option></Select>}
  </div>;
 }
 function CaseRelationEditor({caseId,existingIds}:{caseId:number;existingIds:number[]}) {
@@ -213,9 +214,9 @@ export function LegalCasesPage() {
   setCaseEdit(false);setCaseNew(false);
  });
  const beginEntry=(kind:Kind,e?:Entry,fromReport?:number)=>{setEntryDraft(entryForm(kind,globalKind ? 0 : caseId,e));setEditingRevision(e?.revision??0);setEntryEdit(e?e.id:"new");setLinkAfterSave(fromReport??null);setError("");};
- const beginGlobalDocument=async(id:number)=>{
+ const beginStoredEntry=async(id:number)=>{
   setBusy(true);setError("");setNotice("");
-  try {const data=await api<{record:Entry}>("/legal/records/"+id);beginEntry("document",data.record);}
+  try {const data=await api<{record:Entry}>("/legal/records/"+id);beginEntry(data.record.kind,data.record);}
   catch(e){setError(errorMessage(e));}
   finally{setBusy(false);}
  };
@@ -281,7 +282,7 @@ export function LegalCasesPage() {
  <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div>
  <div className="legal-actions">
  {r.kind==="instruction"&&owner&&<Button variant="secondary" onClick={()=>beginEntry("instruction",r)}>تعديل</Button>}
- {r.kind==="document"&&owner&&<Button variant="secondary" disabled={busy} onClick={()=>void beginGlobalDocument(r.id)}>تعديل بيانات المستند</Button>}
+ {r.kind==="document"&&owner&&<Button variant="secondary" disabled={busy} onClick={()=>void beginStoredEntry(r.id)}>تعديل بيانات المستند</Button>}
  {r.kind==="document"&&owner&&<Select aria-label={`حالة تفريغ السجل ${r.id}`} value={r.transcription_status??"unknown"} disabled={busy} onChange={e=>{const state=e.target.value;void action(async()=>{await api("/legal/transcription-status",{method:"POST",body:{entries:[{id:r.id,revision:r.revision,state,file:r.transcription_file}]}});});}}>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>}
  <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button>
  {(r.kind==="fact"||r.kind==="document")&&<Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>}
@@ -322,7 +323,7 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><div className="legal-case-list-controls">
+ {activePanel==="tasks" ? <>{entryEditor}<LegalTaskBoard key={user?.id} owner={owner} onEdit={id=>void beginStoredEntry(id)}/></> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><div className="legal-case-list-controls">
  <Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
  <Select label="الحالة الإدارية" value={caseFilters.status} onChange={e=>updateCaseFilter("status",e.target.value)}>
   <option value="">الكل</option><option value="active">نشطة</option><option value="closed">مغلقة</option><option value="unknown">غير محددة</option>
@@ -448,10 +449,11 @@ export function LegalCasesPage() {
  {(r.image_urls??[]).map((url,i)=><a key={url+i} target="_blank" rel="noreferrer" href={url}>صورة {i+1}</a>)}
  </div>}
  {r.kind==="report"&&<p className="legal-meta">المرسل: {r.creator_name||r.created_by} · {new Date(r.created_at).toLocaleString("ar-YE")} · {r.reviewed_at?"اطُّلع عليه":"بانتظار المراجعة"} {owner&&!r.reviewed_at&&<Button variant="secondary" onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/review",{method:"POST"});})}>اعتماد الاطلاع</Button>}</p>}
+ {r.kind==="task"&&r.content_text&&<p className="legal-preserve">نتيجة الإنجاز ودليلها · {r.content_text}</p>}
  {r.kind==="task"&&<div className="legal-actions"><span>الموعد: {r.due_at?.slice(0,16)||"غير محدد"}</span>
  {r.priority!==undefined&&<span>الأولوية: {r.priority} · {r.source==="manual"?"يدوي":"تلقائي"} · {r.reason}</span>}
  {owner&&r.priority!==undefined&&<LegalTaskPriorityControl task={r as LegalTaskPriority}/>}
- <Select aria-label={`حالة المهمة ${r.id}`} value={r.status||"pending"} disabled={!owner&&r.assigned_to!==user?.id&&!editor} onChange={e=>void action(async()=>{await api("/legal/records/"+r.id+"/task-status",{method:"POST",body:{status:e.target.value}});})}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option>{owner&&<option value="verified">تم التحقق</option>}</Select></div>}
+ <Select aria-label={`حالة المهمة ${r.id}`} value={r.status||"pending"} disabled={!owner&&r.assigned_to!==user?.id&&!editor} onChange={e=>void action(async()=>{await api("/legal/records/"+r.id+"/task-status",{method:"POST",body:{status:e.target.value}});})}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option><option value="waiting_human">بانتظار تدخل بشري</option><option value="waiting_source">بانتظار مصدر</option>{owner&&<option value="verified">تم التحقق</option>}</Select></div>}
  {focus===r.id&&links.data&&<div className="legal-linked"><div>القضايا المرتبطة: {links.data.caseIds.join("، ")||"لا توجد"}</div><div>السجلات المرتبطة: {links.data.linkedIds.map(i=>"#"+i).join("، ")||"لا توجد"}</div>
  {owner&&tab==="unlinked"&&caseId>0&&<Button onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/cases",{method:"POST",body:{caseId,linked:true}});})}>ربط بالقضية الحالية</Button>}
  {editor&&<div className="legal-actions"><Field label="رقم سجل للربط" type="number" value={linkNumber} onChange={e=>setLinkNumber(e.target.value)}/><Button disabled={!Number(linkNumber)} onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/links",{method:"POST",body:{otherId:Number(linkNumber),linked:true}});setLinkNumber("");})}>ربط</Button></div>}

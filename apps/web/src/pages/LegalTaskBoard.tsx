@@ -1,3 +1,4 @@
+import { legalTaskState } from "../../../../packages/contracts/src/legal-task-state";
 import { useMemo, useState, type FormEvent } from "react";
 import { MessageSquareText } from "lucide-react";
 import "./LegalTaskBoard.css";
@@ -25,10 +26,14 @@ type Task = LegalTaskPriority & {
   original_next_hearing?: string | null;
   cases: { id: number; title: string; next_hearing: string | null }[];
   comment_count: number;
+  outcome: string;
+  assignee_name: string | null;
+  latest_comment: string | null;
+  documents: {id:number;title:string}[];
 };
 const labels: Record<string, string> = {
   pending: "مطلوبة", working: "جارٍ العمل", submitted: "تم الإبلاغ",
-  blocked: "متعذرة", verified: "منجزة",
+  blocked: "متعذرة", verified: "منجزة", done: "منجزة", completed: "منجزة", superseded: "استُبدلت", waiting_human: "بانتظار تدخل بشري", waiting_source: "بانتظار مصدر",
 };
 
 export function LegalTaskPriorityControl({ task }: { task: LegalTaskPriority }) {
@@ -96,7 +101,7 @@ type Comment={id:string;user_name:string;body:string;created_at:string};
 type CaseInfo={title:string;case_number:string;agency:string;stage:string;status:string;summary:string;start_date:string|null;next_hearing:string|null};
 type Related={id:number;title:string;body:string};
 const dateValue=(v:string|null)=>v?new Date(v).toLocaleDateString("ar-YE",{timeZone:"Asia/Aden"}):"غير محدد";
-export function LegalTaskBoard({ owner }: { owner: boolean }) {
+export function LegalTaskBoard({ owner,onEdit }: { owner: boolean;onEdit:(id:number)=>void }) {
   const { user } = useSession();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("open");
@@ -108,6 +113,12 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
   const [commentError,setCommentError]=useState("");
   const [commentBusy,setCommentBusy]=useState(false);
   const [commentPage,setCommentPage]=useState(1);
+  const [sourceId,setSourceId]=useState<number|null>(null);
+  const document=useQuery({
+    queryKey:["legal","task-document",user?.id,sourceId],
+    queryFn:({signal})=>api<{record:Related & {content_text:string};images:{id:number;filename:string}[]}>(`/legal/records/${sourceId}`,{signal}),
+    enabled:!!user&&sourceId!==null,
+  });
   const caseInfo=useQuery({
     queryKey:["legal","case-popup",user?.id,caseId],
     queryFn:({signal})=>api<{record:CaseInfo}>(`/legal/cases/${caseId}`,{signal}),
@@ -158,17 +169,29 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
     enabled: !!user,
     refetchInterval: 60_000,
   });
-  const tasks = useMemo(() => (query.error ? [] : query.data?.items ?? []).filter(task =>
-    (filter === "all" || (filter === "open" && task.status !== "verified") ||
-      (filter === "done" && task.status === "verified") || filter === String(task.priority)) &&
-    (!search || [task.title, task.body, ...task.cases.map(c => c.title)].join(" ").includes(search)),
-  ), [query.data, query.error, filter, search]);
+  const tasks = useMemo(() => (query.error ? [] : query.data?.items ?? []).filter(task => {
+    const state=legalTaskState(task.status);
+    const matches=filter==="all" || filter===state || (filter==="open" && state!=="done" && state!=="inactive")
+      || filter===String(task.priority);
+    return matches && [task.id,task.title,task.body,task.outcome,task.assignee_name,task.latest_comment,
+      ...task.cases.map(c=>c.title),...task.documents.map(d=>d.title)].join(" ").includes(search.trim());
+  }), [query.data, query.error, filter, search]);
+  const taskDetails=(task:Task)=><details className="legal-task-mobile-details"><summary>تفاصيل المهمة #{task.id}</summary>
+    {owner&&<Button size="compact" variant="secondary" onClick={()=>{onEdit(task.id);window.scrollTo({top:0});}}>تعديل المهمة الأصلية</Button>}
+    {task.assignee_name&&<p>المكلف · {task.assignee_name}</p>}
+    {task.outcome&&<p className="legal-preserve">نتيجة الإنجاز ودليلها · {task.outcome}</p>}
+    {task.latest_comment&&<p className="legal-preserve">آخر تعليق · {task.latest_comment}</p>}
+    <p className="legal-preserve">{task.body}</p>
+    {task.documents.map(doc=><Button key={doc.id} size="compact" variant="secondary" onClick={()=>setSourceId(doc.id)}>فتح المستند #{doc.id} · {doc.title}</Button>)}
+  </details>;
+  const taskDate=(task:Task)=><><span>الموعد الأصلي · {dateValue(task.due_at)}</span>
+    {task.original_next_hearing&&<div>موعد الجلسة المسجل · {dateValue(task.original_next_hearing)}</div>}
+    {task.follow_up_required&&<div>تذكير اليوم بإدخال النتيجة</div>}</>;
   return <Card title="جميع المهام — حسب الأولوية">
-    <p>تظهر المهام غير المنجزة أولًا، والأولوية 1 هي الأكثر استعجالًا. تُقيّم الأولوية تلقائيًا من المواعيد والمعطيات المسجلة. المهمة التي يفوت موعدها دون إثبات إنجاز تعود تلقائيًا إلى متابعة اليوم لإدخال ما حدث وتحديد الموعد القادم، مع حفظ تاريخها الأصلي. يمكنك تحديد أولوية لمهمة واحدة أو إعادتها إلى التقييم التلقائي.</p>
     <div className="legal-actions">
       <Field label="بحث في المهام" value={search} onChange={event => setSearch(event.target.value)} />
       <Select label="تصفية المهام" value={filter} onChange={event => setFilter(event.target.value)}>
-        <option value="open">غير المنجزة</option><option value="all">الكل</option><option value="done">المنجزة</option>
+        <option value="open">غير المنجزة</option><option value="pending">مطلوبة للتنفيذ</option><option value="working">جارٍ العمل</option><option value="human">بانتظار تدخل بشري</option><option value="source">بانتظار مصدر</option><option value="inactive">ملغاة أو تاريخية أو مؤجلة</option><option value="all">الكل</option><option value="done">المنجزة</option>
         {Array.from({ length: 10 }, (_, i) => <option key={i} value={String(i + 1)}>أولوية {i + 1}</option>)}
       </Select>
     </div>
@@ -188,31 +211,36 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
               onClick={() => setCaseId(c.id)}>{c.title}</Button>) : <span>غير مرتبطة بقضية</span>}
           </div>
           <div className="legal-task-mobile-meta">
-            <span>{task.due_at ? new Date(task.due_at).toLocaleDateString("ar-YE", { timeZone: "Asia/Aden" }) : "دون موعد"}</span>
+            {taskDate(task)}
             <span>{labels[task.status] ?? task.status}</span>
           </div>
         </div>
-        <details className="legal-task-mobile-details"><summary>تفاصيل المهمة</summary>
-          <p className="legal-preserve">{task.body}</p>
-        </details>
+        {taskDetails(task)}
       </article>)}
     </div>
     <div className="legal-task-scroll"><table className="legal-task-table" aria-label="المهام حسب الأولوية">
       <thead><tr><th scope="col">#</th><th scope="col">الأولوية والتعليقات</th><th scope="col">المهمة</th><th scope="col">القضية</th><th scope="col">الموعد</th><th scope="col">الحالة</th></tr></thead>
       <tbody>{tasks.map((task, index) => <tr key={task.id}>
         <td>{index + 1}</td><td>{actionButtons(task)}</td>
-        <td><strong>{task.title}</strong><details><summary>التفاصيل</summary><p className="legal-preserve">{task.body}</p></details></td>
+        <td><strong>{task.title}</strong>{taskDetails(task)}</td>
         <td>{task.cases.length ? task.cases.map(c => <Button key={c.id} size="compact" variant="secondary"
           onClick={() => setCaseId(c.id)}>{c.title}</Button>) : "غير مرتبطة"}</td>
-        <td>{task.due_at ? new Date(task.due_at).toLocaleDateString("ar-YE", { timeZone: "Asia/Aden" }) : "غير محدد"}</td>
+        <td>{taskDate(task)}</td>
         <td>{labels[task.status] ?? task.status}</td>
       </tr>)}</tbody>
     </table></div>
+    <Dialog open={sourceId!==null} onClose={()=>setSourceId(null)} title={document.data?.record.title??"المستند المرتبط"}>
+      {document.isPending&&<Notice>جارٍ تحميل المستند…</Notice>}
+      {document.error&&<Notice tone="error">{errorMessage(document.error)}</Notice>}
+      {document.data&&<><p className="legal-preserve">{document.data.record.body}</p><p className="legal-preserve">{document.data.record.content_text}</p>
+        {document.data.images.map(img=><a key={img.id} href={"/api/legal/images/"+img.id} target="_blank" rel="noreferrer">{img.filename||"فتح صورة المستند"}</a>)}</>}
+    </Dialog>
     <Dialog open={caseId!==null} onClose={()=>setCaseId(null)}
       title={caseInfo.data?.record.title??"تفاصيل القضية"}>
       {caseInfo.isPending&&<Notice>جارٍ تحميل بيانات القضية…</Notice>}
       {caseInfo.error&&<Notice tone="error">{errorMessage(caseInfo.error)}</Notice>}
       {caseInfo.data&&<div className="legal-task-popup-body">
+        <a href={`/legal-cases?case=${caseId}&tab=task`}>فتح بطاقة القضية ومهامها</a>
         <p><strong>رقم القضية:</strong> {caseInfo.data.record.case_number||"غير محدد"}</p>
         <p><strong>الجهة:</strong> {caseInfo.data.record.agency||"غير محددة"}</p>
         <p><strong>المرحلة:</strong> {caseInfo.data.record.stage||"غير محددة"}</p>

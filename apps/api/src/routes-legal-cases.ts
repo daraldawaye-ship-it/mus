@@ -1,3 +1,4 @@
+import { legalTaskState } from "../../../packages/contracts/src/legal-task-state.ts";
 import { Router } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -120,8 +121,13 @@ const legalRecordUpdateSchema = recordSchema.omit({caseIds:true}).extend({revisi
 const legalRecordCaseSchema = z.object({caseId:positive,linked:z.boolean()}).strict();
 const legalRecordLinkSchema = z.object({otherId:positive,linked:z.boolean()}).strict();
 const legalRecordTaskStatusSchema = z.object({
-  status:z.enum(["pending","working","submitted","verified","blocked"]),
+  status:z.enum(["pending","working","submitted","verified","blocked","waiting_human","waiting_source"]),
 }).strict();
+function validateTaskVerification(user:User,kind:string,status:string,previous:string|null,outcome:string) {
+  if(kind!=="task" || status!=="verified" || previous===status)return;
+  ownerOnly(user);
+  if(!outcome.trim())throw new HttpError(400,"missing_outcome","اكتب نتيجة الإنجاز ودليلها في المهمة قبل اعتمادها");
+}
 const legalRecordImageSchema = z.object({
   filename:z.string().max(250).default(""),
   dataUrl:z.string().min(30).max(3000000),
@@ -584,6 +590,15 @@ export function legalCaseRoutes(pool:Pool):Router {
     const rows=await pool.query<LegalTaskRow>(
       `SELECT r.id,r.kind,r.title,r.body,r.status,r.due_at,r.assigned_to,r.sort_order,
         r.revision,r.task_priority,r.task_priority_reason,r.created_at,r.updated_at,
+        r.content_text AS outcome,
+        (SELECT u.display_name FROM users u WHERE u.id=r.assigned_to) AS assignee_name,
+        (SELECT tc.body FROM legal_task_comments tc WHERE tc.task_id=r.id ORDER BY tc.created_at DESC,tc.id DESC LIMIT 1) AS latest_comment,
+        (SELECT COALESCE(json_agg(json_build_object('id',d.id,'title',d.title) ORDER BY d.id),'[]'::json)
+         FROM legal_record_links l JOIN legal_records d ON d.id=CASE WHEN l.first_record_id=r.id THEN l.second_record_id ELSE l.first_record_id END
+         WHERE r.id IN (l.first_record_id,l.second_record_id) AND d.kind='document'
+         AND ($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases x WHERE x.record_id=d.id)
+           AND NOT EXISTS(SELECT 1 FROM legal_record_cases x WHERE x.record_id=d.id AND NOT EXISTS(
+             SELECT 1 FROM legal_case_access a WHERE a.case_id=x.case_id AND a.user_id=$2))))) AS documents,
         (SELECT count(*)::int FROM legal_task_comments tc WHERE tc.task_id=r.id) AS comment_count,
         COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'next_hearing',c.next_hearing)
           ORDER BY c.id) FILTER(WHERE c.id IS NOT NULL),'[]'::json) AS cases,
@@ -619,26 +634,14 @@ export function legalCaseRoutes(pool:Pool):Router {
       return Number.isFinite(time)?adenDay(time):null;
     };
     const items=rows.rows.map(row=>{
-      const closed=["verified","submitted","completed","superseded"].includes(row.status);
+      const closed=["done","inactive"].includes(legalTaskState(row.status)) || row.status==="submitted";
       const oldDeadline=row.due_at?(row.due_at instanceof Date?row.due_at.getTime():Date.parse(row.due_at)):NaN;
       const missedDeadline=Number.isFinite(oldDeadline)&&oldDeadline<now;
       const hearingDay=asAdenDay(row.next_hearing);
       const missedHearing=!!hearingDay&&hearingDay<=today;
       const followUp=!closed&&(missedDeadline||missedHearing);
-      const reminder=followUp?{
-        title:row.title.startsWith("استكمال نتيجة — ")?row.title:`استكمال نتيجة — ${row.title}`,
-        body:row.body+"\n\nمتابعة مستحقة اليوم "+today+
-          ": أدخل الوقائع التي حدثت فعلًا ونتيجة المراجعة أو الجلسة وقرارها، "+
-          "وحدد موعد الجلسة القادمة أو الإجراء التالي، ثم حدّث بطاقة القضية وأرفق المحضر عند توفره. "+
-          "عدم معرفة النتيجة أو الموعد يُسجل صراحة ولا يُفترض حدوث الإجراء.",
-        due_at:today+"T23:59:00+03:00",
-        follow_up_required:true,
-        original_due_at:row.due_at,
-        original_next_hearing:row.next_hearing,
-      }:{
-        follow_up_required:false,
-      };
-      return {...row,...reminder,...calculateLegalTaskPriority(row,now)};
+      return {...row,follow_up_required:followUp,original_due_at:row.due_at,
+        original_next_hearing:row.next_hearing,...calculateLegalTaskPriority(row,now)};
     }).sort(compareLegalTasks);
     res.json({items,total:items.length});
   }));
@@ -800,6 +803,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       await validateDocumentReview(db,user,input);
       if(input.documentReview?.manualWorkStatus==="none"&&hasPendingManualTranscription(input.documentReview,input.transcriptionStatus??null))
         throw new HttpError(409,"manual_transcription_pending","ما زال موضع للتفريغ اليدوي مسجلاً؛ أزل طلب التفريغ بعد استكماله.");
+      validateTaskVerification(user,input.kind,input.status,null,input.contentText);
       const columns=[...recordColumns,"transcription_status","transcription_file","created_by","updated_by","document_review"];
       const values=[...recordValues(input),input.kind==="document"?(input.transcriptionStatus??"unknown"):null,file,user.id,user.id,JSON.stringify(input.documentReview??{})];
       const next=(await db.query("INSERT INTO legal_records("+columns.join(",")+") VALUES("+values.map((_,i)=>"$"+(i+1)).join(",")+") RETURNING *",values)).rows[0];
@@ -818,6 +822,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       const old=(await db.query("SELECT * FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
       if(old.revision!==input.revision) throw new HttpError(409,"conflict","تغير السجل؛ أعد تحميله");
       if(old.kind!==input.kind) throw new HttpError(400,"invalid_kind","لا يمكن تغيير نوع السجل");
+      validateTaskVerification(user,input.kind,input.status,old.status,input.contentText);
       const file=input.transcriptionFile??old.transcription_file;
       if(file && (!input.driveFileId || input.kind!=="document")) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
       const state=input.kind==="document"?(input.transcriptionStatus??old.transcription_status??"unknown"):null;
@@ -958,9 +963,9 @@ export function legalCaseRoutes(pool:Pool):Router {
     const record=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canRecord(db,user,recordId,"viewer");
-      const old=await getRecord(db,recordId);
+      const old=(await db.query("SELECT * FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
       if(old.kind!=="task" || (!user.owner && old.assigned_to!==user.id && !(await Promise.all((await recordCases(db,recordId)).map(caseId=>level(db,user,caseId)))).every(role=>role==="editor"))) throw new HttpError(403,"legal_forbidden","غير مسموح بتغيير هذه المهمة");
-      if(input.status==="verified" && !user.owner) throw new HttpError(403,"legal_forbidden","اعتماد الإنجاز للمالك");
+      validateTaskVerification(user,old.kind,input.status,old.status,old.content_text);
       await forbidIfDisabled(db);
       const next=(await db.query("UPDATE legal_records SET status=$2,revision=revision+1,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING *",[recordId,input.status,user.id])).rows[0];
       await audit(db,user,"legal.update","legalRecord",recordId,old,next);

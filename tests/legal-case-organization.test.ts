@@ -145,4 +145,26 @@ test("organization preserves source data and case relationships enforce both per
     caseProfile:{...profile,canonicalCaseId:a}})).status,409,"new references cannot target a reference");
   assert.equal((await call("PATCH",`/legal/cases/${b}/organization`,{revision:1,
     caseProfile:{...profile,canonicalCaseId:c}})).status,409,"an existing canonical target cannot become a reference");
+  await db.exec(`ALTER TABLE legal_records ADD title text DEFAULT '', ADD body text DEFAULT '', ADD content_text text DEFAULT '',
+    ADD status text DEFAULT 'pending', ADD due_at timestamptz, ADD assigned_to integer, ADD revision integer DEFAULT 1,
+    ADD task_priority integer, ADD task_priority_reason text, ADD created_at timestamptz DEFAULT now(),
+    ADD updated_at timestamptz DEFAULT now(), ADD updated_by integer;
+    CREATE TABLE legal_task_comments(id integer,task_id integer,body text,created_at timestamptz DEFAULT now());
+    INSERT INTO legal_records(id,kind,title,body,due_at,assigned_to) VALUES(12,'task','إحضار الأصل','خطوة محفوظة','2020-01-01',2);
+    INSERT INTO legal_record_links VALUES(10,12),(11,12);
+    INSERT INTO legal_task_comments(id,task_id,body) VALUES(1,12,'إفادة المتابع');`);
+  await db.query("INSERT INTO legal_record_cases VALUES(12,$1)",[a]);
+  const board=await call("GET","/legal/tasks",undefined,2);
+  assert.equal(board.status,200,JSON.stringify(board.data));
+  const task=board.data.items[0];
+  assert.equal(task.title,"إحضار الأصل");
+  assert.equal(task.body,"خطوة محفوظة");
+  assert.equal(task.follow_up_required,true);
+  assert.equal(task.due_at.slice(0,10),"2020-01-01");
+  assert.deepEqual(task.documents.map((d:{id:number})=>d.id),[10]);
+  assert.equal(task.latest_comment,"إفادة المتابع");
+  assert.equal(task.assignee_name,"Editor");
+  assert.equal((await call("POST","/legal/records/12/task-status",{status:"verified"})).status,400);
+  assert.equal((await call("POST","/legal/records/12/task-status",{status:"waiting_source"})).status,200);
+  assert.equal((await call("GET","/legal/tasks")).data.items[0].status,"waiting_source");
 });

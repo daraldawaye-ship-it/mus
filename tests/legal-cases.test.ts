@@ -96,7 +96,7 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  const overdue=await task("موعد مسجل فائت",{dueAt:"2000-01-01T00:00:00Z",sortOrder:999});
  const ordinary=await task("متابعة عادية",{sortOrder:0});
  const near=await task("موعد قريب",{dueAt:new Date(Date.now()+86400000).toISOString()});
- const done=await task("[أولوية 1] مهمة منجزة",{status:"verified"});
+ const done=await task("[أولوية 1] مهمة منجزة",{status:"verified",contentText:"تمت المراجعة بموجب المحضر"});
  const unlinked=await task("مهمة خاصة بالمالك",{caseIds:[]});
  const hiddenCase=await owner.call("POST","/legal/cases",{title:"محبوسية تحتاج متابعة"});
  assert.equal(hiddenCase.status,201);

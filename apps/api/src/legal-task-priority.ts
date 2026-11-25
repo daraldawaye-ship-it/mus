@@ -1,3 +1,4 @@
+import { legalTaskState } from "../../../packages/contracts/src/legal-task-state.ts";
 // Automatic legal follow-up ordering. Deterministic, reviewable and based only on
 // stored facts: explicit owner-defined priority, filed deadlines and risk keywords.
 // An AI assistant can also update owner priorities using the dedicated route.
@@ -52,7 +53,8 @@ export type OrderedLegalTask = {
   due_at:string|Date|null;next_hearing?:string|Date|null;
 };
 export function compareLegalTasks(a:OrderedLegalTask,b:OrderedLegalTask):number {
-  const completed=Number(a.status==="verified")-Number(b.status==="verified");
+  const closed=(status:string)=>["done","inactive"].includes(legalTaskState(status));
+  const completed=Number(closed(a.status))-Number(closed(b.status));
   if(completed)return completed;
   if(a.priority!==b.priority)return a.priority-b.priority;
   const closest=(task:OrderedLegalTask)=>Math.min(
