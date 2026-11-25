@@ -33,6 +33,8 @@ function adapter(db: PGlite) {
 }
 const owner = { id: 1, name: "Owner", displayName: "Owner", owner: true, kind: "admin", suspended: false, archived: false } as User;
 const member = { ...owner, id: 2, owner: false, kind: "member" } as User;
+const admin = { ...member, id: 3, kind: "admin" } as User;
+const monitor = { ...member, id: 4, monitor: true } as User;
 
 function contribution(cardId: number, fieldKey: string, value: unknown, expectedValue: unknown = null) {
   return { cardId, fieldKey, value, expectedValue, source: "isolated test", idempotencyKey: randomUUID() };
@@ -89,6 +91,7 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
     async viewer(_db, req, write = false) {
       const who = req.get("x-test-user");
       const user = who === "owner" || who === "visitor" ? owner : who === "member" ? member :
+        who === "admin" ? admin : who === "monitor" ? monitor :
         who === "suspended" ? { ...owner, suspended: true } : who === "archived" ? { ...owner, archived: true } : null;
       if (write && !user) throw new HttpError(401, "unauthenticated", "test login required");
       return user;
@@ -214,5 +217,75 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
     assert.deepEqual((await snapshot()).cards, before.cards, "upload must not set image fields or revisions");
     const stored = (await db.query<{ preview_bytes: Uint8Array | null; storage_version: number }>("SELECT preview_bytes,storage_version FROM market_image_variants")).rows;
     assert(stored.every(row => row.preview_bytes === null && row.storage_version === 2), "main+icon only; no third persisted copy");
+  });
+  await t.test("only an active owner can recover matching stored image receipts from audit", async () => {
+    const uploads = (await db.query<{
+      id: string; card_id: number; uploaded_by: number; byte_size: number;
+      width: number; height: number; created_at: Date;
+    }>("SELECT id,card_id,uploaded_by,byte_size,width,height,created_at FROM market_image_uploads ORDER BY card_id")).rows;
+    assert.equal(uploads.length, 2, "the preceding image batch created real stored uploads");
+    const first = uploads[0]!, second = uploads[1]!;
+    const privateMarker = "private-source-url-must-not-be-returned";
+    // Receipt dimensions and bytes must come from the stored upload, not untrusted audit metadata.
+    await db.query("UPDATE audit_events SET after_value=after_value || $1::jsonb WHERE action='image_upload'", [
+      { size: -1, width: 99999, height: 99999, sourceUrl: privateMarker, rawMetadata: privateMarker },
+    ]);
+    const invalidEvents: number[] = [];
+    for (const [cardId, actorId, imageId, action] of [
+      [first.card_id, first.uploaded_by, second.id, "image_upload"],
+      [first.card_id, member.id, first.id, "image_upload"],
+      [first.card_id, first.uploaded_by, randomUUID(), "image_upload"],
+      [first.card_id, first.uploaded_by, "not-a-uuid", "image_upload"],
+      [first.card_id, first.uploaded_by, first.id, "field_change"],
+    ] as const) {
+      const result = await db.query<{ id: number }>(
+        "INSERT INTO audit_events(actor_id,actor_name,scope,action,target_type,target_id,after_value) " +
+        "VALUES($1,'Test','public',$2,'medicine-market',$3,$4) RETURNING id",
+        [actorId, action, cardId, { imageId, sourceUrl: privateMarker }],
+      );
+      invalidEvents.push(Number(result.rows[0]!.id));
+    }
+    const before = await snapshot();
+    const audit = async (who: string) => {
+      const response = await fetch(root + "/audit?pageSize=100", { headers: { "x-test-user": who } });
+      return { status: response.status, data: await response.json() as any };
+    };
+    const recovered = await audit("owner");
+    assert.equal(recovered.status, 200, JSON.stringify(recovered.data));
+    const receipts = recovered.data.items.filter((item: any) => item.imageUpload != null);
+    assert.equal(receipts.length, uploads.length, "only matching image-upload events expose receipts");
+    for (const upload of uploads) {
+      const event = receipts.find((item: any) => item.imageUpload.imageId === upload.id);
+      assert(event, "a stored upload remains recoverable even before it is linked to the card");
+      const receipt = event.imageUpload;
+      assert.deepEqual(Object.keys(receipt).sort(), ["imageId", "cardId", "url", "createdAt", "bytes", "width", "height"].sort());
+      assert.equal(receipt.cardId, upload.card_id);
+      assert.equal(Number(event.target_id), upload.card_id);
+      assert.equal(receipt.url, `/api/medicine-market/images/${upload.id}`);
+      assert.equal(receipt.bytes, upload.byte_size);
+      assert.equal(receipt.width, upload.width);
+      assert.equal(receipt.height, upload.height);
+      assert.equal(new Date(receipt.createdAt).getTime(), new Date(upload.created_at).getTime());
+    }
+    for (const eventId of invalidEvents) {
+      const event = recovered.data.items.find((item: any) => Number(item.id) === eventId);
+      assert(event, "unmatched events remain visible as ordinary audit rows");
+      assert.equal(event.imageUpload == null, true, "a wrong card, actor, action or missing image cannot produce a receipt");
+    }
+    assert(!JSON.stringify(recovered.data).includes(privateMarker));
+    assert(recovered.data.items.every((item: any) => !Object.hasOwn(item, "after_value") && !Object.hasOwn(item, "before_value")));
+    assert.equal((await audit("member")).status, 403);
+    for (const who of ["admin", "monitor"]) {
+      const result = await audit(who);
+      assert.equal(result.status, 200, who);
+      assert(result.data.items.every((item: any) => !Object.hasOwn(item, "imageUpload")), who + " may inspect audit, not upload receipts");
+      assert(!JSON.stringify(result.data).includes(privateMarker));
+    }
+    for (const who of ["visitor", "suspended", "archived"]) {
+      const result = await audit(who);
+      assert([200, 401, 403].includes(result.status), who);
+      if (result.status === 200) assert(result.data.items.every((item: any) => item.imageUpload == null), who + " has no active owner authority");
+    }
+    assert.deepEqual(await snapshot(), before, "receipt recovery only reads existing uploads and audit events");
   });
 });

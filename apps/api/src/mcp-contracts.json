@@ -8352,6 +8352,20 @@
     "queryFields": [],
     "source": "routes-medicine-market.ts"
   },
+  "GET /medicine-market/audit": {
+    "queryFields": ["page", "pageSize"],
+    "source": "routes-medicine-market.ts",
+    "description": "Authorized market audit list. Active owners also receive imageUpload receipts for verified image_upload events; other audit readers do not receive image receipts or raw audit metadata.",
+    "querySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "page": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1 },
+        "pageSize": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+      },
+      "additionalProperties": false
+    }
+  },
   "GET /medicine-market/cards": {
     "queryFields": [
       "q",

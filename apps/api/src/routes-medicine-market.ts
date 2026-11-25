@@ -991,8 +991,26 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     await enabled(pool, req);
     const v = pagination(req);
     const rows = await pool.query("SELECT id,actor_id,actor_name,action,target_id,created_at FROM audit_events WHERE target_type='medicine-market' ORDER BY id DESC LIMIT $1 OFFSET $2", [v.pageSize, v.offset]);
+    // A transport timeout may lose the reply after uploads commit. Recover the
+    // existing assets for the owner instead of uploading duplicates. Never
+    // expose raw audit JSON or trust an image ID without its card/uploader.
+    const uploadEvents = u.owner && !u.suspended && !u.archived
+      ? rows.rows.filter(row => row.action === "medicine-market.image_upload").map(row => row.id) : [];
+    const receipts = uploadEvents.length ? (await pool.query(
+      `SELECT a.id AS "auditId",i.id AS "imageId",i.card_id AS "cardId",
+        i.created_at AS "createdAt",i.byte_size AS bytes,i.width,i.height
+       FROM audit_events a JOIN market_image_uploads i
+         ON i.id::text=a.after_value->>'imageId' AND i.card_id=a.target_id AND i.uploaded_by=a.actor_id
+       WHERE a.id=ANY($1::bigint[]) AND a.target_type='medicine-market'
+         AND a.action='medicine-market.image_upload'`, [uploadEvents],
+    )).rows : [];
+    const imageUploads = new Map(receipts.map(({ auditId, ...receipt }) =>
+      [String(auditId), { ...receipt, url: marketImagePath(receipt.imageId) }]));
     const total = (await pool.query("SELECT count(*)::int total FROM audit_events WHERE target_type='medicine-market'")).rows[0].total;
-    res.json({ items: rows.rows, total, page: v.page, pageSize: v.pageSize });
+    res.set("Cache-Control", "no-store").json({ items: rows.rows.map(row => {
+      const imageUpload = imageUploads.get(String(row.id));
+      return imageUpload ? { ...row, imageUpload } : row;
+    }), total, page: v.page, pageSize: v.pageSize });
   }));
   router.get(
     root + "/meta",
