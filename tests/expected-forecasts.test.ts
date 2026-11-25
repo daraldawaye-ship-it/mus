@@ -278,13 +278,25 @@ test("card cancellation is reversible; 30-day cleanup preserves past and complet
     transaction(pool,client=>changeExpectedCardLifecycle(client,owner,companyId,card.id,{action,revision},clock));
   await assert.rejects(change("archive",1,2),/غير موجود/);
   const archived=await change("archive",1);
-  assert.equal(archived.archivedMovementCount,2);
+  assert.equal(archived.archivedMovementCount,1);
   assert.equal((await listExpectedCards(pool,1,{})).total,0);
   assert.equal((await listExpectedCards(pool,1,{visibility:"archived"})).items[0].id,card.id);
   assert.equal((await listExpectedCards(pool,2,{})).items[0].id,other.id);
-  assert.deepEqual((await listExpectedMovements(pool,1,{})).items.map(m=>m.id).sort(),[past.id,carried.id,done.id,backdated.id].sort());
-  await assert.rejects(transaction(pool,client=>completeExpectedMovement(client,owner,1,today.id,today.revision)),/غير موجود/);
+  assert.deepEqual((await listExpectedMovements(pool,1,{})).items.map(m=>m.id).sort(),[past.id,carried.id,today.id,done.id,backdated.id].sort());
+  await assert.rejects(transaction(pool,client=>completeExpectedMovement(client,owner,1,future.id,future.revision)),/غير موجود/);
   await assert.rejects(change("restore",1),/تغيرت/);
+  // Simulate the old rule hiding a same-day row, then run the repair migration.
+  await db.query("UPDATE expected_movements SET archived_at=$2 WHERE id=$1",[today.id,clock]);
+  const repair=await readFile(new URL("../apps/api/migrations/20261125_expected_card_retention_preserve_day.sql",import.meta.url),"utf8");
+  await db.exec(repair);
+  await db.exec(repair); // safe to replay
+  const repaired=await readExpectedMovement(pool,1,today.id);
+  assert.equal(repaired.status,"pending");
+  assert.equal(repaired.cardArchived,true);
+  assert.equal((await readExpectedCard(pool,1,card.id)).archivedMovementCount,1);
+  const completed=await transaction(pool,client=>completeExpectedMovement(client,owner,1,today.id,repaired.revision));
+  assert.equal(completed.status,"completed");
+  assert.equal(completed.date,"2026-11-24");
   const restored=await change("restore",2);
   assert.equal(restored.archivedAt,null);
   assert.equal((await listExpectedMovements(pool,1,{})).total,6);
@@ -292,10 +304,10 @@ test("card cancellation is reversible; 30-day cleanup preserves past and complet
   await change("archive",3);
   const threshold=clock.getTime()+30*86400000;
   assert.equal((await processExpectedMidnight(pool,new Date(threshold-1))).purged,0);
-  assert.equal((await processExpectedMidnight(pool,new Date(threshold))).purged,2);
+  assert.equal((await processExpectedMidnight(pool,new Date(threshold))).purged,1);
   assert.equal((await processExpectedMidnight(pool,new Date(threshold))).purged,0);
-  assert.equal((await readExpectedCard(pool,1,card.id)).purgedMovementCount,2);
-  assert.deepEqual((await db.query("SELECT id,to_jsonb(m) AS row FROM expected_movements m WHERE company_id=1 ORDER BY id")).rows,before);
+  assert.equal((await readExpectedCard(pool,1,card.id)).purgedMovementCount,1);
+  assert.deepEqual((await db.query("SELECT id,to_jsonb(m) AS row FROM expected_movements m WHERE company_id=1 AND id<>$1 ORDER BY id",[today.id])).rows,before);
   assert.equal((await db.query("SELECT 1 FROM audit_events WHERE company_id=1 AND action='expected.card.purge'")).rows.length,1);
   await assert.rejects(change("restore",5),/بعد حذف/);
   assert.deepEqual(await snapshot(), finance);

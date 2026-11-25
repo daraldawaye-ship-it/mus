@@ -402,7 +402,7 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
         </Notice>}
         {lifecyclePrompt?.id === cardId ? <>
           <Notice>{lifecyclePrompt.action === "archive"
-            ? "سيؤرشف الكرت والتوقعات غير المنجزة من اليوم فصاعدًا بتوقيت عدن. ما قبل اليوم والمنجز يبقى. تُحذف التوقعات المؤرشفة بعد 30 يومًا."
+            ? "سيؤرشف الكرت والتوقعات غير المنجزة بعد اليوم بتوقيت عدن. حركات اليوم والأقدم تبقى، ويمكن إنجازها يدويًا. تُحذف التوقعات المؤرشفة بعد 30 يومًا."
             : "سيعود الكرت وتوقعاته المؤرشفة إلى القوائم النشطة."}</Notice>
           {lifecycleError && <Notice tone="error">{lifecycleError}</Notice>}
           <div className="expected-row-actions">
@@ -487,7 +487,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   }, [list.data, list.loading, list.error, busy]);
 
   async function complete(movement: ExpectedMovement) {
-    if (!canEdit || inFlight.current || editingRef.current || movement.cardArchived || movement.status !== "pending") return;
+    if (!canEdit || inFlight.current || editingRef.current || movement.status !== "pending") return;
     inFlight.current = true; setBusy(movement.id); setBusyKind("complete"); setError(""); setNotice("");
     try {
       const response = await api<{ movement: ExpectedMovement }>(`/companies/${companyId}/expected-movements/${movement.id}/complete`, {
@@ -615,7 +615,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     { key: "postedAt", label: "وقت الترحيل — اليمن", width: 170, cell: row => <bdi>{dateTime.format(new Date(row.postedAt))}</bdi> },
     { key: "status", label: "الحالة", width: 90, cell: row => <span className={`expected-status expected-status-${row.status}`}>{row.status === "completed" ? "تم" : "لم يتم"}</span> },
     { key: "actions", label: "الإجراءات", width: 190, sortable: false, scrollText: false, cell: row => <div className="expected-row-actions">
-      {canEdit && !row.cardArchived && row.status === "pending" && <>
+      {canEdit && row.status === "pending" && <>
         <Button type="button" size="compact" disabled={busy !== null || editing !== null} onClick={() => void complete(row)}>{busy === row.id ? busyKind === "save" ? "جارٍ الحفظ…" : "جارٍ الإنجاز…" : "إنجاز"}</Button>
       </>}
       {canViewCards && <Link to={`/companies/${companyId}/expected-cards?cardId=${row.cardId}`}>الكرت</Link>}
