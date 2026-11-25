@@ -38,3 +38,33 @@ test("medical movements keep named unclassified cards but exclude entities and b
     await db.close();
   }
 });
+
+test("one Arabic keyword matches both names and preserves the report boundaries", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      CREATE TABLE doctors (id int, company_id int, name text, shared_name text, kind text);
+      CREATE TABLE invoices (id int, company_id int, kind text, posted bool, document_date date, doctor_id int);
+      CREATE TABLE doctor_sales_accounted_invoices (company_id int, invoice_id int);
+      CREATE TABLE legacy_sales_sign_repairs (company_id int, invoice_id int);
+      INSERT INTO doctors VALUES
+        (1,2,'بطاقة كمال','كمال عطية','doctor'),(2,2,'جمال عطيه','',null),
+        (3,2,'جهة عطية','', 'entity'),(4,1,'طبيب عطية','', 'doctor'),
+        (5,2,'اسم آخر','', 'nurse');
+      INSERT INTO invoices VALUES
+        (1,2,'sale',true,'2026-11-25',1),(2,2,'sale',true,'2026-11-25',2),
+        (3,2,'sale',true,'2026-11-25',3),(4,1,'sale',true,'2026-11-25',4),
+        (5,2,'sale',true,'2026-11-23',1),(6,2,'sale',true,'2026-11-25',5);
+    `);
+    const query = (keyword: string, exact = "") => db.query(
+      "SELECT i.id" + doctorSalesMovementWhere + " ORDER BY i.id",
+      [2,"2026-11-24","2026-11-25",exact,keyword],
+    );
+    assert.deepEqual((await query("%عطيه%")).rows,[{id:1},{id:2}]);
+    assert.deepEqual((await query("%عطية%")).rows,[{id:1},{id:2}]);
+    assert.deepEqual((await query("%","كمال عطية")).rows,[{id:1}]);
+    assert.deepEqual((await query("%اسم غير موجود%")).rows,[]);
+  } finally {
+    await db.close();
+  }
+});

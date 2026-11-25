@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
@@ -35,12 +35,6 @@ interface Result {
   page: number;
   pageSize: number;
 }
-interface MainName {
-  name: string;
-  kinds: Array<"doctor" | "nurse" | "unassigned">;
-}
-
-const doctorKindLabels = { doctor: "طبيب", nurse: "ممرض", unassigned: "غير معين" } as const;
 const adenTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Aden", hour: "2-digit", minute: "2-digit", hour12: false,
 });
@@ -68,8 +62,14 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const to = params.get("dateTo") ?? today;
   const q = params.get("q") ?? "";
   const mainName = params.get("mainName") ?? "";
-  const [search, setSearch] = useState(mainName || q);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const keyword = q.trim();
+  const [appliedKeyword, setAppliedKeyword] = useState(keyword);
+  useEffect(() => {
+    if (keyword === appliedKeyword) return;
+    const timer = window.setTimeout(() => setAppliedKeyword(keyword), 250);
+    return () => window.clearTimeout(timer);
+  }, [keyword, appliedKeyword]);
+  const searchPending = keyword !== appliedKeyword;
   const rawPage = Number(params.get("page") ?? "1");
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const rawSize = Number(params.get("pageSize") ?? "50");
@@ -77,25 +77,17 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const invalid = !from || !to || from > to || from < minDate ||
     to < minDate || from > today || to > today;
   const filters = new URLSearchParams({
-    dateFrom: from, dateTo: to, q, mainName,
+    dateFrom: from, dateTo: to, q: appliedKeyword, mainName,
     page: String(page), pageSize: String(pageSize),
-  });
-  const choices = useQuery({
-    queryKey: ["doctor-main-names", user?.id, companyId, search.trim()],
-    queryFn: ({ signal }) => api<{ items: MainName[] }>(
-      `/companies/${companyId}/doctor-sales-movements/main-names?q=${encodeURIComponent(search.trim())}`,
-      { signal }),
-    enabled: !!user && canView && suggestionsOpen,
-    staleTime: 30_000,
   });
   const results = useQuery({
     queryKey: ["doctor-sales-movements", user?.id, companyId, filters.toString()],
     queryFn: ({ signal }) => api<Result>(
       `/companies/${companyId}/doctor-sales-movements?${filters}`, { signal }),
-    enabled: !!user && canView && !invalid,
+    enabled: !!user && canView && !invalid && !searchPending,
     staleTime: 0, refetchOnWindowFocus: true,
   });
-  const records = results.data;
+  const records = searchPending ? undefined : results.data;
   async function markAsAccounted() {
     if (!pendingAccounted || pendingAccounted.doctorKind === null || !canMarkAccounted || accounting) return;
     setAccounting(true);
@@ -133,27 +125,14 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       return next;
     });
   }
-  function searchMainName(event: FormEvent) {
-    event.preventDefault();
-    setSuggestionsOpen(false);
+  function changeKeyword(value: string) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
       next.delete("mainName");
-      if (search.trim()) next.set("q", search.trim()); else next.delete("q");
+      if (value) next.set("q", value); else next.delete("q");
       next.delete("page");
       return next;
-    });
-  }
-  function selectMainName(name: string) {
-    setSearch(name);
-    setSuggestionsOpen(false);
-    setParams(previous => {
-      const next = new URLSearchParams(previous);
-      next.set("mainName", name);
-      next.delete("q");
-      next.delete("page");
-      return next;
-    });
+    }, { replace: true });
   }
   return (
     <>
@@ -164,40 +143,10 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
             onChange={event => change("dateFrom", event.target.value)} />
           <Field label="إلى تاريخ" type="date" value={to} min={minDate} max={today}
             onChange={event => change("dateTo", event.target.value)} />
-          <form className="form-actions" onSubmit={searchMainName}
-            onBlur={event => {
-              if (!event.currentTarget.contains(event.relatedTarget))
-                setSuggestionsOpen(false);
-            }}>
-            <div className="doctor-movements-suggest">
-              <Field label="بحث بالاسم الرئيسي" type="search"
-                value={search} autoComplete="off"
-                onFocus={() => setSuggestionsOpen(true)}
-                onChange={event => {
-                  setSearch(event.target.value);
-                  setSuggestionsOpen(true);
-                }}
-                placeholder="اختر الاسم الرئيسي من النتائج"
-                aria-expanded={suggestionsOpen} aria-controls="doctor-main-name-choices"
-              />
-              {suggestionsOpen && (
-                <div className="invoice-doctor-options" id="doctor-main-name-choices" role="listbox">
-                  {choices.isFetching && <small>جارٍ البحث عن الأسماء الرئيسية…</small>}
-                  {choices.isError && <small>تعذر تحميل الأسماء؛ يمكنك البحث بالنص.</small>}
-                  {choices.data?.items.map(choice => (
-                    <button type="button" key={choice.name}
-                      role="option" aria-selected={mainName === choice.name}
-                      onClick={() => selectMainName(choice.name)}>
-                      <span>{choice.name}</span>
-                      <small>{choice.kinds.map(kind => doctorKindLabels[kind]).join(" / ")}</small>
-                    </button>
-                  ))}
-                  {choices.data?.items.length === 0 && <small>لا توجد أسماء رئيسية مطابقة.</small>}
-                </div>
-              )}
-            </div>
-            <Button type="submit">بحث</Button>
-          </form>
+          <Field label="بحث بالاسم" type="search"
+            value={q || mainName} autoComplete="off" maxLength={120}
+            onChange={event => changeKeyword(event.target.value)}
+            placeholder="اكتب الاسم أو جزءًا منه" />
           <Select label="عدد السجلات في الصفحة" value={String(pageSize)}
             onChange={event => change("pageSize", event.target.value)}>
             <option value="20">20</option>
@@ -210,11 +159,11 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       {directory.isPending && <Notice>جارٍ التحقق من الصلاحيات…</Notice>}
       {!directory.isPending && !canView &&
         <Notice tone="warning">لا تملك صلاحية عرض حركة مبيعات الأطباء والممرضين.</Notice>}
-      {results.error && <Notice tone="error">{errorMessage(results.error)}</Notice>}
+      {!searchPending && results.error && <Notice tone="error">{errorMessage(results.error)}</Notice>}
       {accountingSuccess && <Notice tone="success">{accountingSuccess}</Notice>}
       {canView && !invalid && (
         <Card>
-          {results.isPending && <Notice>جارٍ تحميل الفواتير…</Notice>}
+          {(searchPending || results.isPending) && <Notice>جارٍ تحميل الفواتير…</Notice>}
           {records && (
             <>
               <div className="doctor-movements-summary" role="status">
