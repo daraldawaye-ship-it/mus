@@ -287,12 +287,20 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [lifecyclePrompt, setLifecyclePrompt] = useState<{id: number; revision: number; action: "archive" | "restore"} | null>(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const lifecycleLock = useRef(false);
+  const [lifecycleError, setLifecycleError] = useState("");
+  const guard = useScopeGuard(`company:${companyId}:expected-cards:lifecycle`);
   const directory = usePageDirectory(companyId);
   const page = directory.data?.find(entry => entry.key === "company.expected-cards");
+  const canArchive = !!page?.enabled && !!page.actionAccess.edit;
   const canCreate = !!page?.enabled && !!page.actionAccess.create;
   const canViewMovements = !!directory.data?.find(entry => entry.key === "company.expected-movements" && entry.enabled)?.actionAccess.view;
   const refresh = useExpectedRefresh(companyId);
   const filters = new URLSearchParams();
+  const archived = params.get("visibility") === "archived";
+  if (archived) filters.set("visibility", "archived");
   if (params.get("section")) filters.set("section", params.get("section")!);
   const list = usePagedQuery<ExpectedCard>(`/companies/${companyId}/expected-cards?${filters}`,
     `company:${companyId}:expected-cards`, "createdAt:desc,id:desc");
@@ -304,6 +312,27 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
   });
   const closeCard = () => changeFilter(setParams, "cardId", "");
   const openCard = (id: number) => changeFilter(setParams, "cardId", String(id));
+  async function submitLifecycle() {
+    if (!canArchive || !lifecyclePrompt || lifecycleLock.current) return;
+    const {id, revision, action} = lifecyclePrompt;
+    lifecycleLock.current = true;
+    setLifecycleBusy(true);
+    setLifecycleError("");
+    try {
+      const {card} = await api<{card: ExpectedCard}>(`/companies/${companyId}/expected-cards/${id}/lifecycle`, {
+        method: "PATCH", body: {revision, action}, signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      setLifecyclePrompt(null);
+      setNotice(action === "archive" ? `أُرشف الكرت و${card.archivedMovementCount} توقعًا.` : "استُعيد الكرت وتوقعاته المؤرشفة.");
+      void refresh();
+    } catch (error) {
+      if (guard.isCurrent()) { setLifecycleError(errorMessage(error)); void refresh(); }
+    } finally {
+      lifecycleLock.current = false;
+      if (guard.isCurrent()) setLifecycleBusy(false);
+    }
+  }
   const columns: InteractiveTableColumn<ExpectedCard>[] = [
     { key: "id", label: "الكرت", width: 70, cell: row => row.id },
     { key: "accountName", label: "الحساب", width: 230, cell: row => row.accountName },
@@ -337,6 +366,10 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
     {notice && <Notice tone="success">{notice}</Notice>}
     <Card>
       <div className="table-filters">
+        <label>حالة الكرت <select value={archived ? "archived" : "active"}
+          onChange={event => changeFilter(setParams, "visibility", event.target.value === "archived" ? "archived" : "")}>
+          <option value="active">النشطة</option><option value="archived">المؤرشفة</option>
+        </select></label>
         <Field type="search" label="بحث بالحساب أو البيان" value={list.query} onChange={event => list.setQuery(event.target.value)} />
         <SectionField companyId={companyId} value={params.get("section") ?? ""}
           onChange={value => changeFilter(setParams, "section", value)} filter />
@@ -359,10 +392,30 @@ function ExpectedCardsContent({ context }: { context: CompanyContext }) {
       void refresh();
       openCard(card.id);
     }} />
-    <Dialog open={!!cardId} title={`كرت المتوقع${cardId ? ` #${cardId}` : ""}`} onClose={closeCard} className="expected-dialog">
+    <Dialog open={!!cardId} title={`كرت المتوقع${cardId ? ` #${cardId}` : ""}`} onClose={() => { if (!lifecycleBusy) { setLifecyclePrompt(null); setLifecycleError(""); closeCard(); } }} className="expected-dialog">
       {detail.isFetching && !detail.data && <Notice>جارٍ تحميل الكرت…</Notice>}
       {detail.error && <Notice tone="error">{errorMessage(detail.error)}</Notice>}
-      {detail.data && !detail.error && <CardDetails card={detail.data.card} companyId={companyId} canViewMovements={canViewMovements} />}
+      {detail.data && !detail.error && <>
+        <CardDetails card={detail.data.card} companyId={companyId} canViewMovements={canViewMovements} />
+        {detail.data.card.archivedAt && <Notice>
+          مؤرشف منذ {dateTime.format(new Date(detail.data.card.archivedAt))} · توقعات مؤرشفة: {detail.data.card.archivedMovementCount} · حُذف بعد المهلة: {detail.data.card.purgedMovementCount}
+        </Notice>}
+        {lifecyclePrompt?.id === cardId ? <>
+          <Notice>{lifecyclePrompt.action === "archive"
+            ? "سيؤرشف الكرت والتوقعات غير المنجزة من اليوم فصاعدًا بتوقيت عدن. ما قبل اليوم والمنجز يبقى. تُحذف التوقعات المؤرشفة بعد 30 يومًا."
+            : "سيعود الكرت وتوقعاته المؤرشفة إلى القوائم النشطة."}</Notice>
+          {lifecycleError && <Notice tone="error">{lifecycleError}</Notice>}
+          <div className="expected-row-actions">
+            <Button type="button" size="compact" disabled={lifecycleBusy || !canArchive} onClick={() => void submitLifecycle()}>
+              {lifecyclePrompt.action === "archive" ? "تأكيد الأرشفة" : "تأكيد الاستعادة"}
+            </Button>
+            <Button type="button" size="compact" variant="secondary" disabled={lifecycleBusy} onClick={() => { setLifecyclePrompt(null); setLifecycleError(""); }}>رجوع</Button>
+          </div>
+        </> : canArchive && !detail.data.card.purgedMovementCount && <Button type="button" size="compact" variant="secondary" onClick={() => {
+          const card = detail.data!.card;
+          setLifecyclePrompt({id: card.id, revision: card.lifecycleRevision, action: card.archivedAt ? "restore" : "archive"});
+        }}>{detail.data.card.archivedAt ? "استعادة الكرت" : "إلغاء وأرشفة الكرت"}</Button>}
+      </>}
     </Dialog>
   </div>;
 }
@@ -434,7 +487,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   }, [list.data, list.loading, list.error, busy]);
 
   async function complete(movement: ExpectedMovement) {
-    if (!canEdit || inFlight.current || editingRef.current || movement.status !== "pending") return;
+    if (!canEdit || inFlight.current || editingRef.current || movement.cardArchived || movement.status !== "pending") return;
     inFlight.current = true; setBusy(movement.id); setBusyKind("complete"); setError(""); setNotice("");
     try {
       const response = await api<{ movement: ExpectedMovement }>(`/companies/${companyId}/expected-movements/${movement.id}/complete`, {
@@ -462,7 +515,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     setEditing(null);
   }
   function openInline(movement: ExpectedMovement, field: ExpectedInlineField) {
-    if (!canEdit || inFlight.current || editingRef.current || movement.status !== "pending") return;
+    if (!canEdit || inFlight.current || editingRef.current || movement.cardArchived || movement.status !== "pending") return;
     const initialText = inlineInitialText(movement, field);
     const edit = { movement: { ...movement }, field, initialText, draft: initialText, touched: false, scope: editScope };
     editingRef.current = edit;
@@ -522,7 +575,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   function inlineCell(movement: ExpectedMovement, field: ExpectedInlineField) {
     const shown = field === "amount" ? money(movement.amount)
       : field === "date" ? <bdi>{dateText(movement.date)}</bdi> : movement.description || "—";
-    if (!canEdit || movement.status !== "pending") return shown;
+    if (!canEdit || movement.cardArchived || movement.status !== "pending") return shown;
     const current = editing?.movement.id === movement.id && editing.field === field && editing.scope === editScope ? editing : null;
     if (!current) return <button type="button" className="doctor-inline-trigger expected-inline-trigger"
       title={`تعديل ${inlineLabels[field]} مباشرة`} aria-label={`تعديل ${inlineLabels[field]} — ${movement.accountName} — الحركة ${movement.id}`}
@@ -562,7 +615,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     { key: "postedAt", label: "وقت الترحيل — اليمن", width: 170, cell: row => <bdi>{dateTime.format(new Date(row.postedAt))}</bdi> },
     { key: "status", label: "الحالة", width: 90, cell: row => <span className={`expected-status expected-status-${row.status}`}>{row.status === "completed" ? "تم" : "لم يتم"}</span> },
     { key: "actions", label: "الإجراءات", width: 190, sortable: false, scrollText: false, cell: row => <div className="expected-row-actions">
-      {canEdit && row.status === "pending" && <>
+      {canEdit && !row.cardArchived && row.status === "pending" && <>
         <Button type="button" size="compact" disabled={busy !== null || editing !== null} onClick={() => void complete(row)}>{busy === row.id ? busyKind === "save" ? "جارٍ الحفظ…" : "جارٍ الإنجاز…" : "إنجاز"}</Button>
       </>}
       {canViewCards && <Link to={`/companies/${companyId}/expected-cards?cardId=${row.cardId}`}>الكرت</Link>}

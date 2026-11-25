@@ -1,6 +1,6 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
-import type { ExpectedCard, ExpectedCardCreate, ExpectedMovement, ExpectedMovementPatch } from "../../../../packages/contracts/src/expected.ts";
+import type { ExpectedCard, ExpectedCardCreate, ExpectedCardLifecycle, ExpectedMovement, ExpectedMovementPatch } from "../../../../packages/contracts/src/expected.ts";
 import { expectedDateSchema, expectedEndDateLimit } from "../../../../packages/contracts/src/expected.ts";
 import { transaction, type Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
@@ -64,14 +64,15 @@ const cardSelect = `SELECT c.*,a.name AS account_name,a.code AS account_code,
   cashbox.name AS cash_account_name,cashbox.code AS cash_account_code,
   c.start_date::text AS start_day,c.end_date::text AS end_day,c.once_date::text AS once_day,
   c.amount::text AS exact_amount,
-  stats.movement_count,stats.pending_count,stats.completed_count
+  stats.movement_count,stats.pending_count,stats.completed_count,stats.archived_count
   FROM expected_cards c JOIN accounts a ON (a.company_id,a.id)=(c.company_id,c.account_id)
   LEFT JOIN accounts cashbox ON (cashbox.company_id,cashbox.id)=(c.company_id,c.cash_account_id)
-  CROSS JOIN LATERAL (SELECT count(*)::integer AS movement_count,
-    count(*) FILTER (WHERE m.status='pending')::integer AS pending_count,
+  CROSS JOIN LATERAL (SELECT count(*) FILTER (WHERE m.archived_at IS NULL)::integer AS movement_count,
+    count(*) FILTER (WHERE m.status='pending' AND m.archived_at IS NULL)::integer AS pending_count,
+    count(*) FILTER (WHERE m.archived_at IS NOT NULL)::integer AS archived_count,
     count(*) FILTER (WHERE m.status='completed')::integer AS completed_count
     FROM expected_movements m WHERE (m.company_id,m.card_id)=(c.company_id,c.id)) stats`;
-const movementSelect = `SELECT m.*,c.account_id,a.name AS account_name,a.code AS account_code,c.section,c.currency_code,
+const movementSelect = `SELECT m.*,c.account_id,a.name AS account_name,a.code AS account_code,c.section,c.currency_code,c.archived_at AS card_archived_at,
   c.amount::text AS original_amount,c.description AS original_description,c.expiry_mode,
   m.movement_date::text AS movement_day,m.original_date::text AS original_day,
   m.amount::text AS exact_amount,m.completed_amount::text AS exact_completed_amount
@@ -83,6 +84,7 @@ function cardDTO(row: QueryResultRow): ExpectedCard {
     section:row.section,currencyCode:row.currency_code,amount:row.exact_amount,description:row.description,
     recurrence:row.recurrence,weekday:row.weekday,monthDay:row.month_day,onceDate:row.once_day,startDate:row.start_day,endDate:row.end_day,
     expiryMode:row.expiry_mode,movementCount:row.movement_count,pendingCount:row.pending_count,completedCount:row.completed_count,
+    archivedAt:timestamp(row.archived_at),lifecycleRevision:row.lifecycle_revision,archivedMovementCount:row.archived_count,purgedMovementCount:row.purged_movement_count,
     createdAt:timestamp(row.created_at)!,createdById:row.created_by,createdByName:row.created_by_name};
 }
 function movementDTO(row: QueryResultRow): ExpectedMovement {
@@ -91,7 +93,7 @@ function movementDTO(row: QueryResultRow): ExpectedMovement {
     description:row.description,status:row.status,completedAmount:row.exact_completed_amount,completedAt:timestamp(row.completed_at),
     completionSource:row.completion_source,revision:row.revision,originalAmount:row.original_amount,originalDescription:row.original_description,
     expiryMode:row.expiry_mode,updatedAt:timestamp(row.updated_at)!,postedById:row.posted_by,postedByName:row.posted_by_name,postedAt:timestamp(row.posted_at)!,
-    completedById:row.completed_by,completedByName:row.completed_by_name};
+    completedById:row.completed_by,completedByName:row.completed_by_name,cardArchived:row.card_archived_at!==null};
 }
 export async function readExpectedCard(db: Database, companyId: number, cardId: number): Promise<ExpectedCard> {
   const row = (await db.query(`${cardSelect} WHERE c.company_id=$1 AND c.id=$2`,[companyId,cardId])).rows[0];
@@ -99,7 +101,7 @@ export async function readExpectedCard(db: Database, companyId: number, cardId: 
   return cardDTO(row);
 }
 export async function readExpectedMovement(db: Database, companyId: number, movementId: number): Promise<ExpectedMovement> {
-  const row = (await db.query(`${movementSelect} WHERE m.company_id=$1 AND m.id=$2`,[companyId,movementId])).rows[0];
+  const row = (await db.query(`${movementSelect} WHERE m.company_id=$1 AND m.id=$2 AND m.archived_at IS NULL`,[companyId,movementId])).rows[0];
   if (!row) missing("حركة المتوقع غير موجودة");
   return movementDTO(row);
 }
@@ -156,7 +158,9 @@ function addCommonFilters(query: Record<string,unknown>, clauses: string[], valu
 }
 export async function listExpectedCards(db: Database, companyId: number, input: Record<string,unknown>) {
   const query = listQuery(input,cardColumns,"id:desc",new Set(["cashAccountId","cashAccountName","cashAccountCode"]));
-  const values: unknown[]=[companyId];const clauses=["c.company_id=$1"];
+  const visibility=input.visibility??"active";
+  if(visibility!=="active" && visibility!=="archived") invalid("حالة الكرت غير صالحة");
+  const values: unknown[]=[companyId];const clauses=["c.company_id=$1",visibility==="archived"?"c.archived_at IS NOT NULL":"c.archived_at IS NULL"];
   addCommonFilters(input,clauses,values);
   if (query.q) {values.push(searchPattern(query.q));const p=`$${values.length}`;clauses.push(`(a.name ILIKE ${p} OR a.code ILIKE ${p} OR cashbox.name ILIKE ${p} OR cashbox.code ILIKE ${p} OR c.description ILIKE ${p} OR c.section ILIKE ${p} OR c.id::text ILIKE ${p})`);}
   const where=clauses.join(" AND ");
@@ -167,7 +171,7 @@ export async function listExpectedCards(db: Database, companyId: number, input: 
 }
 export async function listExpectedMovements(db: Database, companyId: number, input: Record<string,unknown>) {
   const query=listQuery(input,movementColumns,"date:asc,id:asc",new Set(["completedAt","completedAmount","completionSource"]));
-  const values:unknown[]=[companyId];const clauses=["m.company_id=$1"];
+  const values:unknown[]=[companyId];const clauses=["m.company_id=$1","m.archived_at IS NULL"];
   addCommonFilters(input,clauses,values);
   if(input.cardId!==undefined) {
     if(typeof input.cardId!=="string" || !/^[1-9]\d*$/.test(input.cardId) || Number(input.cardId)>2_147_483_647) invalid("الكرت المحدد غير صالح");
@@ -215,7 +219,13 @@ export async function expectedCashboxes(db:Database,companyId:number,input:Recor
   return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};
 }
 async function lockMovement(client:PoolClient,companyId:number,movementId:number) {
-  if(!(await client.query("SELECT id FROM expected_movements WHERE company_id=$1 AND id=$2 FOR UPDATE",[companyId,movementId])).rows.length) missing("حركة المتوقع غير موجودة");
+  // Match lifecycle's card-before-movement lock order, so archive cannot race an edit.
+  const card=(await client.query(`SELECT c.archived_at FROM expected_movements m
+    JOIN expected_cards c ON (c.company_id,c.id)=(m.company_id,m.card_id)
+    WHERE m.company_id=$1 AND m.id=$2 AND m.archived_at IS NULL FOR SHARE OF c`,[companyId,movementId])).rows[0];
+  if(!card) missing("حركة المتوقع غير موجودة");
+  if(card.archived_at) conflict("الكرت مؤرشف؛ الحركات المحفوظة للعرض فقط");
+  if(!(await client.query("SELECT id FROM expected_movements WHERE company_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE",[companyId,movementId])).rows.length) missing("حركة المتوقع غير موجودة");
   return readExpectedMovement(client,companyId,movementId);
 }
 export async function updateExpectedMovement(client:PoolClient,user:User,companyId:number,movementId:number,input:ExpectedMovementPatch) {
@@ -238,15 +248,74 @@ export async function completeExpectedMovement(client:PoolClient,user:User,compa
   return movement;
 }
 
+async function lockExpectedWorker(client: PoolClient) {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext(current_schema()),hashtext('expected-midnight'))");
+}
+
+export async function changeExpectedCardLifecycle(client: PoolClient,user: User,companyId: number,cardId: number,input: ExpectedCardLifecycle, now?: Date) {
+  await lockExpectedWorker(client);
+  if(!(await client.query("SELECT id FROM expected_cards WHERE company_id=$1 AND id=$2 FOR UPDATE",[companyId,cardId])).rows.length) missing("كرت المتوقع غير موجود");
+  const before=await readExpectedCard(client,companyId,cardId);
+  if(before.lifecycleRevision!==input.revision) conflict("تغيرت حالة الكرت؛ حدّث الصفحة أولًا");
+  if(input.action==="archive") {
+    if(before.archivedAt) conflict("الكرت مؤرشف بالفعل");
+    const clock=now??new Date();
+    const day=expectedAdenDate(clock);
+    await client.query(`UPDATE expected_cards SET archived_at=$3,archive_day=$4,lifecycle_revision=lifecycle_revision+1
+      WHERE company_id=$1 AND id=$2`,[companyId,cardId,clock,day]);
+    // Both dates must be eligible: a historical row carried forward is still protected.
+    await client.query(`UPDATE expected_movements SET archived_at=$3,revision=revision+1,updated_at=$3
+      WHERE company_id=$1 AND card_id=$2 AND archived_at IS NULL AND status='pending'
+        AND original_date >= $4::date AND movement_date >= $4::date`,[companyId,cardId,clock,day]);
+  } else {
+    if(!before.archivedAt) conflict("الكرت غير مؤرشف");
+    if(before.purgedMovementCount) conflict("لا يمكن استعادة الكرت بعد حذف توقعاته");
+    await client.query(`UPDATE expected_movements SET archived_at=NULL,revision=revision+1,updated_at=clock_timestamp()
+      WHERE company_id=$1 AND card_id=$2 AND archived_at IS NOT NULL`,[companyId,cardId]);
+    await client.query(`UPDATE expected_cards SET archived_at=NULL,archive_day=NULL,lifecycle_revision=lifecycle_revision+1
+      WHERE company_id=$1 AND id=$2`,[companyId,cardId]);
+  }
+  const card=await readExpectedCard(client,companyId,cardId);
+  await audit(client,user,`expected.card.${input.action}`,"expectedCard",cardId,
+    {archivedAt:before.archivedAt,archivedMovementCount:before.archivedMovementCount},
+    {archivedAt:card.archivedAt,archivedMovementCount:card.archivedMovementCount},companyId);
+  return card;
+}
+
+async function purgeCancelledExpectedMovements(client: PoolClient, now?: Date) {
+  // Forecast rows are independent of ledger records. Only rows explicitly marked by archive
+  // are eligible, and completion metadata and both historical dates are checked again.
+  return (await client.query<{purged:number}>(`WITH deleted AS (
+    DELETE FROM expected_movements m USING expected_cards c
+    WHERE (m.company_id,m.card_id)=(c.company_id,c.id)
+      AND m.archived_at=c.archived_at
+      AND m.archived_at<=COALESCE($1::timestamptz,clock_timestamp())-interval '720 hours'
+      AND m.original_date>=c.archive_day AND m.movement_date>=c.archive_day
+      AND m.status='pending' AND m.completed_at IS NULL AND m.completed_amount IS NULL
+      AND m.completed_by IS NULL AND m.completion_source IS NULL
+    RETURNING m.company_id,m.card_id
+  ), counts AS (
+    SELECT company_id,card_id,count(*)::integer AS n FROM deleted GROUP BY company_id,card_id
+  ), updated AS (
+    UPDATE expected_cards c SET purged_movement_count=c.purged_movement_count+counts.n,lifecycle_revision=c.lifecycle_revision+1
+    FROM counts WHERE (c.company_id,c.id)=(counts.company_id,counts.card_id)
+    RETURNING c.company_id,c.id,counts.n,c.archive_day,c.purged_movement_count
+  ), logged AS (
+    INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value)
+    SELECT NULL,'النظام','company',company_id,'expected.card.purge','expectedCard',id,NULL,
+      jsonb_build_object('deleted',n,'archiveDay',archive_day,'totalDeleted',purged_movement_count) FROM updated RETURNING id
+  ) SELECT count(*)::integer AS purged FROM deleted`,[now??null])).rows[0].purged;
+}
+
 /** One transaction updates existing overdue rows. No card expiry check: carry remains open after its last generated date. */
-export async function processExpectedMidnight(pool:Pool, now?:Date):Promise<{carried:number;completed:number}> {
+export async function processExpectedMidnight(pool:Pool, now?:Date):Promise<{carried:number;completed:number;purged:number}> {
   return transaction(pool,async client=>{
-    await client.query("SELECT pg_advisory_xact_lock(hashtext(current_schema()),hashtext('expected-midnight'))");
+    await lockExpectedWorker(client);
     const today=now?expectedAdenDate(now):await databaseToday(client);
     const result=await client.query<{carried:number;completed:number}>(`WITH overdue AS MATERIALIZED (
       SELECT m.id,m.company_id,m.movement_date,m.amount,m.description,m.status,m.revision,m.posted_by,m.posted_by_name,m.posted_at,c.expiry_mode
       FROM expected_movements m JOIN expected_cards c ON (c.company_id,c.id)=(m.company_id,m.card_id)
-      WHERE m.status='pending' AND m.movement_date<$1::date FOR UPDATE OF m
+      WHERE m.status='pending' AND m.archived_at IS NULL AND c.archived_at IS NULL AND m.movement_date<$1::date FOR UPDATE OF m
     ), changed AS (
       UPDATE expected_movements m SET
         movement_date=CASE WHEN o.expiry_mode='carry' THEN $1::date ELSE m.movement_date END,
@@ -271,7 +340,7 @@ export async function processExpectedMidnight(pool:Pool, now?:Date):Promise<{car
       FROM changed RETURNING id
     ) SELECT count(*) FILTER (WHERE expiry_mode='carry')::integer AS carried,
       count(*) FILTER (WHERE expiry_mode='complete')::integer AS completed FROM changed`,[today]);
-    return result.rows[0];
+    return {...result.rows[0],purged:await purgeCancelledExpectedMovements(client,now)};
   });
 }
 
@@ -286,7 +355,7 @@ export function startExpectedMidnightWorker(pool:Pool):()=>Promise<void> {
     let succeeded=false;
     running=processExpectedMidnight(pool).then(result=>{
       succeeded=true;
-      if(result.carried||result.completed) console.info("EXPECTED_MIDNIGHT_PROCESSED",result);
+      if(result.carried||result.completed||result.purged) console.info("EXPECTED_MIDNIGHT_PROCESSED",result);
     }).catch((error:unknown)=>{
       const code=error&&typeof error==="object"&&"code" in error?String(error.code):"worker_error";
       console.error("EXPECTED_MIDNIGHT_FAILED",/^[a-zA-Z0-9_]{1,32}$/.test(code)?code:"worker_error");

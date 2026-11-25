@@ -976,7 +976,7 @@ page(
   "كروت المتوقع",
   "المتوقع",
   "/companies/:companyId/expected-cards",
-  { view: permission("finance.view"), create: permission("finance.manage") },
+  { view: permission("finance.view"), create: permission("finance.manage"), edit: permission("finance.manage") },
   "المبالغ والبيانات الأصلية المتوقعة للحسابات، وأقسامها ومواعيدها وخيار المعالجة اليومية.",
 );
 page(

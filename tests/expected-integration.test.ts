@@ -19,6 +19,7 @@ test("expected routes publish complete contracts on the shared browser and OAuth
     "GET /companies/:companyId/expected-cards",
     "POST /companies/:companyId/expected-cards",
     "GET /companies/:companyId/expected-cards/:id",
+    "PATCH /companies/:companyId/expected-cards/:id/lifecycle",
     "GET /companies/:companyId/expected-sections",
     "GET /companies/:companyId/expected-accounts",
     "GET /companies/:companyId/expected-cashboxes",
@@ -64,6 +65,7 @@ test("expected authorization keeps completion as editing and lookups under card 
   const cases = [
     ["GET", "expected-cards", "company.expected-cards", "view"],
     ["POST", "expected-cards", "company.expected-cards", "create"],
+    ["PATCH", "expected-cards/7/lifecycle", "company.expected-cards", "edit"],
     ["GET", "expected-accounts", "company.expected-cards", "view"],
     ["GET", "expected-cashboxes", "company.expected-cards", "view"],
     ["GET", "expected-sections", "company.expected-cards", "view"],

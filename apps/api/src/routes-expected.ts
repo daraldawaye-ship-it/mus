@@ -2,13 +2,13 @@ import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import type { User } from "../../../packages/contracts/src/index.ts";
 import type { PageAction } from "../../../packages/contracts/src/pages.ts";
-import { expectedCardCreateSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema } from "../../../packages/contracts/src/expected.ts";
+import { expectedCardCreateSchema, expectedCardLifecycleSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema } from "../../../packages/contracts/src/expected.ts";
 import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, companyAccess } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { directoryEntries, assertDirectoryAccess, assertRequestPagesEnabled } from "./services/pages.ts";
-import { createExpectedCard, readExpectedCard, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, expectedCashboxes, updateExpectedMovement, completeExpectedMovement } from "./services/expected.ts";
+import { changeExpectedCardLifecycle, createExpectedCard, readExpectedCard, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, expectedCashboxes, updateExpectedMovement, completeExpectedMovement } from "./services/expected.ts";
 
 export function expectedRoutes(pool:Pool):Router {
   const router=Router();
@@ -41,6 +41,11 @@ export function expectedRoutes(pool:Pool):Router {
     const input=parse(expectedCardCreateSchema,req.body);
     const result=await authorized(req,"company.expected-cards","create",(client,user,companyId)=>createExpectedCard(client,user,companyId,input));
     res.status(result.created?201:200).json({card:result.card});
+  }));
+  router.patch(`${base}/expected-cards/:id/lifecycle`,handler(async(req,res)=>{
+    const input=parse(expectedCardLifecycleSchema,req.body);
+    const card=await authorized(req,"company.expected-cards","edit",(client,user,companyId)=>changeExpectedCardLifecycle(client,user,companyId,id(req.params.id),input));
+    res.json({card});
   }));
   router.get(`${base}/expected-sections`,handler(async(req,res)=>{
     res.set("Cache-Control","private, no-store");

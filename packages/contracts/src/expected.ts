@@ -67,6 +67,11 @@ export const expectedCardCreateSchema = z.object({
       context.addIssue({code: "custom", path: ["onceDate"], message: "الموعد المحدد يسبق تاريخ البداية"});
   }
 });
+export const expectedCardLifecycleSchema = z.object({
+  revision: identifier,
+  action: z.enum(["archive", "restore"]),
+}).strict();
+export type ExpectedCardLifecycle = z.output<typeof expectedCardLifecycleSchema>;
 export const expectedMovementPatchSchema = z.object({
   revision: identifier,
   date: expectedDateSchema,
@@ -86,6 +91,7 @@ export interface ExpectedCard {
   startDate: string; endDate: string; expiryMode: ExpectedExpiryMode;
   movementCount: number; pendingCount: number; completedCount: number; createdAt: string;
   createdById: number; createdByName: string;
+  archivedAt: string | null; lifecycleRevision: number; archivedMovementCount: number; purgedMovementCount: number;
 }
 export interface ExpectedMovement {
   id: number; companyId: number; cardId: number; accountId: number; accountName: string; accountCode: string;
@@ -95,4 +101,5 @@ export interface ExpectedMovement {
   originalAmount: string; originalDescription: string; expiryMode: ExpectedExpiryMode; updatedAt: string;
   postedById: number | null; postedByName: string; postedAt: string;
   completedById: number | null; completedByName: string;
+  cardArchived: boolean;
 }

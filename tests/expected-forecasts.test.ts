@@ -8,7 +8,7 @@ import type { User } from "../packages/contracts/src/index.ts";
 import { expectedCardCreateSchema, expectedMovementPatchSchema, expectedEndDateLimit } from "../packages/contracts/src/expected.ts";
 import { transaction } from "../apps/api/src/db.ts";
 import { createExpectedCard, readExpectedCard, readExpectedMovement, listExpectedCards, listExpectedMovements, expectedSections, expectedAccounts, expectedCashboxes,
-  updateExpectedMovement, completeExpectedMovement, processExpectedMidnight,
+  changeExpectedCardLifecycle, updateExpectedMovement, completeExpectedMovement, processExpectedMidnight,
   expectedOccurrenceDates, expectedAdenDate, expectedNextMidnight } from "../apps/api/src/services/expected.ts";
 
 function poolAdapter(db:PGlite):Pool {
@@ -36,6 +36,7 @@ async function fixture(t:{after:(fn:()=>Promise<void>)=>void},cashboxUpgrade=tru
     CREATE TABLE account_statistics(company_id integer,account_id integer,balance numeric(28,6)); INSERT INTO account_statistics VALUES(1,4,500);`);
   await db.exec(await readFile(new URL("../apps/api/migrations/20261122_expected_forecasts.sql",import.meta.url),"utf8"));
   if(cashboxUpgrade) await db.exec(await readFile(new URL("../apps/api/migrations/20261122_expected_forecasts_cashbox.sql",import.meta.url),"utf8"));
+  await db.exec(await readFile(new URL("../apps/api/migrations/20261125_expected_card_retention.sql",import.meta.url),"utf8"));
   const pool=poolAdapter(db);
   const create=(changes:Record<string,unknown>={},companyId=1,today="2026-11-22")=>transaction(pool,client=>createExpectedCard(client,owner,companyId,input(changes),today));
   const snapshot=async()=>{
@@ -191,21 +192,21 @@ test("midnight reuses the same carry row after card expiry, respects edited date
   await create({recurrence:"once",weekday:undefined,onceDate:"2026-11-22",endDate:"2026-11-22",amount:"-3000"});
   const initial=(await listExpectedMovements(pool,1,{})).items[0];
   const edited=await transaction(pool,client=>updateExpectedMovement(client,owner,1,initial.id,{revision:1,date:"2026-11-24",amount:"-2500.000001",description:"قبض مؤجل"}));
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-23T21:00:00Z")),{carried:0,completed:0});
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-24T21:00:00Z")),{carried:1,completed:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-23T21:00:00Z")),{carried:0,completed:0,purged:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-24T21:00:00Z")),{carried:1,completed:0,purged:0});
   const carried=await readExpectedMovement(pool,1,initial.id);
   assert.equal(carried.date,"2026-11-25");assert.equal(carried.originalDate,"2026-11-22");
   assert.equal(carried.amount,"-2500.000001");assert.equal(carried.description,"قبض مؤجل");assert.equal(carried.status,"pending");assert.equal(carried.revision,edited.revision+1);
   assert.equal(carried.postedById,null);assert.equal(carried.postedByName,"النظام");assert.notEqual(carried.postedAt,initial.postedAt);
   assert.equal((await readExpectedCard(pool,1,initial.cardId)).createdByName,"Owner");
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-25T10:00:00Z")),{carried:0,completed:0});
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-12-08T21:00:00Z")),{carried:1,completed:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-25T10:00:00Z")),{carried:0,completed:0,purged:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-12-08T21:00:00Z")),{carried:1,completed:0,purged:0});
   const caughtUp=await readExpectedMovement(pool,1,initial.id);
   assert.equal(caughtUp.date,"2026-12-09");assert.equal((await listExpectedMovements(pool,1,{})).total,1);
   await assert.rejects(transaction(pool,client=>updateExpectedMovement(client,owner,1,initial.id,{revision:edited.revision,date:"2026-11-22",amount:"1",description:"stale"})),/تغيرت الحركة/);
   const done=await transaction(pool,client=>completeExpectedMovement(client,owner,1,initial.id,caughtUp.revision));
   assert.equal(done.completedAmount,"-2500.000001");
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-12-10T21:00:00Z")),{carried:0,completed:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-12-10T21:00:00Z")),{carried:0,completed:0,purged:0});
   assert.deepEqual(await snapshot(),before);
 });
 
@@ -214,17 +215,17 @@ test("automatic completion keeps edited date and signed amount; today/future rem
   const {card}=await create({recurrence:"daily",weekday:undefined,endDate:"2026-11-24",expiryMode:"complete",amount:"-3000"});
   const rows=(await listExpectedMovements(pool,1,{cardId:String(card.id)})).items;
   await transaction(pool,client=>updateExpectedMovement(client,owner,1,rows[0].id,{revision:1,date:"2026-11-24",amount:"-2500",description:"قبض عدل موعده"}));
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-22T21:00:00Z")),{carried:0,completed:0});
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-23T21:00:00Z")),{carried:0,completed:1});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-22T21:00:00Z")),{carried:0,completed:0,purged:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-23T21:00:00Z")),{carried:0,completed:1,purged:0});
   assert.equal((await readExpectedMovement(pool,1,rows[0].id)).status,"pending");
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-24T21:00:00Z")),{carried:0,completed:2});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-24T21:00:00Z")),{carried:0,completed:2,purged:0});
   const completed=await readExpectedMovement(pool,1,rows[0].id);
   assert.equal(completed.date,"2026-11-24");assert.equal(completed.completedAmount,"-2500.000000");assert.equal(completed.completionSource,"automatic");
   assert.equal(completed.completedById,null);assert.equal(completed.completedByName,"النظام");
   assert.equal(completed.postedByName,"Owner");assert.equal(completed.postedAt,rows[0].postedAt);
   assert.equal(completed.description,"قبض عدل موعده");assert.equal(completed.originalDate,"2026-11-22");
   const count=(await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n;
-  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-25T10:00:00Z")),{carried:0,completed:0});
+  assert.deepEqual(await processExpectedMidnight(pool,new Date("2026-11-25T10:00:00Z")),{carried:0,completed:0,purged:0});
   assert.equal((await db.query<{n:number}>("SELECT count(*)::integer AS n FROM audit_events")).rows[0].n,count);
   assert.equal((await readExpectedCard(pool,1,card.id)).amount,"-3000.000000");
   assert.deepEqual(await snapshot(),before);
@@ -258,4 +259,44 @@ test("company isolation, free sections, global sort and pagination preserve boun
   const earlier=await create({...single,startDate:"2026-10-01",onceDate:"2026-10-15",endDate:"2026-10-31"});
   assert.equal(earlier.card.startDate,"2026-10-01");
   assert.equal((await listExpectedMovements(pool,1,{cardId:String(earlier.card.id)})).items[0].date,"2026-10-15");
+});
+
+test("card cancellation is reversible; 30-day cleanup preserves past and completed data",async t=>{
+  const {db,pool,create,snapshot}=await fixture(t);
+  const finance=await snapshot();
+  const card=(await create({recurrence:"daily",weekday:undefined,endDate:"2026-11-27"})).card;
+  const other=(await create({accountId:6},2)).card;
+  const items=(await listExpectedMovements(pool,1,{cardId:String(card.id)})).items;
+  assert.equal(items.length,6);
+  const [past,carried,today,done,backdated,future]=items;
+  await db.query("UPDATE expected_movements SET movement_date='2026-11-24' WHERE id=$1",[carried.id]);
+  await db.query("UPDATE expected_movements SET movement_date='2026-11-22' WHERE id=$1",[backdated.id]);
+  await transaction(pool,client=>completeExpectedMovement(client,owner,1,done.id,done.revision));
+  const clock=new Date("2026-11-23T21:00:00.000Z"); // Start of Nov 24 in Aden.
+  const before=(await db.query("SELECT id,to_jsonb(m) AS row FROM expected_movements m WHERE id=ANY($1) ORDER BY id",[[past.id,carried.id,done.id,backdated.id]])).rows;
+  const change=(action:"archive"|"restore",revision:number,companyId=1)=>
+    transaction(pool,client=>changeExpectedCardLifecycle(client,owner,companyId,card.id,{action,revision},clock));
+  await assert.rejects(change("archive",1,2),/غير موجود/);
+  const archived=await change("archive",1);
+  assert.equal(archived.archivedMovementCount,2);
+  assert.equal((await listExpectedCards(pool,1,{})).total,0);
+  assert.equal((await listExpectedCards(pool,1,{visibility:"archived"})).items[0].id,card.id);
+  assert.equal((await listExpectedCards(pool,2,{})).items[0].id,other.id);
+  assert.deepEqual((await listExpectedMovements(pool,1,{})).items.map(m=>m.id).sort(),[past.id,carried.id,done.id,backdated.id].sort());
+  await assert.rejects(transaction(pool,client=>completeExpectedMovement(client,owner,1,today.id,today.revision)),/غير موجود/);
+  await assert.rejects(change("restore",1),/تغيرت/);
+  const restored=await change("restore",2);
+  assert.equal(restored.archivedAt,null);
+  assert.equal((await listExpectedMovements(pool,1,{})).total,6);
+  assert.equal((await readExpectedMovement(pool,1,future.id)).revision,future.revision+2);
+  await change("archive",3);
+  const threshold=clock.getTime()+30*86400000;
+  assert.equal((await processExpectedMidnight(pool,new Date(threshold-1))).purged,0);
+  assert.equal((await processExpectedMidnight(pool,new Date(threshold))).purged,2);
+  assert.equal((await processExpectedMidnight(pool,new Date(threshold))).purged,0);
+  assert.equal((await readExpectedCard(pool,1,card.id)).purgedMovementCount,2);
+  assert.deepEqual((await db.query("SELECT id,to_jsonb(m) AS row FROM expected_movements m WHERE company_id=1 ORDER BY id")).rows,before);
+  assert.equal((await db.query("SELECT 1 FROM audit_events WHERE company_id=1 AND action='expected.card.purge'")).rows.length,1);
+  await assert.rejects(change("restore",5),/بعد حذف/);
+  assert.deepEqual(await snapshot(), finance);
 });

@@ -201,6 +201,9 @@ export const auditActionLabels = {
   "generalTable.update": "تعديل سجل عام",
   "financialDocument.create": "إنشاء مسودة مالية",
   "expected.card.create": "إنشاء كرت المتوقع ومواعيده",
+  "expected.card.archive": "إلغاء وأرشفة كرت المتوقع",
+  "expected.card.restore": "استعادة كرت المتوقع",
+  "expected.card.purge": "تنظيف توقعات الكرت بعد انتهاء المهلة",
   "expected.movement.update": "تعديل حركة المتوقع",
   "expected.movement.complete": "إنجاز حركة المتوقع",
   "expected.midnight": "معالجة حركة المتوقع عند بداية اليوم",
@@ -362,6 +365,9 @@ export const publicAuditActions: AuditAction[] = [
 ];
 export const companyAuditActions: AuditAction[] = [
   "expected.card.create",
+  "expected.card.archive",
+  "expected.card.restore",
+  "expected.card.purge",
   "expected.movement.update",
   "expected.movement.complete",
   "expected.midnight",

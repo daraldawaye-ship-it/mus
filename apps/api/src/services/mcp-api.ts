@@ -17,13 +17,13 @@ import { aiTaskInput, aiTaskArchiveInput, aiTaskCompanyScheduleInput, aiTaskCade
 
 import { inquiryTaskNameSchema, shortenCashboxQuestionSchema, inquiryCreateSchema, hiddenInquiryReleaseSchema } from "../routes-inquiries.ts";
 import {
-  expectedCardCreateSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema,
+  expectedCardCreateSchema, expectedCardLifecycleSchema, expectedMovementPatchSchema, expectedMovementCompleteSchema,
 } from "../../../../packages/contracts/src/expected.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
   "GET /companies/:companyId/expected-cards": {
     source: "routes-expected.ts", pathParams: ["companyId"],
-    queryFields: ["page", "pageSize", "q", "sort", "accountId", "section"],
+    queryFields: ["page", "pageSize", "q", "sort", "accountId", "section", "visibility"],
   },
   "POST /companies/:companyId/expected-cards": {
     source: "routes-expected.ts", pathParams: ["companyId"], queryFields: [],
@@ -31,6 +31,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   },
   "GET /companies/:companyId/expected-cards/:id": {
     source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
+  },
+  "PATCH /companies/:companyId/expected-cards/:id/lifecycle": {
+    source: "routes-expected.ts", pathParams: ["companyId", "id"], queryFields: [],
+    bodyContract: "expectedCardLifecycleSchema", bodySchema: z.toJSONSchema(expectedCardLifecycleSchema),
   },
   "GET /companies/:companyId/expected-sections": {
     source: "routes-expected.ts", pathParams: ["companyId"], queryFields: ["q"],
