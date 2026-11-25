@@ -189,8 +189,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                       role="option" aria-selected={mainName === choice.name}
                       onClick={() => selectMainName(choice.name)}>
                       <span>{choice.name}</span>
-                      <small>{choice.kinds.includes("doctor") && choice.kinds.includes("nurse")
-                        ? "طبيب / ممرض" : choice.kinds.includes("doctor") ? "طبيب" : "ممرض"}</small>
+                      <small>{choice.kinds.map(kind => doctorKindLabels[kind]).join(" / ")}</small>
                     </button>
                   ))}
                   {choices.data?.items.length === 0 && <small>لا توجد أسماء رئيسية مطابقة.</small>}
