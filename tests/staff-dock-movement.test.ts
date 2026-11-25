@@ -24,10 +24,10 @@ test("read projections are exact to tenant/item, posted invoice kinds and minima
    CREATE TABLE stock_movements(id int,company_id int,item_id int,kind text,document_date date,quantity_smallest int,invoice_id int,invoice_line_id int,notes text,operation_id int);
    CREATE TABLE stock_operations(id int,company_id int,kind text);
    INSERT INTO stock_operations VALUES (3416,2,'adjustment'),(3417,2,'adjustment'),(3420,3,'adjustment'),(3421,2,'transfer');
-   CREATE TABLE invoices(id int,company_id int,kind text,posted boolean,party text,total int);
-   CREATE TABLE invoice_lines(id int,company_id int,invoice_id int,item_id int,unit_price numeric,factor2 int,factor3 int);
-   INSERT INTO invoices VALUES (1,2,'sale',true,'hidden',900),(2,2,'purchase',true,'hidden',999),(3,2,'sale',false,'hidden',0),(1,3,'sale',true,'outside',99);
-   INSERT INTO invoice_lines VALUES (101,2,1,8,12,2,10),(102,2,2,8,15,3,10),(103,2,3,8,12,2,10),(104,2,1,9,12,2,10),(101,3,1,8,10,1,1);
+   CREATE TABLE invoices(id int,company_id int,kind text,posted boolean,party text,total int,decimal_places int);
+   CREATE TABLE invoice_lines(id int,company_id int,invoice_id int,item_id int,unit_price numeric,factor2 int,factor3 int,unit int,gross numeric,discount numeric);
+   INSERT INTO invoices VALUES (1,2,'sale',true,'hidden',900,0),(2,2,'purchase',true,'hidden',999,0),(3,2,'sale',false,'hidden',0,0),(1,3,'sale',true,'outside',99,0);
+   INSERT INTO invoice_lines VALUES (101,2,1,8,12,2,10,2,12,2),(102,2,2,8,15,3,10,1,-15,-3),(103,2,3,8,12,2,10,1,12,0),(104,2,1,9,12,2,10,1,12,0),(101,3,1,8,10,1,1,1,10,0);
    INSERT INTO stock_movements VALUES
    (1,2,8,'sale','2026-11-20',-10,1,101,'hidden',null),(2,2,8,'purchase_return','2026-11-21',-30,2,102,'hidden',null),
    (3,2,8,'sale','2026-11-22',-10,3,103,'unposted',null),(4,3,8,'sale','2026-11-21',-10,1,101,'outside',null),
@@ -41,10 +41,10 @@ test("read projections are exact to tenant/item, posted invoice kinds and minima
   assert.deepEqual((await db.query(staffDockItemsSql,[2,"%BB%",0])).rows,[{id:8,name:"Product",code:"BB"}]);
   const rows=(await db.query(staffDockMovementSql,[2,8,null,null,false,0])).rows;
   assert.deepEqual(rows,[
-   {id:356189,kind:"adjustment_shortage",documentDate:"2026-11-23",quantitySmallest:"-2",postedUnitPrice:null,firstUnitMultiplier:null,operationId:3417},
-   {id:356188,kind:"adjustment_surplus",documentDate:"2026-11-22",quantitySmallest:"13",postedUnitPrice:null,firstUnitMultiplier:null,operationId:3416},
-   {id:2,kind:"purchase_return",documentDate:"2026-11-21",quantitySmallest:"-30",postedUnitPrice:"15",firstUnitMultiplier:"30",operationId:null},
-   {id:1,kind:"sale",documentDate:"2026-11-20",quantitySmallest:"-10",postedUnitPrice:"12",firstUnitMultiplier:"20",operationId:null}
+   {id:356189,kind:"adjustment_shortage",documentDate:"2026-11-23",quantitySmallest:"-2",postedUnitPrice:null,firstUnitMultiplier:null,unitPriceFirstUnit:null,lineValue:null,lineDiscount:null,lineNet:null,operationId:3417},
+   {id:356188,kind:"adjustment_surplus",documentDate:"2026-11-22",quantitySmallest:"13",postedUnitPrice:null,firstUnitMultiplier:null,unitPriceFirstUnit:null,lineValue:null,lineDiscount:null,lineNet:null,operationId:3416},
+   {id:2,kind:"purchase_return",documentDate:"2026-11-21",quantitySmallest:"-30",postedUnitPrice:"15",firstUnitMultiplier:"30",unitPriceFirstUnit:"15",lineValue:"-15",lineDiscount:"-3",lineNet:"-12",operationId:null},
+   {id:1,kind:"sale",documentDate:"2026-11-20",quantitySmallest:"-10",postedUnitPrice:"12",firstUnitMultiplier:"20",unitPriceFirstUnit:"24",lineValue:"12",lineDiscount:"2",lineNet:"10",operationId:null}
   ]);
   assert.deepEqual((await db.query(staffDockMovementSql,[2,8,"2026-11-21",null,true,0])).rows,[rows[2]]);
   assert.deepEqual((await db.query(staffDockMovementSql,[2,8,"2026-11-22","2026-11-22",false,0])).rows,[rows[1]]);
@@ -69,6 +69,11 @@ test("mounted fallback keeps rank search and direct historic data paths separate
  assert.match(lookup,/embeddedItem&&result.isError\?\[\]/);
  const view=await file("web/src/ItemMenuHistory.tsx");
  assert.match(view,/enabled: !staffDockMovement &&/);
- assert.match(view,/!staffDockMovement && allowMovementInvoiceDetails/);
+ assert.match(view,/!staffDockMovement && workPanelMovement/);
+ const exact=server.split("/item-history/:itemId/movement-invoices")[1]?.split("/invoice-stock-preview")[0]??"";
+ assert.match(exact,/await readStaffDock\(req,/);
+ assert.doesNotMatch(exact,/inventory\.view|directoryEntries|invoiceNet|partyName/);
+ assert.equal((view.match(/<MovementLineHead \/>/g)??[]).length,2);
+ assert.match(view,/>القيمة<[^]*>الخصم<[^]*>الصافي</);
  assert.match(view,/!staffDockMovement && !purchaseOnly && itemId/);
 });

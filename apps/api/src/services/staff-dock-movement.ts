@@ -1,3 +1,5 @@
+import { workPanelLineAllocationSql, workPanelLineAmountColumns } from "./work-panel-line-amounts.ts";
+
 export function mayReadStaffDockMovement(user:{owner:boolean;suspended:boolean;archived:boolean},
   employee:{active:boolean;positions:readonly string[]}|null|undefined){
   return !user.suspended&&!user.archived&&(user.owner||
@@ -10,7 +12,8 @@ SELECT m.id,m.kind,m.document_date::text AS "documentDate",
        il.unit_price::text AS "postedUnitPrice",
        so.id AS "operationId",
        CASE WHEN il.factor2>0 AND il.factor3>0
-         THEN (il.factor2::bigint*il.factor3::bigint)::text END AS "firstUnitMultiplier"
+         THEN (il.factor2::bigint*il.factor3::bigint)::text END AS "firstUnitMultiplier",
+       ${workPanelLineAmountColumns}
 FROM stock_movements m
 JOIN items item ON item.company_id=m.company_id AND item.id=m.item_id AND item.active
 LEFT JOIN invoices i ON i.company_id=m.company_id AND i.id=m.invoice_id AND i.posted
@@ -18,6 +21,7 @@ LEFT JOIN invoice_lines il ON il.company_id=m.company_id AND il.invoice_id=i.id
   AND il.id=m.invoice_line_id AND il.item_id=m.item_id
 LEFT JOIN stock_operations so ON so.company_id=m.company_id AND so.id=m.operation_id
   AND so.kind='adjustment' AND m.kind IN ('adjustment_surplus','adjustment_shortage')
+${workPanelLineAllocationSql}
 WHERE m.company_id=$1 AND m.item_id=$2
   AND ($3::date IS NULL OR m.document_date>=$3)
   AND ($4::date IS NULL OR m.document_date<=$4)

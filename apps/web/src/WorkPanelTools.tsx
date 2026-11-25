@@ -141,7 +141,7 @@ export function WorkPanelTools({user,context,showItemTools,showAccountSearch,sho
                       itemId={selected?.id ?? null} itemName={selected?.name ?? null} fixedView={view.key==="purchases"?"movement":view.key}
                       hideHeading={view.key === "movement" || view.key === "purchases"}
                       workPanelMovement={view.key === "movement" || view.key === "purchases"}
-                      purchaseOnly={view.key === "purchases"} allowMovementInvoiceDetails={reads.movement}
+                      purchaseOnly={view.key === "purchases"}
                       purchasePriceAccess={view.key==="purchases"&&reads.card?{
                         canEdit:access.edit,online,saveScope:guard,
                         onDetachedSaveError:message=>{if(guard.isCurrent())setNotice({tone:"error",message});},

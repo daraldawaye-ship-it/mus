@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {test} from "node:test";
 import {PGlite} from "@electric-sql/pglite";
+import {dockDataReads, dockItemViewOptions} from "../apps/web/src/dock-container-access.ts";
 const file=(name:string)=>readFile(new URL("../apps/"+name,import.meta.url),"utf8");
 test("purchase movement SQL independently includes both purchase kinds before count and paging",async()=>{
  const route=await file("api/src/routes-inventory.ts");
@@ -21,8 +22,13 @@ test("purchase movement SQL independently includes both purchase kinds before co
 });
 test("purchase is independent and immediately after movement; both mounts reuse compact UI without sharing filtered cache",async()=>{
  const panel=await file("web/src/WorkPanelTools.tsx"),view=await file("web/src/ItemMenuHistory.tsx");
- assert.match(panel,/key: "movement", label: "الحركة" \},\s*\{ key: "purchases", label: "المشتريات" \},\s*\{ key: "card"/);
- assert.match(panel,/\["company.stock-movements","company.purchases"\][\s\S]*entry\.enabled&&entry\.actionAccess\.view/);
+ const reads=dockDataReads({general:false,permissions:[]},[]);
+ const eligible=dockItemViewOptions(reads,true);
+ const denied=dockItemViewOptions(reads,false);
+ assert.deepEqual(eligible.slice(0,2).map(({key,available})=>[key,available]),
+   [["movement",true],["purchases",true]]);
+ assert.deepEqual(denied.slice(0,2).map(({key,available})=>[key,available]),
+   [["movement",false],["purchases",false]]);
  assert.match(panel,/purchaseOnly=\{view\.key === "purchases"\}/);
  assert.match(view,/queryKey: \["avatar-item-stock-movements",[^\n]*purchaseOnly\]/);
  assert.match(view,/purchaseOnly \? \{ purchaseOnly: "1" \} : \{\}/);

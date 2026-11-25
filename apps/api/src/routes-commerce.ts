@@ -9,6 +9,7 @@ import {
   invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
 import {mayReadStaffDockMovement,staffDockMovementSql,staffDockItemsSql} from "./services/staff-dock-movement.ts";
+import { workPanelLineAllocationSql, workPanelLineAmountColumns } from "./services/work-panel-line-amounts.ts";
 import { currentPurchase } from "./services/current-purchase.ts";
 import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
 import { createInvoiceQuickAccount } from "./routes-accounts.ts";
@@ -51,15 +52,22 @@ export const workPanelMovementInvoiceSql = `SELECT m.id AS "movementId", il.id A
              il.unit_price::text AS "postedUnitPrice",
              CASE WHEN il.factor2 > 0 AND il.factor3 > 0
                THEN (il.factor2::bigint * il.factor3::bigint)::text END AS "firstUnitMultiplier",
-             i.total::text AS "invoiceNet", i.discount::text AS "invoiceDiscount",
-             i.currency_code AS "currencyCode"
+             ${workPanelLineAmountColumns}
            FROM stock_movements m
            JOIN invoices i ON i.company_id=m.company_id AND i.id=m.invoice_id AND i.posted
            JOIN invoice_lines il ON il.company_id=m.company_id AND il.invoice_id=i.id
              AND il.id=m.invoice_line_id AND il.item_id=m.item_id
+           ${workPanelLineAllocationSql}
            WHERE m.company_id=$1 AND m.item_id=$2 AND m.id=ANY($3::int[])
              AND ((i.kind='purchase' AND m.kind IN ('purchase','purchase_return')) OR
                   (i.kind='sale' AND m.kind IN ('sale','sales_return')))`;
+
+// The staff route is scoped to items selectable in the item container.
+export const workPanelStaffMovementInvoiceSql =
+  `SELECT "movementId", "invoiceLineId", "invoiceId", "postedUnitPrice", "firstUnitMultiplier",
+          "unitPriceFirstUnit", "lineValue", "lineDiscount", "lineNet"
+   FROM (${workPanelMovementInvoiceSql}) AS exact_movements
+   WHERE EXISTS (SELECT 1 FROM items WHERE company_id=$1 AND id=$2 AND active)`;
 
 async function readCommerce<T>(
   pool: Pool,
@@ -298,7 +306,7 @@ export function commerceRoutes(pool: Pool): Router {
   }));
   const staffDockPage=z.string().regex(/^[1-9]\d*$/).transform(Number)
     .pipe(z.number().int().positive().max(10000)).default(1);
-  async function readStaffDock<T>(req:Request,action:(client:PoolClient,companyId:number)=>Promise<T>){
+  async function readStaffDock<T>(req:Request,action:(client:PoolClient,companyId:number,user:Awaited<ReturnType<typeof currentActor>>)=>Promise<T>){
     return transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       if(req.header("X-Alraesy-Employee-Preview"))throw new HttpError(403,"forbidden","حاوية الصنف غير متاحة في المعاينة.");
@@ -307,7 +315,7 @@ export function commerceRoutes(pool: Pool): Router {
       const context=await companyAccess(client,user,companyId);
       if(!mayReadStaffDockMovement(user,context.employee))
         throw new HttpError(403,"forbidden","حاوية الصنف غير متاحة لهذا المستخدم.");
-      return action(client,companyId);
+      return action(client,companyId,user);
     });
   }
   router.get(`${base}/work-panel-items`,handler(async(req,res)=>{
@@ -343,26 +351,10 @@ export function commerceRoutes(pool: Pool): Router {
       if (tokens.length > 10)
         throw new HttpError(400, "invalid_query", "حدد حتى 10 حركات مخزون");
       const movementIds = [...new Set(tokens.map(value => id(value)))];
-      const items = await transaction(pool, async client => {
-        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-        const companyId = id(req.params.companyId);
-        const user = await currentActor(client, actor(req), false);
-        const context = await companyAccess(client, user, companyId, "inventory.view");
-        const employee = context.employee;
-        if (user.suspended || (!user.owner && (!employee?.active ||
-          !employee.positions.some(position => position === "sales" || position === "cashier"))))
-          throw new HttpError(403, "forbidden", "حاوية الصنف غير متاحة لهذا المستخدم");
-        if (!user.owner) {
-          const movements = (await directoryEntries(client, user, companyId))
-            .find(entry => entry.key === "company.stock-movements");
-          if (!movements) throw new HttpError(403, "forbidden", "حركة الصنف غير متاحة لهذا المستخدم");
-          assertDirectoryAccess(movements, "view");
-        }
-        // Expose only the values used for quantity and unit price to staff,
-        // not full invoice totals, accounts, currency, or discounts.
-        const sql = user.owner ? workPanelMovementInvoiceSql :
-          `SELECT "movementId", "invoiceLineId", "invoiceId", "postedUnitPrice", "firstUnitMultiplier"
-           FROM (${workPanelMovementInvoiceSql}) AS exact_movements`;
+      const items = await readStaffDock(req, async (client, companyId, user) => {
+        // Item-container access covers its line amounts, not invoice totals
+        // or private counterparty fields.
+        const sql = user.owner ? workPanelMovementInvoiceSql : workPanelStaffMovementInvoiceSql;
         const { rows } = await client.query(
           sql,
           [companyId, itemId, movementIds],

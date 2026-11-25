@@ -199,18 +199,19 @@
   width: min(100%, 270px);
   min-width: 238px;
 }
-.work-panel-tools .work-panel-movement-table.work-panel-movement-staff {
-  width: min(100%, 220px);
-  min-width: 198px;
-}
 .work-panel-movement-table th:nth-child(1) { width: 16%; }
 .work-panel-movement-table th:nth-child(2) { width: 16%; }
 .work-panel-movement-table th:nth-child(3) { width: 17%; }
 .work-panel-movement-table th:nth-child(4) { width: 25%; }
-.work-panel-movement-table.work-panel-movement-staff th:nth-child(1),
-.work-panel-movement-table.work-panel-movement-staff th:nth-child(2) { width: 21%; }
-.work-panel-movement-table.work-panel-movement-staff th:nth-child(3) { width: 23%; }
-.work-panel-movement-table.work-panel-movement-staff th:nth-child(4) { width: 35%; }
+.work-panel-tools .work-panel-movement-table.work-panel-line-amount-table {
+  width: min(100%, 390px);
+  min-width: 315px;
+}
+.work-panel-line-amount-table th:nth-child(1) { width: 15%; }
+.work-panel-line-amount-table th:nth-child(2) { width: 11%; }
+.work-panel-line-amount-table th:nth-child(3) { width: 14%; }
+.work-panel-line-amount-table th:nth-child(4) { width: 20%; }
+.work-panel-line-amount-table th:nth-child(n+5) { width: 13.33%; }
 .work-panel-movement-kind {
   display: flex;
   align-items: center;
