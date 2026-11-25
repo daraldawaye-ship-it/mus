@@ -8,6 +8,9 @@ import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
+import {
+  legalCaseOrganizationPatchSchema, legalCaseRelationSchema, legalCaseProfileSourceIds,
+} from "../../../packages/contracts/src/legal-case-organization.ts";
 import { calculateLegalTaskPriority, compareLegalTasks, type TaskPriorityInput } from "./legal-task-priority.ts";
 
 type LegalTaskRow = QueryResultRow & TaskPriorityInput & {
@@ -142,6 +145,8 @@ const legalImageMetadata=(row:QueryResultRow)=>({
 });
 export const mcpBodySchemas = {
   caseSchema,
+  legalCaseOrganizationPatchSchema,
+  legalCaseRelationSchema,
   legalCaseUpdateSchema,
   legalCaseAccessSchema,
   recordSchema,
@@ -207,6 +212,17 @@ async function requireCases(db:Database,user:User,ids:number[],role:"reporter"|"
   if(new Set(ids).size!==ids.length) throw new HttpError(400,"duplicate","لا تكرر القضية");
   if(!ids.length && !user.owner) throw new HttpError(403,"legal_forbidden","حدد قضية مصرحًا لك بها");
   for(const caseId of ids) await canCase(db,user,caseId,role);
+}
+async function validateOrganizationSourceRecords(db:Database,user:User,ids:number[]) {
+  if(!ids.length) return;
+  const sources=await db.query(`SELECT r.id FROM legal_records r
+    WHERE r.id=ANY($1::int[]) AND ($2::boolean OR (
+      EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id)
+      AND NOT EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id
+        AND NOT EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=rc.case_id AND a.user_id=$3))
+    ))`,[ids,user.owner,user.id]);
+  if(sources.rows.length!==ids.length)
+    throw new HttpError(400,"invalid_source","اختر سجلات مصدر موجودة ومصرحًا لك بقراءتها");
 }
 // The referring record grants no new access to the canonical record or image.
 const documentImageJoin=(owner:string,user:string)=>`
@@ -376,6 +392,98 @@ export function legalCaseRoutes(pool:Pool):Router {
       const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$"+(values.length+1)+" WHERE id=$"+(values.length+2)+" RETURNING *";
       const next=(await db.query(sql,[...values,user.id,caseId])).rows[0];
       await audit(db,user,"legal.update","legalCase",caseId,previous,next);
+      return next;
+    });
+    res.json({record});
+  }));
+  router.patch("/legal/cases/:id/organization",handler(async(req,res)=>{
+    const caseId=number(req.params.id),input=parse(legalCaseOrganizationPatchSchema,req.body);
+    const record=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      await canCase(db,user,caseId,"editor");
+      await forbidIfDisabled(db);
+      const canonicalId=input.caseProfile?.canonicalCaseId;
+      if(canonicalId===caseId)
+        throw new HttpError(400,"self_reference","لا يمكن إحالة البطاقة إلى نفسها");
+      if(canonicalId!==undefined) await canCase(db,user,canonicalId);
+      // Lock both ends in the same order used by relationship writes. A canonical
+      // target may not point elsewhere or become the middle of a reference chain.
+      const locked=(await db.query("SELECT * FROM legal_cases WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE",
+        [[caseId,...(canonicalId===undefined?[]:[canonicalId])]])).rows;
+      const previous=locked.find(row=>row.id===caseId)!;
+      if(previous.revision!==input.revision)
+        throw new HttpError(409,"conflict","عُدلت القضية؛ أعد قراءتها قبل تنظيم بياناتها");
+      if(canonicalId!==undefined) {
+        const canonical=locked.find(row=>row.id===canonicalId)!;
+        const incoming=await db.query("SELECT id FROM legal_cases WHERE case_profile->>'canonicalCaseId'=$1 LIMIT 1",[String(caseId)]);
+        if(canonical.case_profile?.canonicalCaseId!==undefined||incoming.rows.length)
+          throw new HttpError(409,"reference_chain","يجب أن تشير البطاقات مباشرة إلى المرجع المعتمد دون سلسلة أو دورة إحالات");
+      }
+      if(input.caseProfile!==undefined)
+        await validateOrganizationSourceRecords(db,user,legalCaseProfileSourceIds(input.caseProfile));
+      const values:unknown[]=[],assignments:string[]=[];
+      const assign=(column:string,value:unknown)=>{values.push(value);assignments.push(column+"=$"+values.length);};
+      if(input.caseProfile!==undefined) assign("case_profile",JSON.stringify(input.caseProfile));
+      if(input.title!==undefined) assign("title",input.title);
+      if(input.caseNumber!==undefined) assign("case_number",input.caseNumber);
+      if(input.agency!==undefined) assign("agency",input.agency);
+      if(input.caseType!==undefined) assign("case_type",input.caseType);
+      assign("updated_by",user.id);
+      values.push(caseId,input.revision);
+      const next=(await db.query("UPDATE legal_cases SET "+assignments.join(",")+
+        ",revision=revision+1,updated_at=now() WHERE id=$"+(values.length-1)+
+        " AND revision=$"+values.length+" RETURNING *",values)).rows[0];
+      if(!next) throw new HttpError(409,"conflict","عُدلت القضية؛ أعد قراءتها قبل تنظيم بياناتها");
+      await audit(db,user,"legal.update","legalCase",caseId,previous,next);
+      return next;
+    });
+    res.json({record});
+  }));
+  router.get("/legal/cases/:id/relations",handler(async(req,res)=>{
+    const user=actor(req),caseId=number(req.params.id);
+    await canCase(pool,user,caseId);
+    const rows=await pool.query(`SELECT relation.*,
+        json_build_object('id',other.id,'title',other.title,'case_number',other.case_number,
+          'case_type',other.case_type,'agency',other.agency,'status',other.status) AS related_case
+      FROM legal_case_relations relation
+      JOIN legal_cases other ON other.id=CASE WHEN relation.first_case_id=$1
+        THEN relation.second_case_id ELSE relation.first_case_id END
+      WHERE (relation.first_case_id=$1 OR relation.second_case_id=$1)
+        AND ($2::boolean OR EXISTS(SELECT 1 FROM legal_case_access a
+          WHERE a.case_id=other.id AND a.user_id=$3))
+      ORDER BY other.title,other.id`,[caseId,user.owner,user.id]);
+    res.json({items:rows.rows});
+  }));
+  router.put("/legal/cases/:id/relations/:otherId",handler(async(req,res)=>{
+    const caseId=number(req.params.id),otherId=number(req.params.otherId);
+    if(caseId===otherId) throw new HttpError(400,"self_relation","لا يمكن ربط القضية بنفسها");
+    const input=parse(legalCaseRelationSchema,req.body);
+    const record=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      const [first,second]=[caseId,otherId].sort((a,b)=>a-b);
+      await canCase(db,user,first,"editor");
+      await canCase(db,user,second,"editor");
+      await forbidIfDisabled(db);
+      // Lock the pair in a stable order, including on first creation, so reversed
+      // requests cannot create duplicate relationships or overwrite newer evidence.
+      await db.query("SELECT id FROM legal_cases WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE",[[first,second]]);
+      await validateOrganizationSourceRecords(db,user,input.sourceRecordIds);
+      const previous=(await db.query("SELECT * FROM legal_case_relations WHERE first_case_id=$1 AND second_case_id=$2 FOR UPDATE",[first,second])).rows[0];
+      if((previous?.revision??0)!==input.revision)
+        throw new HttpError(409,"conflict","تغيرت العلاقة أو سبق إنشاؤها؛ أعد قراءتها");
+      const next=previous
+        ?(await db.query(`UPDATE legal_case_relations SET relation_type=$1,evidence=$2,source_record_ids=$3,
+            revision=revision+1,updated_by=$4,updated_at=now()
+          WHERE id=$5 AND revision=$6 RETURNING *`,[
+          input.relationType,input.evidence,input.sourceRecordIds,user.id,previous.id,input.revision,
+        ])).rows[0]
+        :(await db.query(`INSERT INTO legal_case_relations
+          (first_case_id,second_case_id,relation_type,evidence,source_record_ids,created_by,updated_by)
+          VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,[
+          first,second,input.relationType,input.evidence,input.sourceRecordIds,user.id,
+        ])).rows[0];
+      if(!next) throw new HttpError(409,"conflict","تغيرت العلاقة؛ أعد قراءتها");
+      await audit(db,user,"legal.link","legalCaseRelation",next.id,previous??null,next);
       return next;
     });
     res.json({record});
