@@ -19,7 +19,7 @@ interface MedicalSale {
   currencyCode: string;
   accountName: string;
   doctorName: string;
-  doctorKind: "doctor" | "nurse";
+  doctorKind: "doctor" | "nurse" | null;
   doctorId: number;
   notes: string;
   accounted: boolean;
@@ -37,9 +37,10 @@ interface Result {
 }
 interface MainName {
   name: string;
-  kinds: Array<"doctor" | "nurse">;
+  kinds: Array<"doctor" | "nurse" | "unassigned">;
 }
 
+const doctorKindLabels = { doctor: "طبيب", nurse: "ممرض", unassigned: "غير معين" } as const;
 const adenTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Aden", hour: "2-digit", minute: "2-digit", hour12: false,
 });
@@ -96,7 +97,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   });
   const records = results.data;
   async function markAsAccounted() {
-    if (!pendingAccounted || !canMarkAccounted || accounting) return;
+    if (!pendingAccounted || pendingAccounted.doctorKind === null || !canMarkAccounted || accounting) return;
     setAccounting(true);
     setAccountingError("");
     try {
@@ -169,7 +170,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                 setSuggestionsOpen(false);
             }}>
             <div className="doctor-movements-suggest">
-              <Field label="بحث باسم الطبيب أو الجهة الرئيسي" type="search"
+              <Field label="بحث بالاسم الرئيسي" type="search"
                 value={search} autoComplete="off"
                 onFocus={() => setSuggestionsOpen(true)}
                 onChange={event => {
@@ -239,7 +240,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                       <th>فتح</th>
                       <th>الصافي</th>
                       <th>التاريخ والوقت</th>
-                      <th>الطبيب أو الجهة (الرئيسي)</th>
+                      <th>الاسم الرئيسي</th>
                       <th>الحالة والتأشير</th>
                       <th>الحساب</th>
                       <th>الملاحظات</th>
@@ -253,14 +254,14 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                         <td><span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span></td>
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
-                        </Link></td>
+                        </Link>{row.doctorKind === null && <small className="muted"> (غير معين)</small>}</td>
                         <td className="doctor-movements-accounting-column">
                           {row.accounted ? (
                             <strong className="doctor-movements-accounted">محاسب</strong>
                           ) : (
                             <div className="doctor-movements-accounting-cell">
                               <span className="muted">غير محاسب</span>
-                              {canMarkAccounted && (
+                              {canMarkAccounted && row.doctorKind !== null && (
                                 <Button variant="secondary" size="compact"
                                   onClick={() => {
                                     setPendingAccounted(row);
@@ -285,14 +286,14 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                     <div className="doctor-movements-mobile-line doctor-movements-mobile-main">
                       <Link className="doctor-movements-mobile-name"
                         to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
-                        {row.doctorName}
+                        {row.doctorName}{row.doctorKind === null && <small className="muted"> (غير معين)</small>}
                       </Link>
                       <bdi className="financial-number doctor-movements-mobile-total">
                         {formatWholeMoney(row.total)}
                       </bdi>
                       {row.accounted ? (
                         <strong className="doctor-movements-mobile-status">محاسب</strong>
-                      ) : canMarkAccounted ? (
+                      ) : canMarkAccounted && row.doctorKind !== null ? (
                         <button type="button" className="doctor-movements-mobile-mark"
                           aria-label={`غير محاسب؛ تأشير الفاتورة ${row.number} وجميع الأقدم منها`}
                           onClick={() => {

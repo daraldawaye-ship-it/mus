@@ -12,6 +12,27 @@ import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
 import { sortedDoctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
 import { audit } from "./services/audit.ts";
 
+const medicalMainName = "COALESCE(NULLIF(btrim(d.shared_name),''),NULLIF(btrim(d.name),''))";
+const visibleMedicalKind = "(d.kind IN ('doctor','nurse') OR d.kind IS NULL)";
+
+export const doctorSalesMovementNamesSql = `SELECT ${medicalMainName} AS name,`+
+  " array_agg(DISTINCT COALESCE(d.kind,'unassigned')) AS kinds FROM doctors d"+
+  ` WHERE d.company_id=$1 AND ${visibleMedicalKind}`+
+  ` AND ${medicalMainName} ILIKE $2 ESCAPE '\\'`+
+  " GROUP BY 1 ORDER BY 1 LIMIT 40";
+
+export const doctorSalesMovementWhere = [
+  " FROM invoices i",
+  " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id",
+  " LEFT JOIN doctor_sales_accounted_invoices mark ON mark.company_id=i.company_id AND mark.invoice_id=i.id",
+  " LEFT JOIN legacy_sales_sign_repairs fix ON fix.company_id=i.company_id AND fix.invoice_id=i.id",
+  " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true",
+  ` AND ${visibleMedicalKind}`,
+  " AND i.document_date BETWEEN $2::date AND $3::date",
+  ` AND ($4::text='' OR ${medicalMainName}=$4)`,
+  ` AND ${medicalMainName} ILIKE $5 ESCAPE '\\'`,
+].join("");
+
 const filters = z.object({
   dateFrom: documentDateSchema,
   dateTo: documentDateSchema,
@@ -114,11 +135,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       if(!page?.enabled||!page.actionAccess.view)
         throw new HttpError(403,"forbidden","ليست لديك صلاحية عرض أسماء التقرير");
       const names=await client.query(
-        "SELECT COALESCE(NULLIF(btrim(d.shared_name),''),d.name) AS name,"+
-        " array_agg(DISTINCT d.kind) AS kinds FROM doctors d"+
-        " WHERE d.company_id=$1 AND d.kind IN ('doctor','nurse')"+
-        " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name) ILIKE $2 ESCAPE '\\'"+
-        " GROUP BY 1 ORDER BY 1 LIMIT 40",
+        doctorSalesMovementNamesSql,
         [companyId,searchPattern(input.q)]);
       return {items:names.rows};
     });
@@ -153,17 +170,6 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       if(input.dateFrom<minDate||input.dateTo>today)
         throw new HttpError(400,"invalid_date_range","يُسمح بالتقرير من آخر 10 أيام وحتى اليوم فقط");
 
-      const where=[
-        " FROM invoices i",
-        " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id",
-        " LEFT JOIN doctor_sales_accounted_invoices mark ON mark.company_id=i.company_id AND mark.invoice_id=i.id",
-        " LEFT JOIN legacy_sales_sign_repairs fix ON fix.company_id=i.company_id AND fix.invoice_id=i.id",
-        " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true",
-        " AND d.kind IN ('doctor','nurse')",
-        " AND i.document_date BETWEEN $2::date AND $3::date",
-        " AND ($4::text='' OR COALESCE(NULLIF(btrim(d.shared_name),''),d.name)=$4)",
-        " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name) ILIKE $5 ESCAPE '\\'",
-      ].join("");
       const params=[companyId,input.dateFrom,input.dateTo,input.mainName,searchPattern(input.q)];
       const totals=await client.query(
         "SELECT i.currency_code AS \"currencyCode\", count(*)::integer AS count,"+
@@ -174,16 +180,16 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         " FILTER (WHERE mark.invoice_id IS NOT NULL),0)::text AS \"accountedTotal\","+
         " COALESCE(SUM(COALESCE(fix.corrected_total::numeric,i.total))"+
         " FILTER (WHERE mark.invoice_id IS NULL),0)::text AS \"unaccountedTotal\"" +
-        where+" GROUP BY i.currency_code ORDER BY i.currency_code",params);
+        doctorSalesMovementWhere+" GROUP BY i.currency_code ORDER BY i.currency_code",params);
       const rows=await client.query(
         "SELECT i.id,i.number,i.document_date::text AS \"documentDate\","+
         " i.created_at AS \"createdAt\", i.counterparty_account_name AS \"accountName\","+
         " i.description AS notes,i.doctor_id AS \"doctorId\","+
-        " COALESCE(NULLIF(btrim(d.shared_name),''),d.name) AS \"doctorName\","+
+        ` ${medicalMainName} AS "doctorName",`+
         " d.kind AS \"doctorKind\",i.currency_code AS \"currencyCode\","+
         " (mark.invoice_id IS NOT NULL) AS accounted,"+
         " COALESCE(fix.corrected_total::numeric,i.total)::text AS total"+
-        where+" ORDER BY i.created_at DESC,i.id DESC LIMIT $6 OFFSET $7",
+        doctorSalesMovementWhere+" ORDER BY i.created_at DESC,i.id DESC LIMIT $6 OFFSET $7",
         [...params,input.pageSize,(input.page-1)*input.pageSize]);
       return {
         items:rows.rows,
