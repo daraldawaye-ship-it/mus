@@ -539,7 +539,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     setEditing(null);
   }
   function openInline(movement: ExpectedMovement, field: ExpectedInlineField) {
-    if (!canEdit || inFlight.current || editingRef.current || movement.cardArchived || movement.status !== "pending") return;
+    if (!canEdit || inFlight.current || editingRef.current || (movement.cardArchived && field !== "date") || movement.status !== "pending") return;
     const initialText = inlineInitialText(movement, field);
     const edit = { movement: { ...movement }, field, initialText, draft: initialText, touched: false, scope: editScope };
     editingRef.current = edit;
@@ -599,7 +599,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   function inlineCell(movement: ExpectedMovement, field: ExpectedInlineField) {
     const shown = field === "amount" ? money(movement.amount)
       : field === "date" ? <bdi>{dateText(movement.date)}</bdi> : movement.description || "—";
-    if (!canEdit || movement.cardArchived || movement.status !== "pending") return shown;
+    if (!canEdit || (movement.cardArchived && field !== "date") || movement.status !== "pending") return shown;
     const current = editing?.movement.id === movement.id && editing.field === field && editing.scope === editScope ? editing : null;
     if (!current) return <button type="button" className="doctor-inline-trigger expected-inline-trigger"
       title={`تعديل ${inlineLabels[field]} مباشرة`} aria-label={`تعديل ${inlineLabels[field]} — ${movement.accountName} — الحركة ${movement.id}`}

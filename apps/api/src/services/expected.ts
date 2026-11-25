@@ -1,7 +1,7 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import type { ExpectedCard, ExpectedCardCreate, ExpectedCardLifecycle, ExpectedMovement, ExpectedMovementPatch } from "../../../../packages/contracts/src/expected.ts";
-import { expectedDateSchema, expectedEndDateLimit } from "../../../../packages/contracts/src/expected.ts";
+import { expectedAmountSchema, expectedDateSchema, expectedEndDateLimit } from "../../../../packages/contracts/src/expected.ts";
 import { transaction, type Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
 import { audit } from "./audit.ts";
@@ -218,13 +218,12 @@ export async function expectedCashboxes(db:Database,companyId:number,input:Recor
   const rows=await db.query<{id:number;name:string;code:string}>(`SELECT a.id,a.name,a.code FROM accounts a WHERE ${where} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,[...values,query.pageSize,query.offset]);
   return {items:rows.rows,total:count.rows[0].total,page:query.page,pageSize:query.pageSize};
 }
-async function lockMovement(client:PoolClient,companyId:number,movementId:number, allowArchivedCard=false) {
+async function lockMovement(client:PoolClient,companyId:number,movementId:number) {
   // Match lifecycle's card-before-movement lock order, so archive cannot race an edit.
   const card=(await client.query(`SELECT c.archived_at FROM expected_movements m
     JOIN expected_cards c ON (c.company_id,c.id)=(m.company_id,m.card_id)
     WHERE m.company_id=$1 AND m.id=$2 AND m.archived_at IS NULL FOR SHARE OF c`,[companyId,movementId])).rows[0];
   if(!card) missing("حركة المتوقع غير موجودة");
-  if(card.archived_at && !allowArchivedCard) conflict("الكرت مؤرشف؛ لا يمكن تعديل تاريخ الحركة أو مبلغها أو بيانها");
   if(!(await client.query("SELECT id FROM expected_movements WHERE company_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE",[companyId,movementId])).rows.length) missing("حركة المتوقع غير موجودة");
   return readExpectedMovement(client,companyId,movementId);
 }
@@ -232,13 +231,21 @@ export async function updateExpectedMovement(client:PoolClient,user:User,company
   const before=await lockMovement(client,companyId,movementId);
   if(before.revision!==input.revision) conflict("تغيرت الحركة منذ فتحها؛ حدّثها وراجع القيم قبل الحفظ");
   if(before.status!=="pending") conflict("الحركة منجزة ولا تقبل التعديل");
-  await client.query(`UPDATE expected_movements SET movement_date=$3,amount=$4,description=$5,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date,input.amount,input.description]);
+  if(before.cardArchived) {
+    if(input.amount!==expectedAmountSchema.parse(before.amount) || input.description!==before.description)
+      conflict("الكرت مؤرشف؛ يمكن تعديل تاريخ الحركة فقط");
+    await client.query(`UPDATE expected_movements SET movement_date=$3,revision=revision+1,updated_at=clock_timestamp()
+      WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date]);
+  } else {
+    await client.query(`UPDATE expected_movements SET movement_date=$3,amount=$4,description=$5,revision=revision+1,updated_at=clock_timestamp()
+      WHERE company_id=$1 AND id=$2`,[companyId,movementId,input.date,input.amount,input.description]);
+  }
   const movement=await readExpectedMovement(client,companyId,movementId);
   await audit(client,user,"expected.movement.update","expectedMovement",movementId,before,movement,companyId);
   return movement;
 }
 export async function completeExpectedMovement(client:PoolClient,user:User,companyId:number,movementId:number,revision:number) {
-  const before=await lockMovement(client,companyId,movementId,true);
+  const before=await lockMovement(client,companyId,movementId);
   // Preserved movements can be completed despite their parent card being archived.
   // A repeated completion is observational: no second change or audit event.
   if(before.status==="completed") return before;

@@ -294,9 +294,16 @@ test("card cancellation is reversible; 30-day cleanup preserves past and complet
   assert.equal(repaired.status,"pending");
   assert.equal(repaired.cardArchived,true);
   assert.equal((await readExpectedCard(pool,1,card.id)).archivedMovementCount,1);
-  const completed=await transaction(pool,client=>completeExpectedMovement(client,owner,1,today.id,repaired.revision));
+  const edit=expectedMovementPatchSchema.parse({revision:repaired.revision,date:"2026-11-25",amount:repaired.amount,description:repaired.description});
+  await assert.rejects(transaction(pool,client=>updateExpectedMovement(client,owner,1,today.id,{...edit,amount:"10"})),/تعديل تاريخ الحركة فقط/);
+  const rescheduled=await transaction(pool,client=>updateExpectedMovement(client,owner,1,today.id,edit));
+  assert.equal(rescheduled.date,"2026-11-25");
+  assert.equal(rescheduled.originalDate,"2026-11-24");
+  assert.equal(rescheduled.amount,repaired.amount);
+  assert.equal(rescheduled.status,"pending");
+  const completed=await transaction(pool,client=>completeExpectedMovement(client,owner,1,today.id,rescheduled.revision));
   assert.equal(completed.status,"completed");
-  assert.equal(completed.date,"2026-11-24");
+  assert.equal(completed.date,"2026-11-25");
   const restored=await change("restore",2);
   assert.equal(restored.archivedAt,null);
   assert.equal((await listExpectedMovements(pool,1,{})).total,6);
