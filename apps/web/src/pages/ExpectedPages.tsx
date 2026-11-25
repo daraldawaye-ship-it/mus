@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Pencil } from "lucide-react";
 import "../doctor-inline-cells.css";
 import { Link, useSearchParams } from "react-router-dom";
@@ -443,6 +443,30 @@ export function ExpectedMovementsPage({ context }: { context: CompanyContext }) 
 function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const storageKey = `alraesy:d13:expected-movements:${companyId}:${user?.id ?? "guest"}`;
+  const [columnsReady, setColumnsReady] = useState(false);
+  useLayoutEffect(() => {
+    // Move the original date in existing layouts once without resetting other preferences.
+    try {
+      const storage = window.localStorage;
+      const marker = storageKey + ":original-date-v1";
+      if (!storage.getItem(marker)) {
+        const layout = JSON.parse(storage.getItem(storageKey) ?? "null");
+        if (layout && Array.isArray(layout.order)) {
+          const order = layout.order.filter((key: unknown) => key !== "originalDate");
+          const at = order.indexOf("date");
+          order.splice(at < 0 ? 0 : at+1, 0, "originalDate");
+          storage.setItem(storageKey, JSON.stringify({...layout, order}));
+        }
+        const hidden = JSON.parse(storage.getItem(storageKey + ":hidden") ?? "null");
+        if (Array.isArray(hidden) && hidden.includes("originalDate")) {
+          storage.setItem(storageKey + ":hidden", JSON.stringify(hidden.filter(key => key !== "originalDate")));
+        }
+        storage.setItem(marker, "1");
+      }
+    } catch { /* Defaults still work when storage is unavailable. */ }
+    setColumnsReady(true);
+  }, [storageKey]);
   const [params, setParams] = useSearchParams();
   const directory = usePageDirectory(companyId);
   const page = directory.data?.find(entry => entry.key === "company.expected-movements");
@@ -607,6 +631,7 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
   }
   const columns: InteractiveTableColumn<ExpectedMovement>[] = [
     { key: "date", label: "تاريخ الحركة", width: 145, scrollText: false, cell: row => inlineCell(row, "date") },
+    { key: "originalDate", label: "التاريخ الأصلي", width: 130, scrollText: false, cell: row => <bdi>{dateText(row.originalDate)}</bdi> },
     { key: "accountName", label: "الحساب", width: 230, cell: row => row.accountName },
     { key: "section", label: "القسم", width: 155, cell: row => row.section || "—" },
     { key: "amount", label: "مبلغ الحركة", width: 120, scrollText: false, cell: row => inlineCell(row, "amount") },
@@ -624,7 +649,6 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
     { key: "completedAt", label: "وقت الإنجاز — اليمن", width: 170, cell: row => row.completedAt ? <bdi>{dateTime.format(new Date(row.completedAt))}</bdi> : "—" },
     { key: "completedByName", label: "أُنجز بواسطة", width: 140, cell: row => row.completedByName || "—" },
     { key: "completionSource", label: "طريقة الإنجاز", width: 115, cell: row => row.completionSource === "automatic" ? "تلقائي" : row.completionSource === "manual" ? "يدوي" : "—" },
-    { key: "originalDate", label: "الموعد الأصلي", width: 130, cell: row => <bdi>{dateText(row.originalDate)}</bdi> },
     { key: "originalAmount", label: "المبلغ الأصلي", width: 125, cell: row => money(row.originalAmount) },
     { key: "originalDescription", label: "البيان الأصلي", width: 240, cell: row => row.originalDescription || "—" },
     { key: "expiryMode", label: "عند انتهاء التاريخ", width: 175, cell: row => expiryLabels[row.expiryMode] },
@@ -659,16 +683,16 @@ function ExpectedMovementsContent({ context }: { context: CompanyContext }) {
         })}>عرض جميع الحركات</Button>
       </div>}
       {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
-      <InteractiveColumnsTable columns={columns.map(column => ({ ...column, sortable: column.sortable !== false }))} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
+      {columnsReady && <InteractiveColumnsTable columns={columns.map(column => ({ ...column, sortable: column.sortable !== false }))} rows={list.error ? [] : list.data?.items ?? []} rowKey={row => row.id}
         visibleColumns={columns.map(column => column.key)} allowColumnVisibility
-        storageKey={`alraesy:d13:expected-movements:${companyId}:${user?.id ?? "guest"}`}
+        storageKey={storageKey}
         sortKey={sort?.id} sortDirection={sort?.desc ? "desc" : "asc"}
         onSort={key => {
           if (editingRef.current || inFlight.current) { setError("احفظ تعديل الحقل بـ Enter أو ألغِه بـ Escape قبل تغيير الفرز."); return; }
           list.setSorting([{ id: key, desc: sort?.id === key ? !sort.desc : false }]);
         }}
         dockRowSource={row => ({ companyId, accountId: row.accountId, accountName: row.accountName })}
-        ariaLabel="حركة المتوقع" emptyMessage={list.loading ? "جارٍ تحميل الحركات…" : list.error ? "تعذر عرض الحركات." : "لا توجد حركات مطابقة."} />
+        ariaLabel="حركة المتوقع" emptyMessage={list.loading ? "جارٍ تحميل الحركات…" : list.error ? "تعذر عرض الحركات." : "لا توجد حركات مطابقة."} />}
       <Pager list={list} label="إجمالي الحركات" disabled={editing !== null || busy !== null} />
       <ExpectedHelp />
     </Card>
