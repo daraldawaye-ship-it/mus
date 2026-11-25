@@ -8,12 +8,15 @@ on:
       - "apps/api/src/routes-legal-cases.ts"
       - "apps/api/src/legal-task-priority.ts"
       - "apps/api/migrations/118_legal_case_management.sql"
+      - "apps/api/migrations/20261125_legal_case_organization.sql"
       - "apps/web/src/pages/LegalCasesPage.tsx"
       - "apps/web/src/pages/LegalTaskBoard.tsx"
       - "apps/web/src/pages/LegalCasesPage.css"
       - "packages/contracts/src/pages.ts"
       - "packages/contracts/src/index.ts"
+      - "packages/contracts/src/legal-case-organization.ts"
       - "tests/legal-cases.test.ts"
+      - "tests/legal-case-organization.test.ts"
       - "tests/legal-task-priority.test.ts"
 jobs:
   checks:
@@ -46,3 +49,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx tsx --test tests/legal-cases.test.ts tests/legal-task-priority.test.ts
+      - run: node --import tsx --test tests/legal-case-organization.test.ts
