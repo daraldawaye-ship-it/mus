@@ -2,7 +2,7 @@ import { marketCardCoverage } from "./market/card-coverage.ts";
 import { marketNotModified, sendMarketRead } from "./market/conditional-read.ts";
 import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
-  startMarketImageBackfill, marketImageBackfillStatus, downloadPublicImage, validateModernProductImageUrl } from "./market/image-variants.ts";
+  startMarketImageBackfill, marketImageBackfillStatus, downloadPublicImage, ownerProductImageUrlPattern, validateOwnerProductImageUrl } from "./market/image-variants.ts";
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -606,11 +606,11 @@ const ownerImagesBatchSchema = z.object({
     }).strict(),
     z.object({
       cardId: z.number().int().positive().max(2147483647),
-      sourceUrl: z.string().max(2000).regex(/^https:\/\/modernpharmaye\.com\/upload\/products\/packs\/original\/[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif|avif)$/i),
+      sourceUrl: z.string().max(2000).regex(ownerProductImageUrlPattern),
       cropWhitespace: z.boolean().default(true),
     }).strict(),
   ])).min(1).max(10),
-}).strict().describe("Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field.");
+}).strict().describe("Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma or Button Click original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field.");
 const backfillMarketImagesSchema = z.object({ retryFailed: z.boolean().default(false) }).strict();
 
 export const mcpBodySchemas = {
@@ -869,7 +869,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const input = parse(ownerImagesBatchSchema, req.body);
     if (Buffer.byteLength(JSON.stringify(req.body), "utf8") > 768 * 1024)
       throw new HttpError(413, "image_batch_size", "حجم دفعة الصور يتجاوز 768 كيلوبايت");
-    for (const item of input.items) if ("sourceUrl" in item) validateModernProductImageUrl(item.sourceUrl);
+    for (const item of input.items) if ("sourceUrl" in item) validateOwnerProductImageUrl(item.sourceUrl);
     const result = await transaction(pool, async db => {
       const user = await viewer(db, req, true);
       if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
@@ -886,8 +886,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         let prepared: Awaited<ReturnType<typeof prepareImageUpload>>;
         if ("sourceUrl" in item) {
           let bytes: Buffer;
-          try { bytes = await downloadPublicImage(item.sourceUrl, validateModernProductImageUrl); }
-          catch { throw new HttpError(400, "image_source", "تعذر تنزيل صورة المنتج الأصلية من مودرن فارما"); }
+          try { bytes = await downloadPublicImage(item.sourceUrl, validateOwnerProductImageUrl); }
+          catch { throw new HttpError(400, "image_source", "تعذر تنزيل صورة المنتج الأصلية من المصدر المعتمد"); }
           const variants = await buildMarketImageVariants(bytes, { cropWhitespace: item.cropWhitespace });
           prepared = { image: { bytes: variants.preview, width: variants.previewWidth, height: variants.previewHeight },
             variants: stagingIsolated ? variants : null };

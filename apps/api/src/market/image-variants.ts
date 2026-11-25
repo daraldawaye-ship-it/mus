@@ -162,6 +162,18 @@ export function validateModernProductImageUrl(source: string): URL {
     throw new HttpError(400, "image_source", "استخدم رابط صورة منتج أصلي من موقع مودرن فارما");
   return url;
 }
+/** Owner-only import: narrowly permit original product assets, never arbitrary remote URLs. */
+export const ownerProductImageUrlPattern = /^https:\/\/(?:modernpharmaye\.com\/upload\/products\/packs\/original\/[A-Za-z0-9_-]+|(?:www\.)?button-click\.com\/storage\/[0-9]+\/[A-Za-z0-9_-]+)\.(?:jpe?g|png|webp|gif|avif)$/i;
+export function validateOwnerProductImageUrl(source: string): URL {
+  if (!ownerProductImageUrlPattern.test(source))
+    throw new HttpError(400, "image_source", "استخدم رابط صورة منتج أصلية من مودرن فارما أو ضغطة زر");
+  const url = validateExternalImageUrl(source);
+  if (url.hostname === "modernpharmaye.com") return validateModernProductImageUrl(source);
+  if (!["button-click.com", "www.button-click.com"].includes(url.hostname) || url.search || url.hash ||
+      !/^\/storage\/[0-9]+\/[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif|avif)$/i.test(url.pathname))
+    throw new HttpError(400, "image_source", "استخدم رابط صورة منتج أصلية من ضغطة زر");
+  return url;
+}
 export async function downloadPublicImage(source: string, validateSource?: (source: string) => unknown): Promise<Buffer> {
   let current = source;
   for (let redirect = 0; redirect < 4; redirect++) {

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import express from "express";
 import { Pool } from "pg";
 import sharp from "sharp";
-import { buildMarketImageVariants, isPublicImageAddress, validateExternalImageUrl } from "../apps/api/src/market/image-variants.ts";
+import { buildMarketImageVariants, isPublicImageAddress, validateExternalImageUrl, ownerProductImageUrlPattern, validateOwnerProductImageUrl } from "../apps/api/src/market/image-variants.ts";
 import { marketTypes } from "../packages/contracts/src/medicine-market.ts";
 import { medicineMarketRoutes } from "../apps/api/src/routes-medicine-market.ts";
 import { HttpError } from "../apps/api/src/errors.ts";
@@ -66,6 +66,33 @@ test("remote source checks refuse private, alternate-IP, metadata and credential
     assert.throws(() => validateExternalImageUrl(url), url);
 });
 
+test("owner import accepts only original assets from the two approved providers", () => {
+  const allowed = [
+    "https://modernpharmaye.com/upload/products/packs/original/pack-1.jpg",
+    "https://button-click.com/storage/56420/uc.webp",
+    "https://www.button-click.com/storage/56420/uc.jpg",
+  ];
+  const denied = [
+    "https://button-click.com/storage/56420/conversions/uc-thumb.jpg",
+    "https://button-click.com/storage/56420/uc.webp?x=1",
+    "https://button-click.com/storage/56420/uc.webp#x",
+    "https://button-click.com.evil.example/storage/56420/uc.webp",
+    "https://button-click.com@evil.example/storage/56420/uc.webp",
+    "https://button-click.com:444/storage/56420/uc.webp",
+    "http://button-click.com/storage/56420/uc.webp",
+    "https://127.0.0.1/storage/56420/uc.webp",
+    "https://button-click.com/storage/56420/../uc.webp",
+    "https://button-click.com/storage/56420/uc.svg",
+  ];
+  for (const url of allowed) {
+    assert.ok(ownerProductImageUrlPattern.test(url), url);
+    assert.equal(validateOwnerProductImageUrl(url).href, url);
+  }
+  for (const url of denied) {
+    assert.equal(ownerProductImageUrlPattern.test(url), false, url);
+    assert.throws(() => validateOwnerProductImageUrl(url), url);
+  }
+});
 test("isolated image routes enforce visibility, admin rules, byte sizes and cascade cleanup", { skip: !process.env.TEST_IMAGE_DATABASE_URL }, async () => {
   const admin = new Pool({ connectionString: process.env.TEST_IMAGE_DATABASE_URL });
   const schema = `image_test_${Date.now()}`;

@@ -10522,7 +10522,7 @@
                   "sourceUrl": {
                     "type": "string",
                     "maxLength": 2000,
-                    "pattern": "^https:\\/\\/modernpharmaye\\.com\\/upload\\/products\\/packs\\/original\\/[A-Za-z0-9_-]+\\.(?:jpe?g|png|webp|gif|avif)$"
+                    "pattern": "^https:\\/\\/(?:modernpharmaye\\.com\\/upload\\/products\\/packs\\/original\\/[A-Za-z0-9_-]+|(?:www\\.)?button-click\\.com\\/storage\\/[0-9]+\\/[A-Za-z0-9_-]+)\\.(?:jpe?g|png|webp|gif|avif)$"
                   },
                   "cropWhitespace": {
                     "default": true,
@@ -10544,7 +10544,7 @@
         "items"
       ],
       "additionalProperties": false,
-      "description": "Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field."
+      "description": "Owner-only medicine image uploads. Exactly one of dataUrl or the whitelisted Modern Pharma or Button Click original sourceUrl per item. Total encoded JSON body is limited to 768 KiB; all images save atomically. This does not link the image field."
     },
     "source": "routes-medicine-market.ts"
   }
