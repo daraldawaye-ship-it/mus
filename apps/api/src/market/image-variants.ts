@@ -51,7 +51,8 @@ async function exteriorWhitespaceBounds(bytes: Buffer, buttonClickProduct = fals
   // stamp beneath a white horizontal gutter. Exclude only that isolated
   // corner band; preserve all marks within the product and ambiguous layouts.
   if (rowLeft && rowRight) {
-    const minGap = Math.max(4, Math.ceil(info.height * 0.015));
+    const contentWidth = right - left + 1, contentHeight = bottom - top + 1;
+    const minGap = Math.max(4, Math.ceil(contentHeight * 0.015));
     let best: { left: number; right: number; bottom: number; gap: number } | null = null;
     let next = bottom;
     let tailLeft = rowLeft[bottom]!, tailRight = rowRight[bottom]!;
@@ -61,14 +62,13 @@ async function exteriorWhitespaceBounds(bytes: Buffer, buttonClickProduct = fals
       const tailWidth = tailRight - tailLeft + 1;
       const tailHeight = bottom - next + 1;
       if (gap >= minGap &&
-          next >= info.height * 0.72 &&
-          bottom >= info.height * 0.86 &&
-          tailLeft >= info.width * 0.62 &&
-          tailRight >= info.width * 0.86 &&
-          tailWidth <= info.width * 0.29 &&
-          tailHeight <= info.height * 0.18 &&
-          tailWidth >= info.width * 0.035 &&
-          y - top + 1 >= info.height * 0.22) {
+          next >= top + contentHeight * 0.72 &&
+          tailLeft >= left + contentWidth * 0.62 &&
+          tailRight >= left + contentWidth * 0.86 &&
+          tailWidth <= contentWidth * 0.29 &&
+          tailHeight <= contentHeight * 0.18 &&
+          tailWidth >= contentWidth * 0.035 &&
+          y - top + 1 >= contentHeight * 0.22) {
         let productLeft = info.width, productRight = -1;
         for (let yy = top; yy <= y; yy++) {
           productLeft = Math.min(productLeft, rowLeft[yy]!);
