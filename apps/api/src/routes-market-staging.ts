@@ -27,6 +27,19 @@ export const stagingImportSchema = z.object({
   idempotencyKey: z.string().uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
+const imageFilenameSection = "أسماء الصور";
+export const imageFilenameColumns = ["اسم الملف","الاسم عربي من الملف","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","اسم الملف المضغوط"] as const;
+const cleanFilename = z.string().min(1).max(600).refine(s => Array.from(s).every(c => c.charCodeAt(0)>=32 && c.charCodeAt(0)!==127));
+export const imageFilenameBatchSchema = z.object({
+  archiveName: cleanFilename.refine(s => /\.zip$/i.test(s) && !/[\\/]/.test(s)),
+  archiveDriveId: z.string().regex(/^[a-zA-Z0-9_-]{8,150}$/),
+  modifiedAt: z.string().datetime().optional(),
+  entries: z.array(z.object({
+    filename: cleanFilename.refine(s => /\.(webp|jpe?g|png|avif|gif|bmp|tiff?|svg|heic|heif|jfif|ico)$/i.test(s)),
+    sourceArabicName: cleanFilename.optional(),
+  }).strict()).min(1).max(1000),
+}).strict().refine(b => new Set(b.entries.map(e => e.filename)).size===b.entries.length, "أسماء الملفات مكررة");
+
 const medaweeAgentUrl = z.string().trim().max(1200)
   .regex(/^https:\/\/medawee\.com\/medicines\/entity\/agent\/[a-f0-9]{24}(?:\/[^\s/?#]+)?$/);
 const medaweeManufacturerName = z.string().trim().min(1).max(180);
@@ -106,7 +119,7 @@ const followupEntrySchema = z.object({
 export const followupBatchSchema = z.object({
   entries: z.array(followupEntrySchema).min(1).max(50),
 }).strict();
-export const mcpBodySchemas = { stagingAppendSchema, stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema, followupBatchSchema };
+export const mcpBodySchemas = { imageFilenameBatchSchema, stagingAppendSchema, stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema, followupBatchSchema };
 const sourceSchema = z.object({type:z.literal("source"),key:z.string().min(1).max(150),filename:z.string().max(500),driveId:z.string().min(1).max(200),modifiedAt:z.string().max(100),sha256:z.string().regex(/^[a-f0-9]{64}$/),byteSize:z.number().int().min(0).max(100000000),rowCount:z.number().int().min(0).max(500000),metadata:z.record(z.string(),z.unknown())}).strict();
 const rowSchema = z.object({type:z.literal("row"),section:z.string().max(500),position:z.number().int().positive(),payload:z.string().max(4000000)}).strict();
 const chunkSchema = z.object({type:z.literal("chunk"),index:z.number().int().min(0),data:z.string().max(400000).regex(/^[A-Za-z0-9+/]*={0,2}$/)}).strict();
@@ -463,6 +476,45 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
     const input=parse(stagingAppendSchema,req.body);
     res.json(await transaction(pool,db=>appendStagingRows(db,sourceId,input,owner)));
+  }));
+  router.post("/medicine-market/staging/image-filenames",handler(async(req,res)=>{
+    const user=await authorize(req);
+    const input=parse(imageFilenameBatchSchema,req.body);
+    const [file,arabic,marketName,card,status,archive]=imageFilenameColumns;
+    const rows=input.entries.map(entry=>({
+      [file]:entry.filename,[arabic]:entry.sourceArabicName??null,[marketName]:null,
+      [card]:null,[status]:null,[archive]:input.archiveName,
+    }));
+    const raw=Buffer.from(JSON.stringify(rows));
+    const fingerprint=createHash("sha256").update(raw).digest("hex");
+    const key="image-filenames:"+input.archiveDriveId;
+    const result=await transaction(pool,async db=>{
+      await db.query("SELECT pg_advisory_xact_lock(714390226)");
+      const existing=(await db.query(
+        "SELECT id,sha256,row_count FROM market_import_sources WHERE source_key=$1 LIMIT 1",[key],
+      )).rows[0];
+      if(existing){
+        if(existing.sha256!==fingerprint)throw new HttpError(409,"image_filename_source_changed","أسماء هذا الملف سُجلت سابقًا بمحتوى مختلف");
+        return {sourceId:String(existing.id),rows:Number(existing.row_count),replayed:true};
+      }
+      const jobId=randomUUID();
+      const bundleHash=createHash("sha256").update(key+":"+fingerprint).digest("hex");
+      await db.query("INSERT INTO market_import_jobs(id,bundle_sha256,actor_id,status) VALUES($1,$2,$3,'complete')",[jobId,bundleHash,user.id]);
+      async function* lines(){
+        yield JSON.stringify({type:"source",key,filename:input.archiveName,driveId:input.archiveDriveId,
+          modifiedAt:input.modifiedAt??"",sha256:fingerprint,byteSize:raw.length,rowCount:rows.length,
+          metadata:{format:"image-filename-index",columns:imageFilenameColumns,attachment:"filename index only"}});
+        for(let p=0;p<raw.length;p+=196608)
+          yield JSON.stringify({type:"chunk",index:p/196608,data:raw.subarray(p,p+196608).toString("base64")});
+        for(const [i,row] of rows.entries())
+          yield JSON.stringify({type:"row",section:imageFilenameSection,position:i+1,payload:JSON.stringify(row)});
+        yield '{"type":"end"}';
+      }
+      await loadStagingLines(db,jobId,lines());
+      const source=(await db.query("SELECT id FROM market_import_sources WHERE job_id=$1 AND source_key=$2",[jobId,key])).rows[0];
+      return {sourceId:String(source.id),rows:rows.length,replayed:false};
+    });
+    res.status(result.replayed?200:201).json(result);
   }));
   router.post("/medicine-market/staging/import",handler(async(req,res)=>{
     const user=await authorize(req),input=parse(stagingImportSchema,req.body);

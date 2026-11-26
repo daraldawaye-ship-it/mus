@@ -30,7 +30,7 @@ import { MarketProductImage } from "../MarketProductImage";
 import { MarketCardIcon } from "../MarketCardIcon";
 import { MarketFriendReferral } from "../MarketFriendReferral";
 import { PageActionsDropdown, type PageAction } from "../SalesHeaderActionsDropdown";
-import { MarketStagingProgress } from "./MarketStagingProgress";
+import { MarketStagingProgress, MarketImageFilenameStaging } from "./MarketStagingProgress";
 import { MarketCardCounts, RecordMarketCardOpen } from "./MarketCardStatistics";
 import { MarketCatalogSections, MarketCompactCard, orderPublicMarketTypes } from "./MarketCatalogSections";
 import { MarketRelatedMedicines } from "./MarketRelatedMedicines";
@@ -1556,7 +1556,7 @@ export function MedicineMarketPage({
               <ul>{dosageList.data?.items.map(card=><li key={card.id}><button type="button" className="medicine-market-link" onClick={()=>openCard(card.id)}>{card.name}</button></li>)}</ul>
             </details>
           </div>
-          {user?.owner && <MarketStagingProgress />}
+          {user?.owner && <><MarketImageFilenameStaging /><MarketStagingProgress /></>}
         </details>
       )}
       {tab === "catalog" && (

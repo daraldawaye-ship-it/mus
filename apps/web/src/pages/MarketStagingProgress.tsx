@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { Button, Notice } from "../ui";
 
-type Source = { id: string; filename: string; metadata?: { sheets?: { name: string }[] } };
+type Source = { id: string; filename: string; metadata?: { format?: string; sheets?: { name: string }[] } };
 type Progress = "unprocessed" | "partial" | "complete";
 type Row = {
   section: string; position: number; payload_text: string; followup_status: Progress;
@@ -31,6 +31,50 @@ function preview(raw: string): string {
     return text.replace(/\s+/g, " ").slice(0, 700);
   } catch { return raw.slice(0, 700); }
 }
+const imageColumns = ["اسم الملف","الاسم عربي من الملف","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","اسم الملف المضغوط"];
+export function MarketImageFilenameStaging() {
+  const [open,setOpen]=useState(false);
+  const [chosen,setChosen]=useState("");
+  const [page,setPage]=useState(0);
+  const sources=useQuery({
+    queryKey:["market-image-filename-staging","sources"],
+    queryFn:({signal})=>api<{sources:(Source&{actual_rows:number})[]}>("/medicine-market/staging",{signal}),
+    enabled:open,
+  });
+  const list=(sources.data?.sources??[]).filter(s=>s.metadata?.format==="image-filename-index");
+  const source=list.find(s=>s.id===chosen)??list.at(-1);
+  const rows=useQuery({
+    queryKey:["market-image-filename-staging",source?.id,page],
+    queryFn:({signal})=>api<{items:Row[]}>("/medicine-market/staging/"+source?.id+"/rows?"+
+      new URLSearchParams({section:"أسماء الصور",after:String(page*20),pageSize:"20",workStatus:"all"}),{signal}),
+    enabled:open&&!!source,
+  });
+  return <details onToggle={e=>setOpen(e.currentTarget.open)} style={{marginBlockStart:16}}>
+    <summary>أسماء صور الأصناف — جدول مؤقت</summary>
+    {open&&<>
+      {(sources.isError||rows.isError)&&<Notice tone="error">تعذّر تحميل الجدول.</Notice>}
+      {!sources.isError&&sources.isSuccess&&!source&&<p>لا توجد ملفات مستوردة بعد.</p>}
+      {source&&<>
+        <label>الملف المضغوط <select value={source.id} onChange={e=>{setChosen(e.target.value);setPage(0);}}>
+          {list.map(s=><option key={s.id} value={s.id}>{s.filename}</option>)}
+        </select></label>
+        <p>الإجمالي: {source.actual_rows}</p>
+        <div style={{overflowX:"auto"}}>
+          <table><thead><tr>{imageColumns.map(c=><th key={c}>{c}</th>)}</tr></thead>
+            <tbody>{(rows.data?.items??[]).map(r=>{
+              let row:Record<string,unknown>={};
+              try{row=JSON.parse(r.payload_text)??{};}catch{/* show blank values */}
+              return <tr key={r.position}>{imageColumns.map(c=><td key={c}>{(typeof row[c]==="string"||typeof row[c]==="number")?String(row[c]):""}</td>)}</tr>;
+            })}</tbody>
+          </table>
+        </div>
+        <Button type="button" disabled={page===0} onClick={()=>setPage(p=>p-1)}>السابق</Button>
+        <Button type="button" disabled={(page+1)*20>=source.actual_rows} onClick={()=>setPage(p=>p+1)}>التالي</Button>
+      </>}
+    </>}
+  </details>;
+}
+
 export function MarketStagingProgress() {
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -96,7 +140,7 @@ export function MarketStagingProgress() {
           const id=e.target.value,source=sources.data?.sources.find(x=>x.id===id);
           setSourceId(id);setSection(source?.metadata?.sheets?.[0]?.name??"messages");
           setAfter(0);setSelected(null);
-        }}>{sources.data?.sources.map(x=><option key={x.id} value={x.id}>{x.filename}</option>)}</select>
+        }}>{sources.data?.sources.filter(x=>x.metadata?.format!=="image-filename-index").map(x=><option key={x.id} value={x.id}>{x.filename}</option>)}</select>
       </label>
       <label>الورقة/القسم
         <input value={section} maxLength={500} onChange={e=>{
