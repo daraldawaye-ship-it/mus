@@ -1,3 +1,4 @@
+import { buildImageAttributeIndex, matchImageAttributes } from "./market-image-attributes.ts";
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { HttpError } from "./errors.ts";
 export const imageNameMatchOperation = "POST /medicine-market/staging/image-filenames/match-easy";
 export const imageNameMatchSchema = z.object({
   sourceIds:z.array(z.number().int().positive().max(2147483647)).min(1).max(30),
+  mode:z.enum(["easy","attributes"]).default("easy"),
   expectedPreview:z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).strict().refine(x=>new Set(x.sourceIds).size===x.sourceIds.length);
 const section="أسماء الصور", sourceName="الاسم عربي من الملف", siteName="الاسم عربي من الموقع",
@@ -58,21 +60,24 @@ export async function matchImageNamesEasy(pool:Pool,input:z.infer<typeof imageNa
   const rows=(await db.query<SourceRow>(
     "SELECT source_id,position,payload,market_card_id FROM market_import_rows WHERE source_id=ANY($1::bigint[]) AND section=$2 ORDER BY source_id,position",[ids,section])).rows;
   if(rows.length>15000)throw new HttpError(400,"image_match_limit","قسّم المصادر إلى مجموعتين");
-  const cards=easyImageCardIndex((await db.query<Card>("SELECT id,name FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived")).rows);
+  const catalog=(await db.query<Card>("SELECT id,name FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived")).rows;
+  const choose=input.mode==="attributes"
+    ? (()=>{const index=buildImageAttributeIndex(catalog);return (name:unknown)=>matchImageAttributes(name,index);})()
+    : (()=>{const index=easyImageCardIndex(catalog);return (name:unknown)=>easyImageMatch(name,index);})();
   const plan:{sourceId:number;position:number;cardId:number;name:string}[]=[];
   let already=0,ambiguous=0;
   const examples:{sourceId:number;position:number;source:string;target:string;cardId:number}[]=[];
   for(const row of rows){
     if(row.market_card_id!==null || [siteName,siteId,state].some(k=>row.payload[k]!=null)){already++;continue;}
     const label=row.payload[sourceName];
-    const card=easyImageMatch(label,cards);
+    const card=choose(label);
     if(card===null){ambiguous++;continue;}
     if(!card)continue;
     const sourceId=Number(row.source_id);
     plan.push({sourceId,position:row.position,cardId:card.id,name:card.name});
     if(examples.length<12) examples.push({sourceId,position:row.position,source:String(label),target:card.name,cardId:card.id});
   }
-  const digest=createHash("sha256").update(JSON.stringify([ids,rows.length,already,plan])).digest("hex");
+  const digest=createHash("sha256").update(JSON.stringify([input.mode,ids,rows.length,already,plan])).digest("hex");
   let saved=0;
   if(input.expectedPreview){
     if(input.expectedPreview!==digest)throw new HttpError(409,"image_match_preview_changed","تغيرت المعاينة؛ اعرضها من جديد");
@@ -80,16 +85,16 @@ export async function matchImageNamesEasy(pool:Pool,input:z.infer<typeof imageNa
       const locked=await db.query("SELECT id FROM medicine_market_cards WHERE id=ANY($1::int[]) AND kind='medicine' AND status='published' AND NOT archived FOR SHARE",[[...new Set(plan.map(x=>x.cardId))]]);
       if(locked.rowCount!==new Set(plan.map(x=>x.cardId)).size)throw new HttpError(409,"image_match_cards_changed","تغيرت أصناف الوجهة");
       const update=await db.query(`UPDATE market_import_rows r SET market_card_id=x."cardId",
-           payload=r.payload||jsonb_build_object($3::text,x.name,$4::text,x."cardId",$5::text,'مطابق واضح')
+           payload=r.payload||jsonb_build_object($3::text,x.name,$4::text,x."cardId",$5::text,$6::text)
          FROM jsonb_to_recordset($1::jsonb) AS x("sourceId" bigint,position int,"cardId" int,name text)
          WHERE r.source_id=x."sourceId" AND r.position=x.position AND r.section=$2
            AND r.market_card_id IS NULL AND r.payload->>$3 IS NULL AND r.payload->>$4 IS NULL AND r.payload->>$5 IS NULL`,
-         [JSON.stringify(plan),section,siteName,siteId,state]);
+         [JSON.stringify(plan),section,siteName,siteId,state,input.mode==="attributes"?"مطابق الاسم والقوة والشكل":"مطابق واضح"]);
       saved=update.rowCount??0;
       if(saved!==plan.length)throw new HttpError(409,"image_match_rows_changed","تغير بعض السجلات؛ لم تُحفظ الدفعة");
     }
   }
-  return {sourceIds:ids,scanned:rows.length,already,matched:plan.length,ambiguous,remaining:rows.length-already-plan.length,
+  return {mode:input.mode,sourceIds:ids,scanned:rows.length,already,matched:plan.length,ambiguous,remaining:rows.length-already-plan.length,
    digest,preview:!input.expectedPreview,saved,examples};
  });
 }
