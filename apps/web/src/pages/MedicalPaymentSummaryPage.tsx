@@ -7,12 +7,13 @@ import { adenInvoiceToday } from "../invoice-save-date";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
+import "./MedicalPaymentSummaryPage.css";
 
 const title = "إجمالي سداد الأطباء والممرضين";
 const columns = [["name", "الاسم الرئيسي"], ["count", "عدد المرات"], ["total", "الإجمالي"]] as const;
 type Sort = typeof columns[number][0];
 type Report = { totalAmount?: string; items: Array<{ name: string; movementCount: number; totalAmount: string }> };
-type Movement = { date: string; amount: string; actor: string };
+type Movement = { date: string; time: string | null; amount: string; actor: string };
 
 export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -60,8 +61,8 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
     {directory.isPending && <Notice>جارٍ التحقق من الصلاحيات…</Notice>}
     {!directory.isPending && !allowed && <Notice tone="warning">لا تملك صلاحية عرض هذا التقرير.</Notice>}
     {allowed && <>
-      <Card>
-        <div className="form-grid">
+      <Card className="medical-payment-card">
+        <div className="form-grid medical-payment-filters">
           <Field label="بحث بالاسم" type="search" value={search} maxLength={200}
             placeholder="اكتب الاسم أو جزءًا منه"
             onChange={event => { setSearch(event.target.value); setExpanded(""); }} />
@@ -74,9 +75,10 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
       </Card>
       {valid && (report.isPending || searching) && <Notice>جارٍ تحميل الإجماليات…</Notice>}
       {valid && !searching && report.error && <Notice tone="error">{errorMessage(report.error)}</Notice>}
-      {valid && data && <Card>
-        <div className="table-scroll">
-          <table>
+      {valid && data && <Card className="medical-payment-card">
+        <div className="table-scroll medical-payment-scroll">
+          <table className="medical-payment-summary">
+            <colgroup><col className="medical-payment-name-col"/><col className="medical-payment-count-col"/><col/></colgroup>
             <caption>المبالغ بالريال اليمني، بدون القصاصات</caption>
             <thead><tr>{columns.map(([key, label]) =>
               <th key={key} scope="col" aria-sort={order.sort !== key ? "none" : order.direction === "asc" ? "ascending" : "descending"}>
@@ -87,18 +89,19 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
               </th>)}</tr></thead>
             <tbody>{data.items.length ? data.items.map(row => <Fragment key={row.name}>
               <tr>
-                <th scope="row"><Button variant="secondary" size="compact" aria-expanded={expanded === row.name}
+                <th scope="row"><Button variant="ghost" size="compact" className="medical-payment-name" aria-expanded={expanded === row.name}
                   onClick={() => setExpanded(previous => previous === row.name ? "" : row.name)}>{row.name}</Button></th>
                 <td><bdi className="financial-number">{row.movementCount}</bdi></td>
                 <td><bdi className="financial-number">{formatWholeMoney(row.totalAmount)}</bdi></td>
               </tr>
-              {expanded === row.name && <tr><td colSpan={columns.length}>
+              {expanded === row.name && <tr><td className="medical-payment-expanded" colSpan={columns.length}>
                 {detail.isPending && <Notice>جارٍ تحميل كشف الحركة…</Notice>}
                 {detail.error && <Notice tone="error">{errorMessage(detail.error)}</Notice>}
-                {detail.data && (detail.data.movements.length ? <table aria-label={`كشف حركة ${row.name}`}>
-                  <thead><tr><th scope="col">التاريخ</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
+                {detail.data && (detail.data.movements.length ? <table className="medical-payment-movements" aria-label={`كشف حركة ${row.name}`}>
+                  <colgroup><col className="medical-payment-date-col"/><col className="medical-payment-amount-col"/><col/></colgroup>
+                  <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
                   <tbody>{detail.data.movements.map((movement, i) => <tr key={i}>
-                    <td><bdi>{movement.date}</bdi></td>
+                    <td className="medical-payment-moment"><bdi>{movement.date}</bdi>{movement.time && <bdi>{movement.time}</bdi>}</td>
                     <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
                     <td>{movement.actor || "—"}</td>
                   </tr>)}</tbody>

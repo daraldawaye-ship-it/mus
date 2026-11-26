@@ -1,0 +1,68 @@
+.medical-payment-filters > :first-child {
+  grid-column: 1 / -1;
+}
+
+.medical-payment-scroll.table-scroll table {
+  min-width: 0;
+}
+
+.medical-payment-scroll col.medical-payment-name-col { width: 48%; }
+.medical-payment-scroll col.medical-payment-count-col { width: 22%; }
+.medical-payment-scroll col.medical-payment-date-col { width: 38%; }
+.medical-payment-scroll col.medical-payment-amount-col { width: 24%; }
+
+.medical-payment-scroll.table-scroll :is(th, td) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.medical-payment-scroll.table-scroll :is(tbody, tfoot) th,
+.medical-payment-scroll.table-scroll .medical-payment-movements th {
+  position: static;
+}
+
+.medical-payment-scroll .medical-payment-name {
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+  justify-content: flex-start;
+  overflow-wrap: anywhere;
+  color: var(--primary);
+}
+
+.medical-payment-scroll .medical-payment-moment bdi + bdi { margin-inline-start: .45em; }
+
+@media (max-width: 760px) {
+  .card.medical-payment-card { padding: 8px; }
+  .form-grid.medical-payment-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 8px;
+  }
+  .medical-payment-filters input {
+    box-sizing: border-box;
+    min-width: 0;
+    width: 100%;
+  }
+  .table-scroll.medical-payment-scroll { max-height: none; }
+  .medical-payment-scroll caption { font-size: 12px; padding: 4px; }
+  .medical-payment-scroll.table-scroll :is(th, td) { padding: 3px 4px; }
+  .medical-payment-scroll .button {
+    font-size: 11px;
+    min-height: 32px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 2px 3px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .medical-payment-scroll .medical-payment-name {
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .medical-payment-scroll .medical-payment-movements { font-size: 12px; }
+  .medical-payment-scroll .medical-payment-moment bdi { display: block; }
+  .medical-payment-scroll .medical-payment-moment bdi + bdi { margin-inline-start: 0; }
+  .medical-payment-scroll .medical-payment-expanded { background: var(--table-head); }
+}
