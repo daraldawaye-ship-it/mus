@@ -888,7 +888,10 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           let bytes: Buffer;
           try { bytes = await downloadPublicImage(item.sourceUrl, validateOwnerProductImageUrl); }
           catch { throw new HttpError(400, "image_source", "تعذر تنزيل صورة المنتج الأصلية من المصدر المعتمد"); }
-          const variants = await buildMarketImageVariants(bytes, { cropWhitespace: item.cropWhitespace });
+          const variants = await buildMarketImageVariants(bytes, {
+            cropWhitespace: item.cropWhitespace,
+            buttonClickProduct: /^(?:www\.)?button-click\.com$/.test(new URL(item.sourceUrl).hostname),
+          });
           prepared = { image: { bytes: variants.preview, width: variants.previewWidth, height: variants.previewHeight },
             variants: stagingIsolated ? variants : null };
         } else prepared = await prepareImageUpload(item, card.kind);
