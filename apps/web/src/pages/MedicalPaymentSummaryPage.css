@@ -8,9 +8,9 @@
 
 .medical-payment-scroll col.medical-payment-name-col { width: 48%; }
 .medical-payment-scroll col.medical-payment-count-col { width: 22%; }
-.medical-payment-scroll col.medical-payment-date-col { width: 34%; }
-.medical-payment-scroll col.medical-payment-amount-col { width: 22%; }
-.medical-payment-scroll col.medical-payment-note-col { width: 20%; }
+.medical-payment-scroll col.medical-payment-date-col { width: 25%; }
+.medical-payment-scroll col.medical-payment-amount-col { width: 14%; }
+.medical-payment-scroll col.medical-payment-actor-col { width: 18%; }
 
 .medical-payment-scroll.table-scroll :is(th, td) {
   white-space: normal;
@@ -39,13 +39,13 @@
   gap: 3px 10px;
 }
 .medical-payment-time-label { white-space: nowrap; }
-.medical-payment-scroll .button.medical-payment-note-link {
-  color: var(--primary);
-  text-decoration: underline;
-}
-.medical-payment-note-text {
+.medical-payment-scroll.table-scroll td.medical-payment-note-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  height: auto;
+  max-height: none;
+  line-height: 1.4;
+  padding-block: 4px;
 }
 
 @media (max-width: 760px) {
@@ -77,6 +77,10 @@
     font-weight: 600;
   }
   .medical-payment-scroll .medical-payment-movements { font-size: 12px; }
+  .medical-payment-scroll col.medical-payment-date-col { width: 28%; }
+  .medical-payment-scroll col.medical-payment-amount-col { width: 15%; }
+  .medical-payment-scroll col.medical-payment-actor-col { width: 17%; }
+  .medical-payment-scroll .medical-payment-moment-content { font-size: 11px; }
   .medical-payment-moment-content { flex-direction: column; gap: 4px; }
   .medical-payment-scroll .medical-payment-expanded { background: var(--table-head); }
 }
