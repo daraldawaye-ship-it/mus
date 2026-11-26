@@ -38,6 +38,13 @@
   gap: 3px 10px;
 }
 .medical-payment-time-label { white-space: nowrap; }
+.medical-payment-scroll.table-scroll td.medical-payment-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  height: auto;
+  max-height: none;
+  padding-block: 5px;
+}
 
 @media (max-width: 760px) {
   .card.medical-payment-card { padding: 8px; }

@@ -14,7 +14,7 @@ const title = "إجمالي سداد الأطباء والممرضين";
 const columns = [["name", "الاسم الرئيسي"], ["count", "عدد المرات"], ["total", "الإجمالي"]] as const;
 type Sort = typeof columns[number][0];
 type Report = { totalAmount?: string; items: Array<{ name: string; movementCount: number; totalAmount: string }> };
-type Movement = { date: string; time: string | null; amount: string; actor: string };
+type Movement = { date: string; time: string | null; amount: string; actor: string; notes: string | null };
 function MovementMoment({ date, time }: Pick<Movement, "date" | "time">) {
   const label = medicalPaymentTimeLabel(time);
   return <span className="medical-payment-moment-content">
@@ -111,11 +111,16 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
                 {detail.data && (detail.data.movements.length ? <table className="medical-payment-movements" aria-label={`كشف حركة ${row.name}`}>
                   <colgroup><col className="medical-payment-date-col"/><col className="medical-payment-amount-col"/><col/></colgroup>
                   <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
-                  <tbody>{detail.data.movements.map((movement, i) => <tr key={i}>
-                    <td><MovementMoment date={movement.date} time={movement.time}/></td>
-                    <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
-                    <td>{movement.actor || "—"}</td>
-                  </tr>)}</tbody>
+                  <tbody>{detail.data.movements.map((movement, i) => <Fragment key={i}>
+                    <tr>
+                      <td><MovementMoment date={movement.date} time={movement.time}/></td>
+                      <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
+                      <td>{movement.actor || "—"}</td>
+                    </tr>
+                    {!!movement.notes?.trim() && <tr><td colSpan={3} className="medical-payment-note">
+                      <strong>ملاحظات: </strong>{movement.notes}
+                    </td></tr>}
+                  </Fragment>)}</tbody>
                 </table> : <Notice>لا توجد حركات في الفترة المحددة.</Notice>)}
               </td></tr>}
             </Fragment>) : <tr><td colSpan={columns.length}>لا توجد مبالغ مطابقة.</td></tr>}</tbody>

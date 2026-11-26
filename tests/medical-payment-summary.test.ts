@@ -76,6 +76,10 @@ test("only posted medical payments aggregate by main name before numeric sorting
       ALTER TABLE direct_medical_payments ADD COLUMN created_by int DEFAULT 22;
       ALTER TABLE administrative_custody_transfers ADD COLUMN created_at timestamptz DEFAULT '2026-11-21 08:25:40+00';
       ALTER TABLE direct_medical_payments ADD COLUMN created_at timestamptz DEFAULT '2026-11-26 16:42:21+00';
+      ALTER TABLE administrative_custody_transfers ADD COLUMN notes text DEFAULT '';
+      ALTER TABLE direct_medical_payments ADD COLUMN notes text DEFAULT '';
+      UPDATE direct_medical_payments SET notes='بيان السداد المباشر' WHERE id=10;
+      UPDATE administrative_custody_transfers SET notes='بيان حركة العهدة' WHERE company_id=1 AND id=1;
     `);
     type Result = {name:string; movementCount:number; totalAmount:string; periodTotal:string};
     const {rows} = await db.query<Result>(medicalPaymentSummarySql("total", "desc"), [1,"2026-11-21","2026-11-26","%",true]);
@@ -100,7 +104,7 @@ test("only posted medical payments aggregate by main name before numeric sorting
 
     const detail = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي علي"]);
     assert.deepEqual(detail.rows, [
-      {date:"2026-11-26", time:"19:42", amount:"200.05", actor:"سجل الصندوق"}, {date:"2026-11-21", time:"11:25", amount:"100.15", actor:"سجل العهدة"},
+      {date:"2026-11-26", time:"19:42", amount:"200.05", actor:"سجل الصندوق", notes:"بيان السداد المباشر"}, {date:"2026-11-21", time:"11:25", amount:"100.15", actor:"سجل العهدة", notes:"بيان حركة العهدة"},
     ]);
     const partial = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي"]);
     assert.equal(partial.rows.length, 0);
