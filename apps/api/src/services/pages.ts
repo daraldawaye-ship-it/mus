@@ -270,6 +270,7 @@ export async function directoryEntries(
           action,
           isEnabled &&
             canSeeColumnSettings &&
+            (definition.key !== "company.medical-payment-summary" || !user.suspended) &&
             !!definition.actions[action] &&
             (definition.scope !== "company" ||
               centralPageAllows(centralPolicies, definition.key, action,

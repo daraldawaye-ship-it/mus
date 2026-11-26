@@ -29,6 +29,7 @@ export type PageRule = {
     | "company-member"
     | "company-general"
     | "company-custody-operator"
+    | "company-medical-payment-viewer"
     | "permissions";
   permissions: Permission[];
   label: string;
@@ -71,6 +72,8 @@ export function canOperateAdministrativeCustody(context: CompanyContext | null |
   return !!context && (context.general ||
     administrativeCustodyPositions.some(position => context.employee?.positions.includes(position)));
 }
+export const medicalPaymentSummaryPositions = ["sales", "cashier"] as const;
+const medicalPaymentViewer = rule("company-medical-payment-viewer", "المبيعات أو أمين الصندوق");
 const custodyOperator = rule("company-custody-operator",
   "المالك أو المدير العام أو مبيعات أو إدخال المشتريات أو أمين صندوق");
 const manage = (module: "accounts" | "currencies" | "locations" | "items") => ({
@@ -657,6 +660,15 @@ page(
     keywords: ["حركة", "فواتير", "مبيعات", "أطباء", "ممرضين", "اسم مشترك", "رئيسي", "جهة"] },
 );
 page(
+  "company.medical-payment-summary",
+  "إجمالي سداد الأطباء والممرضين",
+  "التقارير",
+  "/companies/:companyId/medical-payment-summary",
+  { view: medicalPaymentViewer },
+  "إجمالي السداد المباشر والصرف من العهدة للطبيب أو الممرض حسب الاسم الرئيسي، بدون القصاصات.",
+  { type: "report", keywords: ["سداد", "صرف", "عهدة", "عمولة", "طبيب", "ممرض"] },
+);
+page(
   "company.doctor-movement-comparison",
   "مقارنة حركة الأطباء والجهات",
   "التقارير",
@@ -1187,6 +1199,9 @@ export function pageRuleAllows(
       return !!context;
     case "company-general":
       return !!context?.general;
+    case "company-medical-payment-viewer":
+      return !!user && !user.suspended && !!context && (user.owner ||
+        medicalPaymentSummaryPositions.some(position => context.employee?.positions.includes(position)));
     case "company-custody-operator":
       return canOperateAdministrativeCustody(context);
     case "permissions":

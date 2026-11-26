@@ -11,6 +11,7 @@ import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
 import { sortedDoctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
 import { audit } from "./services/audit.ts";
+import { medicalPaymentSortKeys, medicalPaymentSummarySql, validMedicalPaymentRange } from "./services/medical-payment-summary.ts";
 
 const medicalMainName = "COALESCE(NULLIF(btrim(d.shared_name),''),NULLIF(btrim(d.name),''))";
 const visibleMedicalKind = "(d.kind IN ('doctor','nurse') OR d.kind IS NULL)";
@@ -45,6 +46,46 @@ const filters = z.object({
 
 export function doctorSalesReportRoutes(pool: Pool): Router {
   const router = Router();
+  router.get("/companies/:companyId/medical-payment-summary", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const input = parse(z.object({
+      dateFrom: documentDateSchema.optional(),
+      dateTo: documentDateSchema.optional(),
+      sort: z.enum(medicalPaymentSortKeys).default("total"),
+      direction: z.enum(["asc", "desc"]).default("desc"),
+    }).strict(), req.query);
+    const report = await transaction(pool, async client => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user = await currentActor(client, actor(req), false);
+      const page = (await directoryEntries(client, user, companyId))
+        .find(entry => entry.key === "company.medical-payment-summary");
+      if (!page?.enabled || !page.actionAccess.view || user.suspended)
+        throw new HttpError(403, "forbidden", "ليست لديك صلاحية عرض إجمالي سداد الأطباء والممرضين");
+
+      const day = await client.query<{today:string; minDate:string}>(
+        "SELECT (now() AT TIME ZONE 'Asia/Aden')::date::text AS today," +
+        " ((now() AT TIME ZONE 'Asia/Aden')::date - 10)::text AS \"minDate\"");
+      const { today, minDate } = day.rows[0]!;
+      const dateFrom = input.dateFrom ?? today;
+      const dateTo = input.dateTo ?? today;
+      if (!validMedicalPaymentRange(dateFrom, dateTo, today, minDate))
+        throw new HttpError(400, "invalid_date_range",
+          "اختر تاريخًا من اليوم أو قبله بعشرة أيام كحد أقصى، على ألا يتجاوز تاريخ البداية تاريخ النهاية");
+      const { rows } = await client.query(medicalPaymentSummarySql(input.sort, input.direction),
+        [companyId, dateFrom, dateTo]);
+      return {
+        dateFrom, dateTo, currencyCode: "YER",
+        totals: {
+          directAmount: rows[0]?.directTotal ?? "0",
+          custodyAmount: rows[0]?.custodyTotal ?? "0",
+          totalAmount: rows[0]?.periodTotal ?? "0",
+        },
+        items: rows.map(({ directTotal, custodyTotal, periodTotal, ...row }) => row),
+      };
+    });
+    res.json({ report });
+  }));
+
   router.get("/companies/:companyId/doctor-movement-comparison", handler(async(req,res)=>{
     const companyId=id(req.params.companyId);
     const input=parse(z.object({

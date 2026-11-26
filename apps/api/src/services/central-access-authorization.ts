@@ -1,5 +1,5 @@
 import type { Database } from "../db.ts";
-import type { PageAction } from "../../../../packages/contracts/src/pages.ts";
+import { medicalPaymentSummaryPositions, type PageAction } from "../../../../packages/contracts/src/pages.ts";
 
 /** Company-scoped authoritative position gates for page visibility.
  * An empty list means the platform owner alone. No job-position selection
@@ -25,7 +25,8 @@ export async function centralResourcePolicies(
   }]));
 }
 export function centralDefaultPageViewPositions(pageKey: string): ("sales" | "cashier")[] {
-  return pageKey === "company.item-return-requests" ? ["sales", "cashier"] : [];
+  return pageKey === "company.item-return-requests" || pageKey === "company.medical-payment-summary"
+    ? [...medicalPaymentSummaryPositions] : [];
 }
 export function centralPageAllows(
   policies: ReadonlyMap<string, CentralPagePolicy>,
