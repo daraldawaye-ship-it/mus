@@ -30,7 +30,8 @@ export const doctorSalesMovementWhere = [
   ` AND ${visibleMedicalKind}`,
   " AND i.document_date BETWEEN $2::date AND $3::date",
   ` AND ($4::text='' OR ${medicalMainName}=$4)`,
-  ` AND translate(${medicalMainName},'ة','ه') ILIKE translate($5,'ة','ه') ESCAPE '\\'`,
+  ` AND (translate(${medicalMainName},'ة','ه') ILIKE translate($5,'ة','ه') ESCAPE '\\'`+
+  " OR translate(NULLIF(btrim(d.name),''),'ة','ه') ILIKE translate($5,'ة','ه') ESCAPE '\\')",
 ].join("");
 
 const filters = z.object({
@@ -142,7 +143,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
     res.json(result);
   }));
 
-  // Partial main-name search; legacy exact links still cover all children. Totals are filtered before paging.
+  // Partial card/main-name search; legacy exact links still cover all children. Totals are filtered before paging.
   router.get("/companies/:companyId/doctor-sales-movements",handler(async(req,res)=>{
     const companyId=id(req.params.companyId);
     const input=parse(z.object({

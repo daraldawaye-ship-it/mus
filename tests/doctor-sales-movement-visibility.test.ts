@@ -61,6 +61,9 @@ test("one Arabic keyword matches both names and preserves the report boundaries"
       [2,"2026-11-24","2026-11-25",exact,keyword],
     );
     assert.deepEqual((await query("%عطيه%")).rows,[{id:1},{id:2}]);
+    assert.deepEqual((await query("%بطاقه%")).rows,[{id:1}]);
+    assert.deepEqual((await query("%كمال%")).rows,[{id:1}]);
+    assert.deepEqual((await query("%بطاقه%","جمال عطيه")).rows,[]);
     assert.deepEqual((await query("%عطية%")).rows,[{id:1},{id:2}]);
     assert.deepEqual((await query("%","كمال عطية")).rows,[{id:1}]);
     assert.deepEqual((await query("%اسم غير موجود%")).rows,[]);
