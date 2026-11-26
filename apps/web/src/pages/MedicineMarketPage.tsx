@@ -1674,6 +1674,23 @@ export function MedicineMarketPage({
                       card={card} field={field} references={references}
                       canEdit={!marketOffline&&!!permissions?.canContribute&&!card.archived&&(!isMarketAdministrativeKind(card.kind)||(field.key==="image"&&!!permissions?.canConfigure))}
                       disabled={busy} onOpen={openCard}/>)}
+                    {card.kind === "agent" && detail.data?.linkedManufacturers !== undefined && (
+                      <div className="medicine-market-field">
+                        <div className="medicine-market-inline-content">
+                          <span className="medicine-market-field-label">الشركات المصنّعة المرتبطة</span>
+                          {detail.data.linkedManufacturers.length ? (
+                            <div className="medicine-market-manufacturer-links">
+                              {detail.data.linkedManufacturers.map(manufacturer => (
+                                <button key={manufacturer.id} type="button" className="medicine-market-link"
+                                  onClick={() => openCard(manufacturer.id)}>
+                                  <span>{manufacturer.name}</span><ChevronLeft size={13} />
+                                </button>
+                              ))}
+                            </div>
+                          ) : <span className="medicine-market-unset">لا توجد شركات مصنّعة مرتبطة</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="medicine-market-engagement">
                     <Button

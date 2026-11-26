@@ -1104,8 +1104,19 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           " WHERE p.card_id=$1 AND p.field_key=ANY($2::text[]) AND (p.status='approved' OR p.author_id=$3 OR $4) ORDER BY p.id DESC LIMIT 100",
         [card.id, readableKeys(p), u?.id ?? null, p.canModerate],
       );
+      const linkedManufacturers = card.kind === "agent"
+        ? (await pool.query<{ id: number; name: string }>(stagingIsolated
+          ? "SELECT id,name FROM market_agent_manufacturers($1) ORDER BY name,id"
+          : "SELECT id,name FROM medicine_market_cards WHERE kind='manufacturer' AND status='published' AND NOT archived AND data->>'agentId'=$1::text ORDER BY name,id",
+          [card.id])).rows
+        : undefined;
+      const detailCard = cardOutput(card, p);
+      if (linkedManufacturers !== undefined && detailCard.statistics) {
+        detailCard.statistics.relations = { ...detailCard.statistics.relations, manufacturers: linkedManufacturers.length };
+      }
       sendMarketRead(req, res, {
-        card: cardOutput(card, p),
+        card: detailCard,
+        ...(linkedManufacturers !== undefined ? { linkedManufacturers } : {}),
         comments: comments.rows.map(commentOutput),
         contributions: contributions.rows.map(contributionOutput),
       });

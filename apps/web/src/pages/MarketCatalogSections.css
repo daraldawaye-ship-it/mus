@@ -82,3 +82,7 @@
 .medicine-market .market-counts.compact .sr-only {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
 }
+
+.medicine-market-manufacturer-links { display:grid; justify-items:start; gap:5px; }
+.medicine-market-manufacturer-links span { overflow-wrap:anywhere; }
+.medicine-market-manufacturer-links svg { flex-shrink:0; }

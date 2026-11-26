@@ -33,10 +33,26 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     await db.exec("BEGIN");
     await migrate("20261116_card_statistics.sql");
     await migrate("20261117_card_rating_statistics.sql");
+    await migrate("20261127_agent_manufacturer_statistics.sql");
     await db.exec("COMMIT");
     const second = await card("medicine","M2",linked);
     assert.deepEqual((await stats(comp)).links,{medicines:2,agents:1,manufacturers:1,scientificNames:1});
-    assert.deepEqual((await stats(agent)).links,{medicines:2,compositions:1});
+    assert.deepEqual((await stats(agent)).links,{medicines:2,compositions:1,manufacturers:0},
+      "A product relation does not establish a direct agency link");
+    const secondAgent = await card("agent","Another agent");
+    await db.query("UPDATE medicine_market_cards SET data=jsonb_build_object('agentId',$1::integer) WHERE id=$2",[agent,maker]);
+    const otherMaker = await card("manufacturer","Other manufacturer",{agentId:String(agent)});
+    const allMakers = async id => (await db.query("SELECT id,name FROM market_agent_manufacturers($1) ORDER BY id",[id])).rows;
+    assert.deepEqual(await allMakers(agent),[{id:maker,name:"Manufacturer"},{id:otherMaker,name:"Other manufacturer"}]);
+    assert.equal((await stats(agent)).links.manufacturers,2);
+    await check();
+    await db.query("UPDATE medicine_market_cards SET data=jsonb_build_object('agentId',$1::integer) WHERE id=$2",[secondAgent,otherMaker]);
+    assert.equal((await stats(agent)).links.manufacturers,1);
+    assert.equal((await stats(secondAgent)).links.manufacturers,1);
+    await check();
+    await db.query("UPDATE medicine_market_cards SET status='pending' WHERE id=$1",[otherMaker]);
+    assert.deepEqual(await allMakers(secondAgent),[]);
+    assert.equal((await stats(secondAgent)).links.manufacturers,0);
     assert.deepEqual((await stats(sci)).links,{medicines:2,compositions:1});
     assert.deepEqual((await stats(maker)).links,{medicines:2});
     assert.deepEqual(await stats(first),{opens:0,comments:1,likes:1,links:{}});
@@ -52,6 +68,8 @@ test("market statistics, moderation, rolling opens, linked cards and weekly repa
     await check();
     await db.query("UPDATE medicine_market_cards SET archived=true WHERE id=$1",[maker]);
     assert.equal((await stats(comp)).links.manufacturers,0);
+    assert.deepEqual(await allMakers(agent),[]);
+    assert.equal((await stats(agent)).links.manufacturers,0);
     await db.query("UPDATE medicine_market_cards SET archived=true WHERE id=$1",[comp]);
     assert.deepEqual((await stats(sci)).links,{medicines:0,compositions:0});
     assert.equal((await stats(agent)).links.compositions,1);

@@ -274,6 +274,7 @@ export interface MarketDetail {
   card: MarketCard;
   comments: MarketComment[];
   contributions: MarketContribution[];
+  linkedManufacturers?: { id: number; name: string }[];
 }
 export type MarketRelatedMedicinesPage = {
   items: (MarketCard & { englishName: string | null })[];

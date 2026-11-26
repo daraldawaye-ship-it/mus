@@ -13,7 +13,7 @@ const relationLabels = {
 type Relation = keyof typeof relationLabels;
 const relationKeys: Partial<Record<MarketCard["kind"], Relation[]>> = {
   composition: ["medicines", "scientificNames", "agents", "manufacturers"],
-  agent: ["medicines", "compositions"], "scientific-name": ["compositions", "medicines"],
+  agent: ["medicines", "compositions", "manufacturers"], "scientific-name": ["compositions", "medicines"],
   manufacturer: ["medicines"],
 };
 
@@ -31,7 +31,7 @@ export function MarketCardCounts({card, compact = false}: {card: MarketCard; com
       {stats.ratingCount ? `${stats.ratingAverage?.toFixed(1) ?? "—"}/5` : "—"}
       <span>{compact ? ` (${stats.ratingCount})` : ` · ${stats.ratingCount} تقييم`}</span>
     </span>
-    {relationKeys[card.kind]?.map(key =>
+    {relationKeys[card.kind]?.filter(key => key !== "manufacturers" || card.kind !== "agent" || stats.relations[key] != null).map(key =>
       <span key={key}>{relationLabels[key]} {stats.relations[key] ?? 0}</span>)}
   </span>;
 }
