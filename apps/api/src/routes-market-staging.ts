@@ -1,3 +1,4 @@
+import { imageNameMatchSchema, matchImageNamesEasy } from "./market-image-name-match.ts";
 import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema } from "./market-medawee-items.ts";
 import { stagingAppendSchema, appendStagingRows } from "./staging-append.ts";
 import { applyStagingSalePrices, stagingPricesSchema } from "./market-staging-prices.ts";
@@ -477,6 +478,10 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const input=parse(stagingAppendSchema,req.body);
     res.json(await transaction(pool,db=>appendStagingRows(db,sourceId,input,owner)));
   }));
+  router.post("/medicine-market/staging/image-filenames/match-easy",handler(async(req,res)=>{
+    await authorize(req);
+    res.json(await matchImageNamesEasy(pool,parse(imageNameMatchSchema,req.body)));
+  }));
   router.post("/medicine-market/staging/image-filenames",handler(async(req,res)=>{
     const user=await authorize(req);
     const input=parse(imageFilenameBatchSchema,req.body);
@@ -682,7 +687,7 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     }).strict(),req.query);
     if(!(await pool.query("SELECT 1 FROM market_import_sources WHERE id=$1",[sourceId])).rowCount)missing();
     const rows=await pool.query(
-      "SELECT r.section,r.position,r.payload_text,r.market_card_id AS \"marketCardId\"," +
+      "SELECT r.section,r.position,CASE WHEN r.section='أسماء الصور' THEN r.payload::text ELSE r.payload_text END AS payload_text,r.market_card_id AS \"marketCardId\"," +
       " COALESCE(f.status,'unprocessed') AS followup_status," +
       " COALESCE(f.completed_fields,ARRAY[]::text[]) AS completed_fields," +
       " COALESCE(f.remaining_fields,ARRAY[]::text[]) AS remaining_fields," +
