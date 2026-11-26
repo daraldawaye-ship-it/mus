@@ -3,7 +3,7 @@ import { marketImageLabelBatchSchema } from "../market-image-labels.ts";
 import { imageNameMatchOperation, imageNameMatchSchema } from "../market-image-name-match.ts";
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
-import { medaweeItemBatchSchema } from "../market-medawee-items.ts";
+import { medaweeItemBatchSchema, medaweeItemReviewBatchSchema } from "../market-medawee-items.ts";
 import { medaweeAgentBatchSchema, medaweeManufacturerVerificationSchema } from "../routes-market-staging.ts";
 import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-prices.ts";
 import { mcpBodySchemas as legalSchemas, legalDocumentWorkStatusSchema, legalAutomationWorkBulkSchema, legalDocumentImageTransferSchema } from "../routes-legal-cases.ts";
@@ -160,6 +160,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "POST /medicine-market/staging/medawee-items": {
     source:"routes-market-staging.ts",queryFields:[],
     bodyContract:"medaweeItemBatchSchema",bodySchema:z.toJSONSchema(medaweeItemBatchSchema),
+  },
+  "PATCH /medicine-market/staging/medawee-items": {
+    source:"routes-market-staging.ts",queryFields:[],
+    bodyContract:"medaweeItemReviewBatchSchema",bodySchema:z.toJSONSchema(medaweeItemReviewBatchSchema,{io:"input"}),
   },
   "GET /medicine-market/staging/medawee-agents": {source:"routes-market-staging.ts",queryFields:["page","pageSize"]},
   "POST /medicine-market/staging/medawee-agents": {

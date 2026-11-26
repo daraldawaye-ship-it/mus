@@ -24,6 +24,7 @@ test("Medawee item intake is owner-only, atomic, idempotent, evidenced, and pres
   assert.deepEqual(catalog.operations, [
     { operation: "GET /medicine-market/staging/medawee-items", tool: "tijara_api_read" },
     { operation: "POST /medicine-market/staging/medawee-items", tool: "tijara_api_write" },
+    { operation: "PATCH /medicine-market/staging/medawee-items", tool: "tijara_api_write" },
   ]);
   const server = createMarketApp(pool, secret).listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
@@ -37,9 +38,11 @@ test("Medawee item intake is owner-only, atomic, idempotent, evidenced, and pres
     });
   }
   try {
+    await migration("001_market.sql");
     await migration("20261121_medawee_items_staging.sql");
     await db.exec("INSERT INTO medawee_items_staging(english_name,completion_status) VALUES('Previous','historical')");
     await migration("20261121_medawee_items_staging_intake.sql");
+    await migration("20261126_medawee_item_market_review.sql");
     const evidence = { sourceKind: "official_catalog", sourceUrl: "https://www.yepharma.com/products.aspx?pnum=31",
       medaweeAgentUrl: "https://medawee.com/medicines/entity/agent/abcdef0123456789abcdef01/agent",
       observedAt: "2026-11-21T11:00:00+03:00", note: "Explicit old currency on source." };
@@ -92,6 +95,36 @@ test("Medawee item intake is owner-only, atomic, idempotent, evidenced, and pres
     assert.deepEqual((await goodDocument.json()).items[0].evidence, document);
     const medawee = { ...evidence, sourceKind: "medawee", sourceUrl: "https://medawee.com/medicines/drug/abcdef0123456789abcdef01" };
     assert.equal((await req("POST", owner, { batchId: randomUUID(), rows: [{ ...item, evidence: medawee }] })).status, 201);
+    await db.exec(`INSERT INTO users(id,display_name) VALUES(1,'Owner');
+      INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key)
+      VALUES ('medicine','A product','a product','published',1,'33a61126-0000-4000-8000-000000000001'),
+             ('manufacturer','Maker','maker','published',1,'33a61126-0000-4000-8000-000000000002');`);
+    const complete = { id: receipt.items[0].id, expectedRevision: 0, status: "complete", marketCardId: 1 };
+    const partial = { id: receipt.items[1].id, expectedRevision: 0, status: "needs_verification",
+      marketCardId: null, remaining: "العبوة" };
+    assert.equal((await req("PATCH", { ...owner, owner: false }, { entries: [complete] })).status, 403);
+    assert.equal((await req("PATCH", owner, { entries: [complete, complete] })).status, 400);
+    assert.equal((await req("PATCH", owner, { entries: [{ ...partial, remaining: " " }] })).status, 400);
+    assert.equal((await req("PATCH", owner, { entries: [complete, { ...partial, marketCardId: 2 }] })).status, 422);
+    const afterRollback = await (await req("GET", owner, undefined, "?after=1&pageSize=2")).json();
+    assert.deepEqual(afterRollback.items, receipt.items);
+    assert.equal((await db.query("SELECT * FROM audit_events")).rows.length, 0);
+    const review = await req("PATCH", owner, { entries: [partial, complete] });
+    assert.equal(review.status, 200);
+    const checked = (await review.json()).items;
+    assert.equal(checked[0].completionStatus, "منجز بالكامل");
+    assert.equal(checked[0].linkedMarketCardId, 1);
+    assert.equal(checked[0].reviewRevision, 1);
+    assert.equal(checked[0].defaultSalePriceOldCurrency, item.defaultSalePriceOldCurrency);
+    assert.deepEqual(checked[0].evidence, evidence);
+    assert.equal(checked[1].completionStatus, "تبقى التأكد من: العبوة");
+    assert.equal((await req("PATCH", owner, { entries: [complete] })).status, 409);
+    assert.equal((await req("PATCH", owner, { entries: [
+      { ...partial, id: complete.id, expectedRevision: 1 },
+    ] })).status, 409);
+    const again = await (await req("PATCH", owner, { entries: [{ ...complete, expectedRevision: 1 }] })).json();
+    assert.equal(again.items[0].reviewRevision, 1);
+    assert.equal((await db.query("SELECT * FROM audit_events")).rows.length, 2);
     await db.exec("ALTER TABLE medawee_items_staging ADD CHECK (english_name IS DISTINCT FROM 'Force rollback')");
     const failed = { batchId: randomUUID(), rows: [{ ...item, englishName: "Must roll back" }, { ...item, englishName: "Force rollback" }] };
     assert.equal((await req("POST", owner, failed)).status, 503);
@@ -107,7 +140,7 @@ test("Medawee item intake is owner-only, atomic, idempotent, evidenced, and pres
 test("Medawee list walks all mixed-width bigint IDs in numeric order with string cursors", async () => {
   const db = await PGlite.create();
   try {
-    for (const migration of ["20261121_medawee_items_staging.sql", "20261121_medawee_items_staging_intake.sql"]) {
+    for (const migration of ["001_market.sql", "20261121_medawee_items_staging.sql", "20261121_medawee_items_staging_intake.sql", "20261126_medawee_item_market_review.sql"]) {
       await db.exec(await readFile(new URL("../apps/api/market-migrations/" + migration, import.meta.url), "utf8"));
     }
     await db.exec(`INSERT INTO medawee_items_staging (id, english_name) OVERRIDING SYSTEM VALUE

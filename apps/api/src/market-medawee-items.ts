@@ -69,7 +69,8 @@ export const medaweeItemListSchema = z.object({
 
 const projection = `id::text AS id, english_name AS "englishName", arabic_name AS "arabicName",
  default_sale_price_old_currency::text AS "defaultSalePriceOldCurrency", composition, agent, manufacturer,
- completion_status AS "completionStatus", intake_batch_id AS "batchId", source_evidence AS evidence`;
+ completion_status AS "completionStatus", linked_market_card_id AS "linkedMarketCardId",
+ review_revision AS "reviewRevision", intake_batch_id AS "batchId", source_evidence AS evidence`;
 
 export async function listMedaweeItems(pool: Pool, query: z.infer<typeof medaweeItemListSchema>) {
   const { rows } = await pool.query(
@@ -113,5 +114,65 @@ export async function intakeMedaweeItems(pool: Pool, actorId: number, input: z.i
     await db.query("UPDATE medawee_item_intake_batches SET receipt=$2::jsonb WHERE batch_id=$1",
       [input.batchId, JSON.stringify(receipt)]);
     return { ...receipt, replayed: false };
+  });
+}
+
+
+const reviewItemId = z.string().regex(/^[1-9][0-9]{0,18}$/).refine(x => BigInt(x) <= 9223372036854775807n);
+const cardId = z.number().int().min(1).max(2147483647);
+const reviewBase = { id: reviewItemId, expectedRevision: z.number().int().min(0).max(2147483646) };
+export const medaweeItemReviewBatchSchema = z.object({
+  entries: z.array(z.discriminatedUnion("status", [
+    z.object({ ...reviewBase, status: z.literal("complete"), marketCardId: cardId }).strict(),
+    z.object({ ...reviewBase, status: z.literal("needs_verification"),
+      marketCardId: cardId.nullable(), remaining: z.string().trim().min(1).max(500) }).strict(),
+  ])).min(1).max(50),
+}).strict().refine(({ entries }) => new Set(entries.map(e => e.id)).size === entries.length,
+  "Each staging row may occur only once per batch");
+
+export async function reviewMedaweeItems(pool: Pool, actor: { id: number; displayName: string },
+    input: z.infer<typeof medaweeItemReviewBatchSchema>) {
+  return transaction(pool, async db => {
+    const items = [];
+    const ordered = [...input.entries].sort((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : 1);
+    for (const entry of ordered) {
+      const prior = (await db.query(
+        'SELECT id::text AS id, completion_status, linked_market_card_id, review_revision ' +
+        'FROM medawee_items_staging WHERE id=$1::bigint FOR UPDATE', [entry.id],
+      )).rows[0];
+      if (!prior) throw new HttpError(404, "medawee_item_not_found", "سجل ميداوي غير موجود");
+      if (prior.review_revision !== entry.expectedRevision)
+        throw new HttpError(409, "medawee_item_revision_conflict", "راجع الحالة الحالية قبل إعادة الحفظ");
+      if (prior.linked_market_card_id !== null && prior.linked_market_card_id !== entry.marketCardId)
+        throw new HttpError(409, "medawee_item_card_conflict", "للسجل رابط سوق محفوظ؛ لا يُستبدل في دفعة المراجعة");
+      if (entry.marketCardId !== null) {
+        const target = await db.query(
+          "SELECT id FROM medicine_market_cards WHERE id=$1 AND kind='medicine' AND status='published' AND NOT archived FOR SHARE",
+          [entry.marketCardId],
+        );
+        if (!target.rowCount)
+          throw new HttpError(422, "medawee_market_card_invalid", "يجب اختيار كرت صنف نشط ومنشور في السوق");
+      }
+      const status = entry.status === "complete" ? "منجز بالكامل" : "تبقى التأكد من: " + entry.remaining;
+      if (prior.completion_status === status && prior.linked_market_card_id === entry.marketCardId) {
+        const current = await db.query(`SELECT ${projection} FROM medawee_items_staging WHERE id=$1::bigint`, [entry.id]);
+        items.push(current.rows[0]);
+        continue;
+      }
+      const updated = await db.query(
+        `UPDATE medawee_items_staging SET completion_status=$2, linked_market_card_id=$3,
+          review_revision=review_revision+1 WHERE id=$1::bigint RETURNING ${projection}`,
+        [entry.id, status, entry.marketCardId],
+      );
+      await db.query(
+        "INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value)" +
+        " VALUES($1,$2,'public',NULL,'medicine-market.medawee-item-review','medicine-market',$3,$4::jsonb,$5::jsonb)",
+        [actor.id, actor.displayName, entry.marketCardId, JSON.stringify(prior),
+         JSON.stringify({ id: entry.id, completionStatus: status, linkedMarketCardId: entry.marketCardId,
+           reviewRevision: updated.rows[0].reviewRevision })],
+      );
+      items.push(updated.rows[0]);
+    }
+    return { items };
   });
 }

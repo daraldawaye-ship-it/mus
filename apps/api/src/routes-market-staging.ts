@@ -1,7 +1,7 @@
 import { getStagedImageAsset, stageImageAssets, stagingImageAssetsSchema } from "./market-staging-image-assets.ts";
 import { listMarketImageLabels, marketImageLabelBatchSchema, saveMarketImageLabels } from "./market-image-labels.ts";
 import { imageNameMatchSchema, matchImageNamesEasy } from "./market-image-name-match.ts";
-import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema } from "./market-medawee-items.ts";
+import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema, medaweeItemReviewBatchSchema, reviewMedaweeItems } from "./market-medawee-items.ts";
 import { stagingAppendSchema, appendStagingRows } from "./staging-append.ts";
 import { applyStagingSalePrices, stagingPricesSchema } from "./market-staging-prices.ts";
 import { Router } from "express";
@@ -374,6 +374,11 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const user = await authorize(req);
     const result = await intakeMedaweeItems(pool, user.id, parse(medaweeItemBatchSchema, req.body));
     res.status(result.replayed ? 200 : 201).json(result);
+  }));
+
+  router.patch("/medicine-market/staging/medawee-items", handler(async (req, res) => {
+    const user = await authorize(req);
+    res.json(await reviewMedaweeItems(pool, user, parse(medaweeItemReviewBatchSchema, req.body)));
   }));
 
   router.get("/medicine-market/staging/medawee-agents",handler(async(req,res)=>{
