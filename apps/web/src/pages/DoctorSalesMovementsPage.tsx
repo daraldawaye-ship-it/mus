@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CompanyContext, Doctor } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
@@ -9,6 +9,9 @@ import { formatWholeMoney } from "../format-money";
 import { adenInvoiceToday } from "../invoice-save-date";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 import "./DoctorSalesMovementsPage.css";
+
+const quickKinds = [{ value: "entity", label: "جهة" }, { value: "nurse", label: "ممرض" }] as const;
+type QuickKind = typeof quickKinds[number]["value"];
 
 interface MedicalSale {
   id: number;
@@ -50,6 +53,12 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const access = directory.data?.find(entry => entry.key === "company.doctor-sales-movements");
   const canView = !!access?.enabled && !!access.actionAccess.view;
   const canMarkAccounted = !!access?.enabled && !!access.actionAccess.edit;
+  const doctorAccess = directory.data?.find(entry => entry.key === "company.doctors");
+  const canClassify = canView && !!doctorAccess?.enabled && !!doctorAccess.actionAccess.edit;
+  const queryClient = useQueryClient();
+  const classificationLock = useRef(false);
+  const [classificationBusy, setClassificationBusy] = useState(false);
+  const [classificationNotice, setClassificationNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [pendingAccounted, setPendingAccounted] = useState<MedicalSale | null>(null);
   const [accounting, setAccounting] = useState(false);
   const [accountingError, setAccountingError] = useState("");
@@ -88,6 +97,50 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
     staleTime: 0, refetchOnWindowFocus: true,
   });
   const records = searchPending ? undefined : results.data;
+  async function classify(row: MedicalSale, kind: QuickKind) {
+    if (!canClassify || row.doctorKind !== null || classificationLock.current) return;
+    classificationLock.current = true;
+    setClassificationBusy(true);
+    setClassificationNotice(null);
+    const path = `/companies/${companyId}/doctors/${row.doctorId}`;
+    try {
+      const { doctor } = await api<{ doctor: Doctor }>(path);
+      if (doctor.kind !== null) {
+        setClassificationNotice({ tone: "error", text: "تم تعيين هذا الكرت من مكان آخر. لم أغيّر تصنيفه." });
+      } else {
+        await api(`${path}/field`, {
+          method: "PATCH",
+          body: { field: "kind", value: kind, revision: doctor.revision },
+        });
+        const label = kind === "entity" ? "جهة" : "ممرض";
+        setClassificationNotice({ tone: "success", text: `تم تعيين «${doctor.name}» ${label}.` });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["doctor-sales-movements", user?.id, companyId] }),
+        queryClient.invalidateQueries({ queryKey: ["doctor-sales-report", user?.id, companyId] }),
+        queryClient.invalidateQueries({ queryKey: ["doctor-notification-focus", companyId, row.doctorId] }),
+      ]);
+    } catch (error) {
+      setClassificationNotice({ tone: "error", text: `تعذّر حفظ التصنيف: ${errorMessage(error)}` });
+      await results.refetch();
+    } finally {
+      classificationLock.current = false;
+      setClassificationBusy(false);
+    }
+  }
+  function unclassifiedActions(row: MedicalSale) {
+    if (row.doctorKind !== null) return null;
+    return (
+      <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginInlineStart: 4 }}>
+        <small className="muted">(غير معين)</small>
+        {canClassify && quickKinds.map(({ value, label }) => (
+          <Button key={value} type="button" variant="secondary" size="compact"
+            disabled={classificationBusy} aria-label={`تعيين ${row.doctorName} ${label}`}
+            onClick={() => void classify(row, value)}>{label}</Button>
+        ))}
+      </span>
+    );
+  }
   async function markAsAccounted() {
     if (!pendingAccounted || pendingAccounted.doctorKind === null || !canMarkAccounted || accounting) return;
     setAccounting(true);
@@ -161,6 +214,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
         <Notice tone="warning">لا تملك صلاحية عرض حركة مبيعات الأطباء والممرضين.</Notice>}
       {!searchPending && results.error && <Notice tone="error">{errorMessage(results.error)}</Notice>}
       {accountingSuccess && <Notice tone="success">{accountingSuccess}</Notice>}
+      {classificationNotice && <Notice tone={classificationNotice.tone}>{classificationNotice.text}</Notice>}
       {canView && !invalid && (
         <Card>
           {(searchPending || results.isPending) && <Notice>جارٍ تحميل الفواتير…</Notice>}
@@ -202,7 +256,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                         <td><span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span></td>
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
-                        </Link>{row.doctorKind === null && <small className="muted"> (غير معين)</small>}</td>
+                        </Link>{unclassifiedActions(row)}</td>
                         <td className="doctor-movements-accounting-column">
                           {row.accounted ? (
                             <strong className="doctor-movements-accounted">محاسب</strong>
@@ -232,10 +286,10 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                 {records.items.map(row => (
                   <div className="doctor-movements-mobile-entry" role="listitem" key={row.id}>
                     <div className="doctor-movements-mobile-line doctor-movements-mobile-main">
-                      <Link className="doctor-movements-mobile-name"
-                        to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
-                        {row.doctorName}{row.doctorKind === null && <small className="muted"> (غير معين)</small>}
-                      </Link>
+                      <div className="doctor-movements-mobile-name">
+                        <Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>{row.doctorName}</Link>
+                        {unclassifiedActions(row)}
+                      </div>
                       <bdi className="financial-number doctor-movements-mobile-total">
                         {formatWholeMoney(row.total)}
                       </bdi>
