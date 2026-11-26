@@ -925,7 +925,7 @@ export function commerceRoutes(pool: Pool): Router {
         assertDirectoryAccess(sales, "view");
         return postAdministrativeCustodyFunding(client, companyId, user, input);
       });
-      res.status(201).json(result);
+      res.status(input.mode === "preview" ? 200 : 201).json(result);
     }),
   );
   // The sales header custody action is separate from access to the custody ledger page.

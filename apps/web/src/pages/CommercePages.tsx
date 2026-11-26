@@ -4024,9 +4024,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       {custodyFundingOpen && <AdministrativeCustodyFundingDialog
         companyId={companyId}
         onClose={() => setCustodyFundingOpen(false)}
-        onSaved={documentId => {
+        onSaved={({documentId, varianceDocumentId, varianceKind, varianceAmount}) => {
           setCustodyFundingOpen(false);
-          setCashboxNotice(`تمت تغذية العهدة الإدارية من صندوقك. رقم القيد #${documentId}`);
+          const match = varianceDocumentId === null ? "الصندوق مطابق."
+            : `${varianceKind === "shortage" ? "عجز" : "زيادة"} ${varianceAmount} ريال، قيد #${varianceDocumentId}.`;
+          setCashboxNotice(`تمت تغذية العهدة الإدارية من صندوقك. قيد التغذية #${documentId}. ${match}`);
           void invalidate();
           void client.invalidateQueries({queryKey:["invoice-side-cashbox",user?.id,companyId]});
         }} />}
