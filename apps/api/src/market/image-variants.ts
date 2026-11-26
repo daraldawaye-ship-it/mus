@@ -25,10 +25,12 @@ let transformations = 0;
 
 /** Only exterior white/near-white pixels are expendable; keep every darker pixel
  * and a small safety margin, including isolated marks near the image edge. */
-async function exteriorWhitespaceBounds(bytes: Buffer) {
+async function exteriorWhitespaceBounds(bytes: Buffer, buttonClickProduct = false) {
   const { data, info } = await sharp(bytes, { limitInputPixels: 30_000_000, animated: false, pages: 1 })
     .rotate().toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let left = info.width, top = info.height, right = -1, bottom = -1;
+  const rowLeft = buttonClickProduct ? new Int32Array(info.height).fill(info.width) : null;
+  const rowRight = buttonClickProduct ? new Int32Array(info.height).fill(-1) : null;
   for (let y = 0; y < info.height; y++) {
     for (let x = 0; x < info.width; x++) {
       const at = (y * info.width + x) * 4, alpha = data[at + 3]!;
@@ -38,10 +40,55 @@ async function exteriorWhitespaceBounds(bytes: Buffer) {
       if (!visible) continue;
       left = Math.min(left, x); right = Math.max(right, x);
       top = Math.min(top, y); bottom = Math.max(bottom, y);
+      if (rowLeft && rowRight) {
+        rowLeft[y] = Math.min(rowLeft[y]!, x);
+        rowRight[y] = Math.max(rowRight[y]!, x);
+      }
     }
   }
   if (right < left || bottom < top) return null; // Entirely blank: preserve it.
-  const padding = Math.min(12, Math.max(2, Math.ceil(Math.max(right - left + 1, bottom - top + 1) * 0.02)));
+  // Button Click originals can contain a small, detached lower-right brand
+  // stamp beneath a white horizontal gutter. Exclude only that isolated
+  // corner band; preserve all marks within the product and ambiguous layouts.
+  if (rowLeft && rowRight) {
+    const minGap = Math.max(4, Math.ceil(info.height * 0.015));
+    let best: { left: number; right: number; bottom: number; gap: number } | null = null;
+    let next = bottom;
+    let tailLeft = rowLeft[bottom]!, tailRight = rowRight[bottom]!;
+    for (let y = bottom - 1; y >= top; y--) {
+      if (rowRight[y]! < 0) continue;
+      const gap = next - y - 1;
+      const tailWidth = tailRight - tailLeft + 1;
+      const tailHeight = bottom - next + 1;
+      if (gap >= minGap &&
+          next >= info.height * 0.72 &&
+          bottom >= info.height * 0.86 &&
+          tailLeft >= info.width * 0.62 &&
+          tailRight >= info.width * 0.86 &&
+          tailWidth <= info.width * 0.29 &&
+          tailHeight <= info.height * 0.18 &&
+          tailWidth >= info.width * 0.035 &&
+          y - top + 1 >= info.height * 0.22) {
+        let productLeft = info.width, productRight = -1;
+        for (let yy = top; yy <= y; yy++) {
+          productLeft = Math.min(productLeft, rowLeft[yy]!);
+          productRight = Math.max(productRight, rowRight[yy]!);
+        }
+        if (productRight - productLeft + 1 >= tailWidth * 1.5 &&
+            (!best || gap > best.gap)) {
+          best = { left: productLeft, right: productRight, bottom: y, gap };
+        }
+      }
+      tailLeft = Math.min(tailLeft, rowLeft[y]!);
+      tailRight = Math.max(tailRight, rowRight[y]!);
+      next = y;
+    }
+    if (best) {
+      left = best.left; right = best.right; bottom = best.bottom;
+    }
+  }
+  const padding = buttonClickProduct ? 2 :
+    Math.min(12, Math.max(2, Math.ceil(Math.max(right - left + 1, bottom - top + 1) * 0.02)));
   left = Math.max(0, left - padding); top = Math.max(0, top - padding);
   right = Math.min(info.width - 1, right + padding);
   bottom = Math.min(info.height - 1, bottom + padding);
@@ -50,7 +97,7 @@ async function exteriorWhitespaceBounds(bytes: Buffer) {
 }
 
 /** GIF is decoded as one still frame; metadata and the raw input are not stored. */
-export async function buildMarketImageVariants(bytes: Buffer, input: { cropWhitespace?: boolean } = {}): Promise<ImageVariants> {
+export async function buildMarketImageVariants(bytes: Buffer, input: { cropWhitespace?: boolean; buttonClickProduct?: boolean } = {}): Promise<ImageVariants> {
   if (!bytes.length || bytes.length > MAX_SOURCE)
     throw new HttpError(400, "image_size", "حجم الصورة غير مدعوم");
   if (transformations >= 2)
@@ -61,7 +108,7 @@ export async function buildMarketImageVariants(bytes: Buffer, input: { cropWhite
     const meta = await sharp(bytes, options).metadata();
     if (!["jpeg", "png", "webp", "gif", "avif", "heif"].includes(meta.format ?? ""))
       throw new HttpError(400, "image_format", "صيغة الصورة غير مدعومة");
-    const crop = input.cropWhitespace ? await exteriorWhitespaceBounds(bytes) : null;
+    const crop = input.cropWhitespace ? await exteriorWhitespaceBounds(bytes, input.buttonClickProduct) : null;
     const resize = async (size: number, maximum: number) => {
       for (const scale of [1, 0.8, 0.6]) {
         for (const quality of [82, 70, 56, 42, 28]) {
