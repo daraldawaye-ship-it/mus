@@ -21,7 +21,7 @@ export function MarketCardCounts({card, compact = false}: {card: MarketCard; com
       <span>{compact ? ` (${stats.ratingCount})` : ` · ${stats.ratingCount} تقييم`}</span>
     </span>
     {marketRelationKeys[card.kind]?.filter(key => (key !== "alternatives" && (key !== "manufacturers" || card.kind !== "agent")) || stats.relations[key] != null).map(key =>
-      <span key={key} title={key === "alternatives" ? "الأصناف الأخرى المرتبطة بكرت التركيب نفسه" : undefined}>{marketRelationLabels[key]} {stats.relations[key] ?? 0}</span>)}
+      <span key={key} title={key === "alternatives" ? "عدد الأصناف المرتبطة بالتركيب نفسه، بما فيها هذا الصنف. صفر يعني أنه غير مرتبط بتركيب." : undefined}>{marketRelationLabels[key]} {stats.relations[key] ?? 0}</span>)}
   </span>;
 }
 

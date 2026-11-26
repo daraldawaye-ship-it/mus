@@ -412,18 +412,13 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
 const marketRelationsSql = "COALESCE(s.relations,market_relation_counts(c.id))";
 function marketAlternativesSql() {
   const ref = "market_ref(c.data->>'compositionId')";
-  // The composition count is invalidated when medicine membership changes.
-  // Archived/missing compositions still allow the existing same-reference list
-  // to find alternatives; use the indexed medicine relation for that case.
-  return `CASE WHEN c.kind='medicine' THEN CASE WHEN ${ref} IS NULL THEN 0 ELSE COALESCE(
-    (SELECT GREATEST((COALESCE(cs.relations,market_relation_counts(comp.id))->>'medicines')::int -
-        (c.status='published' AND NOT c.archived)::int, 0)
+  // Mirror the composition's own statistics unchanged; no separate count
+  // or sibling writes when a medicine is added, moved or archived.
+  return `CASE WHEN c.kind='medicine' THEN COALESCE(
+    (SELECT (COALESCE(cs.relations,market_relation_counts(comp.id))->>'medicines')::int
       FROM medicine_market_cards comp JOIN market_card_statistics cs ON cs.card_id=comp.id
       WHERE comp.id=${ref} AND comp.kind='composition' AND comp.status='published' AND NOT comp.archived),
-    (SELECT count(*)::int FROM medicine_market_cards a
-      WHERE a.kind='medicine' AND a.status='published' AND NOT a.archived
-        AND market_ref(a.data->>'compositionId')=${ref} AND a.id<>c.id)
-  ) END END`;
+    0) END`;
 }
 function marketCardOrder(sort: MarketCardSort, kind: string | null, isolated: boolean) {
   const fallback = "c.updated_at DESC,c.id DESC";
