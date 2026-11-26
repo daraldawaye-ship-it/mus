@@ -31,7 +31,13 @@
   color: var(--primary);
 }
 
-.medical-payment-scroll .medical-payment-moment bdi + bdi { margin-inline-start: .45em; }
+.medical-payment-moment-content {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+}
+.medical-payment-time-label { white-space: nowrap; }
 
 @media (max-width: 760px) {
   .card.medical-payment-card { padding: 8px; }
@@ -62,7 +68,6 @@
     font-weight: 600;
   }
   .medical-payment-scroll .medical-payment-movements { font-size: 12px; }
-  .medical-payment-scroll .medical-payment-moment bdi { display: block; }
-  .medical-payment-scroll .medical-payment-moment bdi + bdi { margin-inline-start: 0; }
+  .medical-payment-moment-content { flex-direction: column; gap: 4px; }
   .medical-payment-scroll .medical-payment-expanded { background: var(--table-head); }
 }

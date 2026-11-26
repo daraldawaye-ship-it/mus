@@ -5,6 +5,16 @@ import { pageByKey } from "../packages/contracts/src/pages.ts";
 import { centralPageAllows } from "../apps/api/src/services/central-access-authorization.ts";
 import { medicalPaymentDetailSql, medicalPaymentSummarySql, validMedicalPaymentRange } from "../apps/api/src/services/medical-payment-summary.ts";
 
+import { medicalPaymentTimeLabel } from "../apps/web/src/medical-payment-time.ts";
+
+test("Aden time is displayed in 12-hour Arabic format without a timezone shift", () => {
+  assert.deepEqual(medicalPaymentTimeLabel("00:05"), {clock:"12:05", period:"صباحًا"});
+  assert.deepEqual(medicalPaymentTimeLabel("09:42"), {clock:"9:42", period:"صباحًا"});
+  assert.deepEqual(medicalPaymentTimeLabel("12:00"), {clock:"12:00", period:"مساءً"});
+  assert.deepEqual(medicalPaymentTimeLabel("19:42"), {clock:"7:42", period:"مساءً"});
+  assert.equal(medicalPaymentTimeLabel(null), null);
+  assert.equal(medicalPaymentTimeLabel("24:61"), null);
+});
 test("report date window allows yesterday through today and up to five days earlier", () => {
   const today = "2026-11-26", earliest = "2026-11-21";
   assert.equal(validMedicalPaymentRange("2026-11-25", today, today, earliest), true);

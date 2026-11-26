@@ -4,6 +4,7 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index.ts
 import { api, useSession } from "../api";
 import { formatWholeMoney } from "../format-money";
 import { adenInvoiceToday } from "../invoice-save-date";
+import { medicalPaymentTimeLabel } from "../medical-payment-time";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
@@ -14,6 +15,16 @@ const columns = [["name", "الاسم الرئيسي"], ["count", "عدد الم
 type Sort = typeof columns[number][0];
 type Report = { totalAmount?: string; items: Array<{ name: string; movementCount: number; totalAmount: string }> };
 type Movement = { date: string; time: string | null; amount: string; actor: string };
+function MovementMoment({ date, time }: Pick<Movement, "date" | "time">) {
+  const label = medicalPaymentTimeLabel(time);
+  return <span className="medical-payment-moment-content">
+    <bdi dir="ltr">{date}</bdi>
+    {label && <span className="medical-payment-time-label">
+      <bdi dir="ltr">{label.clock}</bdi>{" "}{label.period}
+    </span>}
+  </span>;
+}
+
 
 export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -101,7 +112,7 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
                   <colgroup><col className="medical-payment-date-col"/><col className="medical-payment-amount-col"/><col/></colgroup>
                   <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
                   <tbody>{detail.data.movements.map((movement, i) => <tr key={i}>
-                    <td className="medical-payment-moment"><bdi>{movement.date}</bdi>{movement.time && <bdi>{movement.time}</bdi>}</td>
+                    <td><MovementMoment date={movement.date} time={movement.time}/></td>
                     <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
                     <td>{movement.actor || "—"}</td>
                   </tr>)}</tbody>
