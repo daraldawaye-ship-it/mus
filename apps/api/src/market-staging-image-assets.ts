@@ -15,7 +15,7 @@ export const stagingImagePath=(sourceId:number, position:number)=>`/api/medicine
 const section="أسماء الصور";
 export async function stageImageAssets(pool:Pool,actorId:number,input:z.infer<typeof stagingImageAssetsSchema>){
  if(Buffer.byteLength(JSON.stringify(input))>700*1024)throw new HttpError(413,"staging_image_batch_size","حجم دفعة الصور أكبر من المسموح");
- const items=[];
+ const items:{bytes:Buffer;sha256:string;rows:z.infer<typeof sourceRef>[]}[]=[];
  for(const image of input.images){
   const encoded=image.dataUrl.slice(23);
   const bytes=Buffer.from(encoded,"base64");
