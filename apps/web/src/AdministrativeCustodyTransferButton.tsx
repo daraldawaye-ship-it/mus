@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { normalizeDigits, type Doctor, type Page } from "../../../packages/contracts/src/index";
+import { doctorKindLabels, normalizeDigits, type Doctor, type Page } from "../../../packages/contracts/src/index";
 import { api, ApiFailure, sessionRequiresLogin, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { errorMessage } from "./phase2";
@@ -19,6 +19,12 @@ type CustodyDraft = {
 };
 
 type CorrectionSource = { id: number; documentNumber: string; amount: string; notes: string; createdAt: string };
+
+function custodyBeneficiaryLabel(doctor: Doctor) {
+  const shared = doctor.sharedName && doctor.sharedName !== doctor.name ? ` — ${doctor.sharedName}` : "";
+  const kind = doctor.kind === null ? "غير معين" : doctorKindLabels[doctor.kind];
+  return `${doctor.name}${shared} — ${kind} — #${doctor.id}`;
+}
 
 function moneyKey(value: string) {
   const [whole, fraction = ""] = value.replace(/^-/, "").split(".");
@@ -105,13 +111,13 @@ export function AdministrativeCustodyTransferButton({
       setError("أدخل عدد قصاصات موجبًا صحيحًا."); return;
     }
     if (!window.confirm(correcting
-      ? `تأكيد عكس قيد صرف ${draft.doctor!.name} رقم ${selectedCorrection?.documentNumber ?? draft.correctionSourceId} بمبلغ ${amount.slice(1)} ريال؟ لن يتغيّر تأشير المبيعات.`
+      ? `تأكيد عكس قيد صرف ${custodyBeneficiaryLabel(draft.doctor!)} رقم ${selectedCorrection?.documentNumber ?? draft.correctionSourceId} بمبلغ ${amount.slice(1)} ريال؟ لن يتغيّر تأشير المبيعات.`
       : draft.expenseKind === "medical"
       ? draft.doctor!.kind === null
-        ? `تأكيد صرف العمولة إلى ${draft.doctor!.name} (غير معين) دون تأشير المبيعات؟`
-        : `تأكيد صرف المبلغ إلى ${draft.doctor!.name} وتأشير جميع مبيعاته السابقة «محاسب حتى هنا»؟`
+        ? `تأكيد صرف العمولة إلى ${custodyBeneficiaryLabel(draft.doctor!)} دون تأشير المبيعات؟`
+        : `تأكيد صرف المبلغ إلى ${custodyBeneficiaryLabel(draft.doctor!)} وتأشير جميع مبيعاته السابقة «محاسب حتى هنا»؟`
       : draft.expenseKind === "slips"
-      ? `تأكيد صرف القصاصات إلى ${draft.doctor!.name}، العدد ${slipCount}، دون تأشير المبيعات كمحاسبة؟`
+      ? `تأكيد صرف القصاصات إلى ${custodyBeneficiaryLabel(draft.doctor!)}، العدد ${slipCount}، دون تأشير المبيعات كمحاسبة؟`
       : amount.startsWith("-")
       ? "هل تريد إعادة المبلغ من حافظة العهدة الإدارية إلى حساب العهدة؟"
       : "هل تريد ترحيل المبلغ من العهدة الإدارية إلى حافظتها؟")) return;
@@ -185,8 +191,8 @@ export function AdministrativeCustodyTransferButton({
                 {doctors.isError && <Notice tone="error">تعذر البحث عن المستفيد. <Button variant="secondary" size="compact" onClick={() => void doctors.refetch()}>إعادة المحاولة</Button></Notice>}
                 {doctors.data?.items.map(doctor => <Button key={doctor.id} variant="secondary" size="compact"
                   disabled={busy || unknown} onClick={() => setDraft(previous => previous
-                    ? { ...previous, doctor, doctorQuery: doctor.kind === null ? doctor.name + " (غير معين)" : doctor.name, correctionSourceId: null } : previous)}>
-                  {doctor.name}{doctor.sharedName && doctor.sharedName !== doctor.name ? ` — ${doctor.sharedName}` : ""}{doctor.kind === null ? " (غير معين)" : ""}
+                    ? { ...previous, doctor, doctorQuery: custodyBeneficiaryLabel(doctor), correctionSourceId: null } : previous)}>
+                  {custodyBeneficiaryLabel(doctor)}
                 </Button>)}
                 {doctors.data?.items.length === 0 && <small>لا توجد نتائج مطابقة.</small>}
               </div>}
