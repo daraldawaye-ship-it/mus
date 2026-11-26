@@ -550,8 +550,8 @@ export async function auditPage(
     else dateTo = date;
     parameters.push(date);
     filter += key === "dateFrom"
-      ? ` AND a.created_at >= (${parameters.length}::date::timestamp AT TIME ZONE 'Asia/Aden')`
-      : ` AND a.created_at < ((${parameters.length}::date + 1)::timestamp AT TIME ZONE 'Asia/Aden')`;
+      ? ` AND a.created_at >= ($${parameters.length}::date::timestamp AT TIME ZONE 'Asia/Aden')`
+      : ` AND a.created_at < (($${parameters.length}::date + 1)::timestamp AT TIME ZONE 'Asia/Aden')`;
   }
   if (dateFrom && dateTo && dateFrom > dateTo)
     throw new HttpError(400,"invalid_query","تاريخ البداية بعد تاريخ النهاية");
