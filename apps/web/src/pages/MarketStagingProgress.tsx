@@ -31,7 +31,7 @@ function preview(raw: string): string {
     return text.replace(/\s+/g, " ").slice(0, 700);
   } catch { return raw.slice(0, 700); }
 }
-const imageColumns = ["اسم الملف","الاسم عربي من الملف","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","اسم الملف المضغوط"];
+const imageColumns = ["اسم الملف","الاسم عربي من الملف","الاسم بالإنجليزي","التركيب","الشركة المصنّعة","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","اسم الملف المضغوط"];
 export function MarketImageFilenameStaging() {
   const [open,setOpen]=useState(false);
   const [chosen,setChosen]=useState("");

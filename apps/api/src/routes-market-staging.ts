@@ -1,3 +1,4 @@
+import { listMarketImageLabels, marketImageLabelBatchSchema, saveMarketImageLabels } from "./market-image-labels.ts";
 import { imageNameMatchSchema, matchImageNamesEasy } from "./market-image-name-match.ts";
 import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema } from "./market-medawee-items.ts";
 import { stagingAppendSchema, appendStagingRows } from "./staging-append.ts";
@@ -477,6 +478,16 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
     const input=parse(stagingAppendSchema,req.body);
     res.json(await transaction(pool,db=>appendStagingRows(db,sourceId,input,owner)));
+  }));
+  router.get("/medicine-market/staging/:sourceId/image-labels",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    res.json(await listMarketImageLabels(pool,sourceId));
+  }));
+  router.patch("/medicine-market/staging/:sourceId/image-labels",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    res.json(await saveMarketImageLabels(pool,sourceId,parse(marketImageLabelBatchSchema,req.body)));
   }));
   router.post("/medicine-market/staging/image-filenames/match-easy",handler(async(req,res)=>{
     await authorize(req);

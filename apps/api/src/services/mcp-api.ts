@@ -1,3 +1,4 @@
+import { marketImageLabelBatchSchema } from "../market-image-labels.ts";
 import { imageNameMatchOperation, imageNameMatchSchema } from "../market-image-name-match.ts";
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
@@ -168,6 +169,9 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
     source:"routes-market-staging.ts",queryFields:[],
     bodyContract:"medaweeManufacturerVerificationSchema",bodySchema:z.toJSONSchema(medaweeManufacturerVerificationSchema),
   },
+  "GET /medicine-market/staging/:sourceId/image-labels": {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"]},
+  "PATCH /medicine-market/staging/:sourceId/image-labels": {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
+    bodyContract:"marketImageLabelBatchSchema",bodySchema:z.toJSONSchema(marketImageLabelBatchSchema,{io:"input"})},
   [imageNameMatchOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:[],
     bodyContract:"imageNameMatchSchema",bodySchema:z.toJSONSchema(imageNameMatchSchema,{io:"input"})},
   [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
