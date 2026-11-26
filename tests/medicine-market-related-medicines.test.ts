@@ -11,7 +11,7 @@ import type { MarketKind, MarketRelatedMedicinesPage } from "../packages/contrac
 test("related market medicines page by exact relation and omit hidden cards and the current medicine", async t => {
   const db = new PGlite();
   t.after(() => db.close());
-  for (const file of ["001_market.sql", "20261116_card_statistics.sql", "20261117_card_rating_statistics.sql"]) {
+  for (const file of ["001_market.sql", "20261116_card_statistics.sql", "20261117_card_rating_statistics.sql", "20261127_agent_manufacturer_statistics.sql"]) {
     await db.exec(await readFile("apps/api/market-migrations/" + file, "utf8"));
   }
   await db.exec("INSERT INTO users(id,display_name) VALUES(1,'Owner')");
@@ -100,6 +100,30 @@ test("related market medicines page by exact relation and omit hidden cards and 
   assert.equal(card.statistics?.comments, 1);
   assert.equal(card.statistics?.opens, 1);
   assert.equal(card.statistics?.ratingAverage, 4);
+  assert.equal(card.statistics?.relations.alternatives, 41);
+  const detail = async (id: number) => {
+    const response = await fetch(`${root}/${id}`);
+    assert.equal(response.status, 200);
+    return (await response.json()).card;
+  };
+  const list = async (q: string) => {
+    const response = await fetch(`${root}?${q}`);
+    assert.equal(response.status, 200);
+    return await response.json();
+  };
+  assert.equal((await detail(medicine)).statistics.relations.alternatives, 41);
+  assert.equal((await detail(malformed)).statistics.relations.alternatives, 0);
+  assert.equal((await detail(anotherForm)).statistics.relations.alternatives, 0);
+  assert.deepEqual((await list("kind=medicine&sort=alternatives&pageSize=1&page=2")).items.map(x=>x.id), [related[1]]);
+  assert.equal((await list("kind=medicine&sort=alternatives&q="+medicine)).items[0].statistics.relations.alternatives,41);
+  for (const sort of ["opens", "comments", "likes", "ratingAverage", "ratingCount"])
+    assert.equal((await list("kind=medicine&pageSize=1&sort="+sort)).items[0].id,sampleId);
+  assert.equal((await list("kind=composition&sort=medicines&pageSize=1")).items[0].id,composition);
+  const newAgent = await add("agent", "Second agent");
+  await add("manufacturer", "Direct manufacturer", {agentId: agent});
+  await add("manufacturer", "Other direct manufacturer", {agentId: agent}, "published", true);
+  assert.equal((await list("kind=agent&sort=manufacturers&pageSize=1")).items[0].id,agent);
+  assert.equal((await detail(newAgent)).statistics.relations.manufacturers,0);
   assert.deepEqual(await all(agent), [...related, agentOnly]);
   assert.deepEqual(await all(manufacturer), [...related, manufacturerOnly]);
   assert.deepEqual(await all(composition), [...related, medicine]);
@@ -108,6 +132,12 @@ test("related market medicines page by exact relation and omit hidden cards and 
   for (const id of [unlinked, malformed, anotherForm]) {
     assert.deepEqual(await get(id), { items: [], nextCursor: null });
   }
+  // A subsequent archive immediately changes the other medicines' statistic.
+  await db.query("UPDATE medicine_market_cards SET archived=true WHERE id=$1",[sampleId]);
+  assert.equal((await detail(medicine)).statistics.relations.alternatives,40);
+  await db.query("UPDATE medicine_market_cards SET archived=true WHERE id=$1",[composition]);
+  assert.equal((await detail(medicine)).statistics.relations.alternatives,40);
+  assert.equal((await list("kind=medicine&sort=alternatives&q="+medicine)).items[0].statistics.relations.alternatives,40);
   assert.equal((await request(hiddenAgent)).status, 404);
   assert.equal((await request(agent, "?cursor=0")).status, 400);
 });

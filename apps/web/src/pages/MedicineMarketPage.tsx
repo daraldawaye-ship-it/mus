@@ -37,7 +37,7 @@ import { MarketRelatedMedicines } from "./MarketRelatedMedicines";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
-import { isMarketAdministrativeKind } from "../../../../packages/contracts/src/medicine-market";
+import { isMarketAdministrativeKind, marketCardSortForKind, marketRelationKeys, marketRelationLabels } from "../../../../packages/contracts/src/medicine-market";
 import type {
   MarketReferenceEntry,
   MarketKind as Kind,
@@ -1207,7 +1207,7 @@ export function MedicineMarketPage({
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "",
     kind = params.get("kind") ?? "",
-    sort = params.get("sort") === "created" ? "created" : "updated",
+    sort = marketCardSortForKind(params.get("sort"), kind),
     page = Math.max(1, Number(params.get("page")) || 1),
     selected = Number(params.get("card")) || null;
   const selectedRef = useRef(selected);
@@ -1251,6 +1251,11 @@ export function MedicineMarketPage({
   const visibleTypes = orderPublicMarketTypes(types);
   const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
+  const sectionSorts = currentType ? marketRelationKeys[currentType.key] ?? [] : [];
+  const browseKind = (nextKind: string) => write({
+    kind: nextKind, page: null, card: null,
+    sort: marketCardSortForKind(sort, nextKind),
+  });
   const sectionedCatalog = tab === "catalog" && !selected && !kind && !q;
   const dosageList = useMarketQuery<Page<MarketCard>>({
     queryKey: ["medicine-market", user?.id, "fixed-dosage-forms"],
@@ -1578,7 +1583,7 @@ export function MedicineMarketPage({
               label="نوع الكرت"
               value={kind}
               onChange={(e) =>
-                write({ kind: e.target.value, page: null, card: null })
+                browseKind(e.target.value)
               }
             >
               <option value="">أقسام السوق</option>
@@ -1588,11 +1593,21 @@ export function MedicineMarketPage({
                 </option>
               ))}
             </Select>
-            {kind !== "drug-classification" && <Select label="ترتيب النتائج" value={sort}
-              onChange={(e) => write({ sort: e.target.value === "updated" ? "updated" : "created", page: null, card: null })}>
-              <option value="updated">الأحدث تحديثًا أو إضافة</option>
+            <Select label="ترتيب النتائج" value={sort}
+              onChange={e => write({ sort: marketCardSortForKind(e.target.value, kind), page: null, card: null })}>
+              <option value="updated">{kind === "drug-classification" ? "الترتيب الافتراضي" : "الأحدث تحديثًا أو إضافة"}</option>
               <option value="created">الأحدث إضافة</option>
-            </Select>}
+              {sectionSorts.length > 0 && <optgroup label="إحصائيات القسم">
+                {sectionSorts.map(key => <option key={key} value={key}>الأكثر حسب عدد {marketRelationLabels[key]}</option>)}
+              </optgroup>}
+              <optgroup label="إحصائيات التفاعل">
+                <option value="opens">الأكثر فتحًا</option>
+                <option value="comments">الأكثر تعليقات معتمدة</option>
+                <option value="likes">الأكثر إعجابًا</option>
+                <option value="ratingAverage">الأعلى تقييمًا</option>
+                <option value="ratingCount">الأكثر حسب عدد التقييمات</option>
+              </optgroup>
+            </Select>
             {permissions?.canModerate && (
               <label className="medicine-market-check">
                 <input
@@ -1618,7 +1633,7 @@ export function MedicineMarketPage({
                 key={t.key}
                 type="button"
                 className={kind === t.key ? "is-active" : ""}
-                onClick={() => write({ kind: t.key, page: null, card: null })}
+                onClick={() => browseKind(t.key)}
               >
                 {t.key && <KindIcon kind={t.key} size={15} />} {t.label}
               </button>
@@ -1895,7 +1910,7 @@ export function MedicineMarketPage({
           ) : sectionedCatalog ? (
   <MarketCatalogSections types={visibleTypes} q={q} sort={sort} archived={archived}
     references={references} onOpen={openCard}
-    onBrowse={nextKind => write({ kind: nextKind, page: null, card: null })} />
+    onBrowse={browseKind} />
 ) : (
   <>
     <MarketOfflineStatus path={list.marketPath}/>

@@ -9,6 +9,9 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { z } from "zod";
 import {
   marketKinds,
+  marketCardSortForKind,
+  marketCardSortKeys,
+  type MarketCardSort,
   marketTypes,
   isMarketAdministrativeKind,
   type MarketCard,
@@ -392,7 +395,10 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
     updatedAt: row.updated_at.toISOString(),
     likes: Number(row.likes ?? 0),
     ...(row.opens != null ? { statistics: {
-      opens: Number(row.opens), comments: Number(row.comments), relations: row.relations,
+      opens: Number(row.opens), comments: Number(row.comments), relations: {
+        ...row.relations,
+        ...(row.alternatives_count != null ? { alternatives: Number(row.alternatives_count) } : {}),
+      },
       ratingAverage: row.rating_average == null ? null : Number(row.rating_average),
       ratingCount: Number(row.rating_count ?? 0),
     } } : {}),
@@ -403,10 +409,40 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
     myRating: row.my_rating ?? null,
   };
 }
+const marketRelationsSql = "COALESCE(s.relations,market_relation_counts(c.id))";
+function marketAlternativesSql() {
+  const ref = "market_ref(c.data->>'compositionId')";
+  // The composition count is invalidated when medicine membership changes.
+  // Archived/missing compositions still allow the existing same-reference list
+  // to find alternatives; use the indexed medicine relation for that case.
+  return `CASE WHEN c.kind='medicine' THEN CASE WHEN ${ref} IS NULL THEN 0 ELSE COALESCE(
+    (SELECT GREATEST((COALESCE(cs.relations,market_relation_counts(comp.id))->>'medicines')::int -
+        (c.status='published' AND NOT c.archived)::int, 0)
+      FROM medicine_market_cards comp JOIN market_card_statistics cs ON cs.card_id=comp.id
+      WHERE comp.id=${ref} AND comp.kind='composition' AND comp.status='published' AND NOT comp.archived),
+    (SELECT count(*)::int FROM medicine_market_cards a
+      WHERE a.kind='medicine' AND a.status='published' AND NOT a.archived
+        AND market_ref(a.data->>'compositionId')=${ref} AND a.id<>c.id)
+  ) END END`;
+}
+function marketCardOrder(sort: MarketCardSort, kind: string | null, isolated: boolean) {
+  const fallback = "c.updated_at DESC,c.id DESC";
+  switch (sort) {
+    case "updated": return kind === "drug-classification" ? "c.id ASC" : fallback;
+    case "created": return "c.created_at DESC,c.id DESC";
+    case "ratingAverage": return `rating_average DESC NULLS LAST,rating_count DESC,${fallback}`;
+    case "ratingCount": return `rating_count DESC NULLS LAST,${fallback}`;
+    case "likes": return `likes DESC NULLS LAST,${fallback}`;
+    case "opens": return isolated ? `s.opens DESC,${fallback}` : fallback;
+    case "comments": return isolated ? `s.comments DESC,${fallback}` : fallback;
+    case "alternatives": return isolated ? `alternatives_count DESC NULLS LAST,${fallback}` : fallback;
+    default: return isolated ? `COALESCE((${marketRelationsSql}->>'${sort}')::integer,0) DESC,${fallback}` : fallback;
+  }
+}
 function marketCardSelect(isolated: boolean) {
   // The company database can still serve the legacy embedded catalog in development.
   const counters = isolated
-    ? "s.likes, s.opens, s.comments, COALESCE(s.relations,market_relation_counts(c.id)) relations"
+    ? `s.likes, s.opens, s.comments, ${marketRelationsSql} relations, ${marketAlternativesSql()} alternatives_count`
     : "(SELECT count(*) FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.liked) likes";
   const ratings = isolated
     ? "s.rating_average AS rating_average, s.rating_count AS rating_count"
@@ -1061,7 +1097,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           : parse(z.enum(marketKinds), req.query.kind);
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
-      const sort = parse(z.enum(["created","updated"]),req.query.sort ?? "updated");
+      const sort = marketCardSortForKind(parse(z.enum(marketCardSortKeys), req.query.sort ?? "updated"), kind);
       const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
       // Fixed dosage forms stay available by explicit lookup for medicine
       // relations, but are never catalog tiles or user-create choices.
@@ -1072,7 +1108,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR COALESCE(c.data->>'arabicSearchKey','') LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
       const args = [u?.id ?? null, archived, kind, `%${query}%`, v.q];
       const rows = await pool.query(
-        `${cardSelect} WHERE ${condition} ORDER BY ${kind === "drug-classification" ? "c.id ASC" : `c.${sort==="created"?"created_at":"updated_at"} DESC,c.id DESC`} LIMIT $6 OFFSET $7`,
+        `${cardSelect} WHERE ${condition} ORDER BY ${marketCardOrder(sort, kind, stagingIsolated)} LIMIT $6 OFFSET $7`,
         [...args, v.pageSize, v.offset],
       );
       const count = await pool.query(

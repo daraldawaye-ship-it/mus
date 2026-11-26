@@ -1,5 +1,5 @@
 import type { User } from "../../../packages/contracts/src/index";
-import { marketKinds, type MarketCard } from "../../../packages/contracts/src/medicine-market";
+import { marketKinds, marketCardSortForKind, type MarketCard, type MarketCardSort } from "../../../packages/contracts/src/medicine-market";
 
 /** Market snapshots are never shared with company/accounting downloads. */
 const DB_NAME = "alraesy-market-offline-v1";
@@ -147,7 +147,7 @@ export function isMarketCachePath(path: string): boolean {
     (!params.has("page") || positive(params.get("page"), 1000000)) &&
     (!params.has("pageSize") || positive(params.get("pageSize"), 100)) &&
     (!params.has("archived") || ["true", "false"].includes(params.get("archived")!)) &&
-    (!params.has("sort") || ["created", "updated"].includes(params.get("sort")!));
+    (!params.has("sort") || marketCardSortForKind(params.get("sort"), params.get("kind")) === params.get("sort"));
 }
 
 export function getMarketReadStatus(path: string): MarketReadStatus | null {
@@ -342,17 +342,32 @@ function normalizedText(value: unknown): string {
   return String(value ?? "").normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/\s+/g, " ").trim().toLowerCase();
 }
+function savedMarketRank(card: MarketCard, sort: MarketCardSort): number {
+  switch(sort) {
+    case "likes": return card.likes;
+    case "ratingAverage": return card.ratingAverage ?? -1;
+    case "ratingCount": return card.ratingCount;
+    case "comments": return card.statistics?.comments ?? 0;
+    case "opens": return card.statistics?.opens ?? 0;
+    case "updated": case "created": return 0;
+    default: return card.statistics?.relations[sort] ?? 0;
+  }
+}
 export function searchSavedMarketCards(cards: readonly MarketCard[], path: string) {
   const params = new URLSearchParams(path.split("?", 2)[1] ?? "");
   const kind = params.get("kind") || null, query = normalizedText(params.get("q"));
   const archived = params.get("archived") === "true";
   const page = Number(params.get("page") ?? 1), pageSize = Number(params.get("pageSize") ?? 20);
-  const sort = params.get("sort") === "created" ? "createdAt" : "updatedAt";
+  const sort = marketCardSortForKind(params.get("sort"), kind);
+  const dateField = sort === "created" ? "createdAt" : "updatedAt";
   const filtered = cards.filter(item => item.status === "published" && item.archived === archived &&
     (kind ? item.kind === kind : item.kind !== "dosage-form") &&
     (!query || String(item.id) === query || [item.name, item.data.arabicSearchKey, item.data.englishName, item.data.keywords]
       .some(value => normalizedText(value).includes(query))))
-    .sort((a, b) => kind === "drug-classification" ? a.id - b.id : String(b[sort]).localeCompare(String(a[sort])) || b.id - a.id);
+    .sort((a, b) => sort === "updated" && kind === "drug-classification" ? a.id - b.id :
+      savedMarketRank(b, sort) - savedMarketRank(a, sort) ||
+      (sort === "ratingAverage" ? b.ratingCount - a.ratingCount : 0) ||
+      b[dateField].localeCompare(a[dateField]) || b.id - a.id);
   return { items: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, page, pageSize };
 }
 

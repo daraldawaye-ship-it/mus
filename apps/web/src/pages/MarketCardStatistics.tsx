@@ -1,21 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, Heart, MessageCircle, Star } from "lucide-react";
-import type { MarketCard, MarketDetail } from "../../../../packages/contracts/src/medicine-market";
+import { marketRelationKeys, marketRelationLabels, type MarketCard, type MarketDetail } from "../../../../packages/contracts/src/medicine-market";
 import { api } from "../api";
 import { interestCollectionEnabled } from "../InterestTracker";
 import { useMarketCacheScope, useMarketOffline } from "../market-query";
-
-const relationLabels = {
-  medicines: "الأصناف", compositions: "التراكيب", scientificNames: "الأسماء العلمية",
-  agents: "الوكلاء", manufacturers: "الشركات المصنّعة",
-} as const;
-type Relation = keyof typeof relationLabels;
-const relationKeys: Partial<Record<MarketCard["kind"], Relation[]>> = {
-  composition: ["medicines", "scientificNames", "agents", "manufacturers"],
-  agent: ["medicines", "compositions", "manufacturers"], "scientific-name": ["compositions", "medicines"],
-  manufacturer: ["medicines"],
-};
 
 export function MarketCardCounts({card, compact = false}: {card: MarketCard; compact?: boolean}) {
   const stats = card.statistics;
@@ -31,8 +20,8 @@ export function MarketCardCounts({card, compact = false}: {card: MarketCard; com
       {stats.ratingCount ? `${stats.ratingAverage?.toFixed(1) ?? "—"}/5` : "—"}
       <span>{compact ? ` (${stats.ratingCount})` : ` · ${stats.ratingCount} تقييم`}</span>
     </span>
-    {relationKeys[card.kind]?.filter(key => key !== "manufacturers" || card.kind !== "agent" || stats.relations[key] != null).map(key =>
-      <span key={key}>{relationLabels[key]} {stats.relations[key] ?? 0}</span>)}
+    {marketRelationKeys[card.kind]?.filter(key => (key !== "alternatives" && (key !== "manufacturers" || card.kind !== "agent")) || stats.relations[key] != null).map(key =>
+      <span key={key} title={key === "alternatives" ? "الأصناف الأخرى المرتبطة بكرت التركيب نفسه" : undefined}>{marketRelationLabels[key]} {stats.relations[key] ?? 0}</span>)}
   </span>;
 }
 

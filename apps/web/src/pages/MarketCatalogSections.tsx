@@ -1,3 +1,4 @@
+import type { MarketCardSort } from "../../../../packages/contracts/src/medicine-market";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, RefreshCw } from "lucide-react";
 import { useSession } from "../api";
@@ -111,7 +112,7 @@ export function MarketCompactCard({ item, type, references, onOpen }: {
 function MarketSection({ type, q, sort, archived, references, onOpen, onBrowse }: {
   type: MarketType;
   q: string;
-  sort: "updated" | "created";
+  sort: MarketCardSort;
   archived: boolean;
   references: MarketReferenceEntry[];
   onOpen: (id: number) => void;
@@ -182,7 +183,7 @@ function MarketSection({ type, q, sort, archived, references, onOpen, onBrowse }
 export function MarketCatalogSections({ types, q, sort, archived, references, onOpen, onBrowse }: {
   types: MarketType[];
   q: string;
-  sort: "updated" | "created";
+  sort: MarketCardSort;
   archived: boolean;
   references: MarketReferenceEntry[];
   onOpen: (id: number) => void;
@@ -192,7 +193,8 @@ export function MarketCatalogSections({ types, q, sort, archived, references, on
   return <div className="market-catalog-sections">
     <p className="market-catalog-section-note">
       {q ? "نتائج البحث حسب القسم — حتى 10 كروت لكل قسم" :
-        sort === "created" ? "آخر 10 كروت مضافة في كل قسم" : "آخر 10 كروت تحديثًا أو إضافةً في كل قسم"}
+        sort === "created" ? "آخر 10 كروت مضافة في كل قسم" : sort === "updated"
+          ? "آخر 10 كروت تحديثًا أو إضافةً في كل قسم" : "أول 10 كروت في كل قسم حسب الترتيب المختار"}
     </p>
     {ordered.length === 0 && <Notice>جارٍ تحميل أقسام السوق…</Notice>}
     {ordered.map(type => <MarketSection key={type.key} type={type} q={q} sort={sort}

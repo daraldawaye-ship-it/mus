@@ -215,12 +215,34 @@ export interface MarketMeta {
   references: MarketReferenceEntry[];
   userPoints: string;
 }
+export const marketRelationLabels = {
+  medicines: "الأصناف", compositions: "التراكيب", scientificNames: "الأسماء العلمية",
+  agents: "الوكلاء", manufacturers: "الشركات المصنّعة", alternatives: "البدائل",
+} as const;
+export type MarketRelationCount = keyof typeof marketRelationLabels;
+export const marketRelationKeys: Partial<Record<MarketKind, readonly MarketRelationCount[]>> = {
+  medicine: ["alternatives"],
+  composition: ["medicines", "scientificNames", "agents", "manufacturers"],
+  agent: ["medicines", "compositions", "manufacturers"],
+  "scientific-name": ["compositions", "medicines"],
+  manufacturer: ["medicines"],
+};
+export const marketCommonStatistics = ["opens", "comments", "likes", "ratingAverage", "ratingCount"] as const;
+export const marketCardSortKeys = ["updated", "created", ...marketCommonStatistics,
+  "medicines", "compositions", "scientificNames", "agents", "manufacturers", "alternatives"] as const;
+export type MarketCardSort = typeof marketCardSortKeys[number];
+export function marketCardSortForKind(sort: string | null, kind: string | null): MarketCardSort {
+  if (sort === "updated" || sort === "created" || (marketCommonStatistics as readonly string[]).includes(sort ?? ""))
+    return sort as MarketCardSort;
+  const relations = marketKinds.includes(kind as MarketKind) ? marketRelationKeys[kind as MarketKind] : undefined;
+  return relations?.includes(sort as MarketRelationCount) ? sort as MarketRelationCount : "updated";
+}
 export interface MarketCardStatistics {
   opens: number;
   comments: number;
   ratingAverage: number | null;
   ratingCount: number;
-  relations: Partial<Record<"medicines" | "compositions" | "scientificNames" | "agents" | "manufacturers", number>>;
+  relations: Partial<Record<MarketRelationCount, number>>;
 }
 export interface MarketCard {
   id: number;
