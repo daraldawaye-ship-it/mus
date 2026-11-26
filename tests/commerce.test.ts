@@ -4979,6 +4979,19 @@ test("audit logs filter today in Yemen and order newest events first",async t=>{
       assert(new Date(current.items[i-1]!.createdAt).getTime() >=
         new Date(current.items[i]!.createdAt).getTime(),"latest audit event should appear first");
     }
+    const latest=await f.owner.ok<Page<{id:number;createdAt:string;action:string}>>("GET",
+      `${path}?dateFrom=${today}&dateTo=${today}&sort=createdAt:desc,id:desc`);
+    const sample=latest.items[0]!;
+    for(const key of ["dateFrom","dateTo"] as const){
+      for(const action of ["", `&action=${encodeURIComponent(sample.action)}`]){
+        const one=await f.owner.ok<Page<{id:number;createdAt:string;action:string}>>("GET",
+          `${path}?${key}=${today}${action}&sort=createdAt:desc,id:desc`);
+        assert(one.items.some(row=>row.id===sample.id));
+        if(key==="dateFrom") assert(one.items.every(row=>inAden(row.createdAt)>=today));
+        else assert(one.items.every(row=>inAden(row.createdAt)<=today));
+        if(action) assert(one.items.every(row=>row.action===sample.action));
+      }
+    }
     const old=await f.owner.ok<Page<{id:number}>>("GET",
       `${path}?dateFrom=2000-01-01&dateTo=2000-01-01`);
     assert.equal(old.total,0);
