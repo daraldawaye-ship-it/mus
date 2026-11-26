@@ -1,3 +1,4 @@
+import { getStagedImageAsset, stageImageAssets, stagingImageAssetsSchema } from "./market-staging-image-assets.ts";
 import { listMarketImageLabels, marketImageLabelBatchSchema, saveMarketImageLabels } from "./market-image-labels.ts";
 import { imageNameMatchSchema, matchImageNamesEasy } from "./market-image-name-match.ts";
 import { intakeMedaweeItems, listMedaweeItems, medaweeItemBatchSchema, medaweeItemListSchema } from "./market-medawee-items.ts";
@@ -488,6 +489,18 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     await authorize(req);
     const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
     res.json(await saveMarketImageLabels(pool,sourceId,parse(marketImageLabelBatchSchema,req.body)));
+  }));
+  router.post("/medicine-market/staging/preview-images",handler(async(req,res)=>{
+    const user=await authorize(req);
+    res.json(await stageImageAssets(pool,user.id,parse(stagingImageAssetsSchema,req.body)));
+  }));
+  router.get("/medicine-market/staging/:sourceId/rows/:position/preview-image",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const position=parse(z.coerce.number().int().positive(),req.params.position);
+    const bytes=await getStagedImageAsset(pool,sourceId,position);if(!bytes)missing();
+    res.set("Cache-Control","no-store").set("Content-Security-Policy","default-src 'none'; sandbox")
+      .type("image/webp").send(bytes);
   }));
   router.post("/medicine-market/staging/image-filenames/match-easy",handler(async(req,res)=>{
     await authorize(req);

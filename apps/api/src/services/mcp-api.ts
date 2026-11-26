@@ -1,3 +1,4 @@
+import { stagingImageAssetsOperation, stagingImageAssetsSchema } from "../market-staging-image-assets.ts";
 import { marketImageLabelBatchSchema } from "../market-image-labels.ts";
 import { imageNameMatchOperation, imageNameMatchSchema } from "../market-image-name-match.ts";
 import type { Request, Response, NextFunction, Router } from "express";
@@ -172,6 +173,7 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "GET /medicine-market/staging/:sourceId/image-labels": {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"]},
   "PATCH /medicine-market/staging/:sourceId/image-labels": {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
     bodyContract:"marketImageLabelBatchSchema",bodySchema:z.toJSONSchema(marketImageLabelBatchSchema,{io:"input"})},
+  [stagingImageAssetsOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:[],bodyContract:"stagingImageAssetsSchema",bodySchema:z.toJSONSchema(stagingImageAssetsSchema,{io:"input"})},
   [imageNameMatchOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:[],
     bodyContract:"imageNameMatchSchema",bodySchema:z.toJSONSchema(imageNameMatchSchema,{io:"input"})},
   [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
