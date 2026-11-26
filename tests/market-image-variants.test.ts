@@ -184,3 +184,23 @@ test("static GIF is converted to bounded main WebP and icon without retaining GI
   assert.ok(out.preview.length<=204800);assert.ok(out.icon.length<=16384);
   assert.equal(icon.width,64);assert.equal(icon.height,32);
 });
+
+
+test("Button Click crops detached lower-right stamp, but preserves product and other sources", async () => {
+  const box = await sharp({ create: { width: 700, height: 750, channels: 3, background: "#806030" } }).png().toBuffer();
+  const stamp = await sharp({ create: { width: 180, height: 100, channels: 3, background: "#90a8a0" } }).png().toBuffer();
+  const make = (stampLeft: number, stampTop: number) => sharp({
+    create: { width: 1200, height: 1200, channels: 3, background: "white" },
+  }).composite([{ input: box, left: 150, top: 100 }, { input: stamp, left: stampLeft, top: stampTop }])
+    .webp({ lossless: true }).toBuffer();
+  const original = await make(980, 1070);
+  const general = await buildMarketImageVariants(original, { cropWhitespace: true });
+  assert.ok(general.previewHeight > 1000, "ordinary crop keeps detached marks");
+  const cropped = await buildMarketImageVariants(original, { cropWhitespace: true, buttonClickProduct: true });
+  assert.equal(cropped.previewWidth, 704);
+  assert.equal(cropped.previewHeight, 754);
+  const attached = await buildMarketImageVariants(await make(720, 849), { cropWhitespace: true, buttonClickProduct: true });
+  assert.ok(attached.previewHeight > 800, "retain touching content");
+  const centered = await buildMarketImageVariants(await make(500, 1070), { cropWhitespace: true, buttonClickProduct: true });
+  assert.ok(centered.previewHeight > 1000, "retain a separate centered product component");
+});
