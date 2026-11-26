@@ -31,7 +31,7 @@ function preview(raw: string): string {
     return text.replace(/\s+/g, " ").slice(0, 700);
   } catch { return raw.slice(0, 700); }
 }
-const imageColumns = ["اسم الملف","الاسم عربي من الملف","الاسم بالإنجليزي","التركيب","الشركة المصنّعة","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","اسم الملف المضغوط"];
+const imageColumns = ["اسم الملف","الاسم عربي من الملف","الاسم بالإنجليزي","التركيب","الشركة المصنّعة","الاسم عربي من الموقع","معرف الصنف من الموقع","حالة السجل","حالة قراءة العبوة","اسم الملف المضغوط"];
 export function MarketImageFilenameStaging() {
   const [open,setOpen]=useState(false);
   const [chosen,setChosen]=useState("");
@@ -64,7 +64,7 @@ export function MarketImageFilenameStaging() {
             <tbody>{(rows.data?.items??[]).map(r=>{
               let row:Record<string,unknown>={};
               try{row=JSON.parse(r.payload_text)??{};}catch{/* show blank values */}
-              return <tr key={r.position}>{imageColumns.map(c=><td key={c}>{(typeof row[c]==="string"||typeof row[c]==="number")?String(row[c]):""}</td>)}</tr>;
+              return <tr key={r.position}>{imageColumns.map(c=><td key={c}>{(typeof row[c]==="string"||typeof row[c]==="number")?String(row[c]):c==="حالة قراءة العبوة"&&row["معرف الصنف من الموقع"]==null?"بانتظار مراجعة بصرية":""}</td>)}</tr>;
             })}</tbody>
           </table>
         </div>
