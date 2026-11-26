@@ -7,7 +7,7 @@ import { adenInvoiceToday } from "../invoice-save-date";
 import { medicalPaymentTimeLabel } from "../medical-payment-time";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
-import { Button, Card, Field, Notice, PageHeader } from "../ui";
+import { Button, Card, Dialog, Field, Notice, PageHeader } from "../ui";
 import "./MedicalPaymentSummaryPage.css";
 
 const title = "إجمالي سداد الأطباء والممرضين";
@@ -40,6 +40,7 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [expanded, setExpanded] = useState("");
+  const [shownNote, setShownNote] = useState<string | null>(null);
   const [order, setOrder] = useState<{ sort: Sort; direction: "asc"|"desc" }>({ sort: "total", direction: "desc" });
   const keyword = search.trim();
   useEffect(() => {
@@ -109,18 +110,18 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
                 {detail.isPending && <Notice>جارٍ تحميل كشف الحركة…</Notice>}
                 {detail.error && <Notice tone="error">{errorMessage(detail.error)}</Notice>}
                 {detail.data && (detail.data.movements.length ? <table className="medical-payment-movements" aria-label={`كشف حركة ${row.name}`}>
-                  <colgroup><col className="medical-payment-date-col"/><col className="medical-payment-amount-col"/><col/></colgroup>
-                  <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
-                  <tbody>{detail.data.movements.map((movement, i) => <Fragment key={i}>
-                    <tr>
-                      <td><MovementMoment date={movement.date} time={movement.time}/></td>
-                      <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
-                      <td>{movement.actor || "—"}</td>
-                    </tr>
-                    {!!movement.notes?.trim() && <tr><td colSpan={3} className="medical-payment-note">
-                      <strong>ملاحظات: </strong>{movement.notes}
-                    </td></tr>}
-                  </Fragment>)}</tbody>
+                  <colgroup><col className="medical-payment-date-col"/><col className="medical-payment-amount-col"/><col/><col className="medical-payment-note-col"/></colgroup>
+                  <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th><th scope="col">الملاحظات</th></tr></thead>
+                  <tbody>{detail.data.movements.map((movement, i) => <tr key={i}>
+                    <td><MovementMoment date={movement.date} time={movement.time}/></td>
+                    <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
+                    <td>{movement.actor || "—"}</td>
+                    <td>{movement.notes?.trim() ?
+                      <Button variant="ghost" size="compact" className="medical-payment-note-link"
+                        aria-label={`عرض ملاحظات الحركة ${i + 1}`}
+                        aria-haspopup="dialog" onClick={() => setShownNote(movement.notes)}>عرض</Button>
+                      : "—"}</td>
+                  </tr>)}</tbody>
                 </table> : <Notice>لا توجد حركات في الفترة المحددة.</Notice>)}
               </td></tr>}
             </Fragment>) : <tr><td colSpan={columns.length}>لا توجد مبالغ مطابقة.</td></tr>}</tbody>
@@ -130,6 +131,9 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
           </table>
         </div>
       </Card>}
+      <Dialog open={!!shownNote} title="ملاحظات الحركة" onClose={() => setShownNote(null)}>
+        <div className="medical-payment-note-text" dir="auto">{shownNote}</div>
+      </Dialog>
     </>}
   </>;
 }
