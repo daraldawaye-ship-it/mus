@@ -217,7 +217,7 @@ export interface MarketMeta {
 }
 export const marketRelationLabels = {
   medicines: "الأصناف", compositions: "التراكيب", scientificNames: "الأسماء العلمية",
-  agents: "الوكلاء", manufacturers: "الشركات المصنّعة", alternatives: "البدائل",
+  agents: "الوكلاء", manufacturers: "الشركات المصنّعة", alternatives: "أصناف التركيب",
 } as const;
 export type MarketRelationCount = keyof typeof marketRelationLabels;
 export const marketRelationKeys: Partial<Record<MarketKind, readonly MarketRelationCount[]>> = {
