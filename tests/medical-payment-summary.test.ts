@@ -3,13 +3,13 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { pageByKey } from "../packages/contracts/src/pages.ts";
 import { centralPageAllows } from "../apps/api/src/services/central-access-authorization.ts";
-import { medicalPaymentSummarySql, validMedicalPaymentRange } from "../apps/api/src/services/medical-payment-summary.ts";
+import { medicalPaymentDetailSql, medicalPaymentSummarySql, validMedicalPaymentRange } from "../apps/api/src/services/medical-payment-summary.ts";
 
-test("report defaults to the current day and allows up to ten calendar days earlier", () => {
-  const today = "2026-11-26", earliest = "2026-11-16";
+test("report defaults to the current day and allows up to five calendar days earlier", () => {
+  const today = "2026-11-26", earliest = "2026-11-21";
   assert.equal(validMedicalPaymentRange(today, today, today, earliest), true);
   assert.equal(validMedicalPaymentRange(earliest, today, today, earliest), true);
-  assert.equal(validMedicalPaymentRange("2026-11-15", today, today, earliest), false);
+  assert.equal(validMedicalPaymentRange("2026-11-20", today, today, earliest), false);
   assert.equal(validMedicalPaymentRange(today, "2026-11-27", today, earliest), false);
   assert.equal(validMedicalPaymentRange(today, earliest, today, earliest), false);
 });
@@ -39,10 +39,10 @@ test("only posted medical payments aggregate by main name before numeric sorting
         (1,2,'فادي الفرع ب','فادي علي','doctor'),(1,3,'سارة','','nurse'),
         (1,4,'جهة','جهة','entity'),(1,5,'غير معين','',NULL),(2,1,'آخر','آخر','doctor');
       INSERT INTO financial_documents VALUES
-        (1,1,'posted','2026-11-16'),(1,2,'posted','2026-11-26'),
+        (1,1,'posted','2026-11-21'),(1,2,'posted','2026-11-26'),
         (1,3,'posted','2026-11-26'),(1,4,'posted','2026-11-26'),
         (1,5,'posted','2026-11-26'),(1,6,'reversed','2026-11-26'),
-        (1,7,'posted','2026-11-15'),(1,8,'posted','2026-11-26'),
+        (1,7,'posted','2026-11-20'),(1,8,'posted','2026-11-26'),
         (1,9,'posted','2026-11-26'),(2,1,'posted','2026-11-26'),
         (1,10,'draft','2026-11-26');
       INSERT INTO administrative_custody_transfers VALUES
@@ -60,20 +60,31 @@ test("only posted medical payments aggregate by main name before numeric sorting
         (1,12,6,'medical',500,3,'سارة','سارة','nurse'),
         (1,13,10,'medical',500,3,'سارة','سارة','nurse');
     `);
-    type Result = {name:string; kinds:string[]; directAmount:string; custodyAmount:string; totalAmount:string; periodTotal:string};
-    const {rows} = await db.query<Result>(medicalPaymentSummarySql("total", "desc"), [1,"2026-11-16","2026-11-26"]);
+    type Result = {name:string; totalAmount:string; periodTotal:string};
+    const {rows} = await db.query<Result>(medicalPaymentSummarySql("total", "desc"), [1,"2026-11-21","2026-11-26","%",true]);
     assert.equal(rows.length, 2);
     assert.match(rows[0]!.name, /^فادي +علي$/);
-    assert.deepEqual(rows[0]!.kinds, ["doctor"]);
-    assert.equal(rows[0]!.directAmount, "200.05");
-    assert.equal(rows[0]!.custodyAmount, "100.15");
     assert.equal(rows[0]!.totalAmount, "300.20");
     assert.equal(rows[0]!.periodTotal, "380.20");
     assert.equal(rows[1]!.name, "سارة");
-    assert.deepEqual(rows[1]!.kinds, ["nurse"]);
-    const asc = await db.query<Result>(medicalPaymentSummarySql("total", "asc"), [1,"2026-11-16","2026-11-26"]);
+    const asc = await db.query<Result>(medicalPaymentSummarySql("total", "asc"), [1,"2026-11-21","2026-11-26","%",true]);
     assert.equal(asc.rows[0]!.name, "سارة");
-    const today = await db.query<Result>(medicalPaymentSummarySql("total","desc"), [1,"2026-11-26","2026-11-26"]);
+    const today = await db.query<Result>(medicalPaymentSummarySql("total","desc"), [1,"2026-11-26","2026-11-26","%",true]);
     assert.equal(today.rows[0]!.totalAmount, "200.05");
+    const filtered = await db.query<Result>(medicalPaymentSummarySql("name","asc"), [1,"2026-11-21","2026-11-26","%ادي علي%",true]);
+    assert.deepEqual(filtered.rows, [{name:"فادي علي", totalAmount:"300.20", periodTotal:"300.20"}]);
+    const nurse = await db.query<Result>(medicalPaymentSummarySql("name","asc"), [1,"2026-11-21","2026-11-26","%ساره%",true]);
+    assert.equal(nurse.rows[0]!.name, "سارة");
+    const employee = await db.query<Result>(medicalPaymentSummarySql("total","desc"), [1,"2026-11-21","2026-11-26","%",false]);
+    assert.equal(employee.rows[0]!.totalAmount, "300.20");
+    assert.ok(employee.rows.every(row => row.periodTotal === null));
+
+    const detail = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي علي"]);
+    assert.deepEqual(detail.rows, [
+      {date:"2026-11-26", amount:"200.05"}, {date:"2026-11-21", amount:"100.15"},
+    ]);
+    const partial = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي"]);
+    assert.equal(partial.rows.length, 0);
+
   } finally { await db.close(); }
 });

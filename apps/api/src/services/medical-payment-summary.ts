@@ -1,14 +1,12 @@
 // Only the original, posted medical disbursements count. Never sum their
 // journal lines or include slip payouts or movements merely funding custody.
-export const medicalPaymentSortKeys = ["name", "direct", "custody", "total"] as const;
+export const medicalPaymentSortKeys = ["name", "total"] as const;
 export type MedicalPaymentSortKey = typeof medicalPaymentSortKeys[number];
 
-export function medicalPaymentSummarySql(sort: MedicalPaymentSortKey, direction: "asc"|"desc") {
-  const column = { name: "name", direct: "direct_amount", custody: "custody_amount", total: "total_amount" }[sort];
-  return `
+const medicalPaymentEventsSql = `
 WITH custody AS (
   SELECT t.doctor_id, t.doctor_main_name, t.doctor_name, t.doctor_kind,
-    t.amount, 'custody' AS source
+    t.amount, fd.document_date
   FROM administrative_custody_transfers t
   JOIN financial_documents fd
     ON fd.company_id=t.company_id AND fd.id=t.financial_document_id
@@ -20,7 +18,7 @@ WITH custody AS (
   SELECT * FROM custody
   UNION ALL
   SELECT p.doctor_id, p.doctor_main_name, p.doctor_name, p.doctor_kind,
-    p.amount, 'direct' AS source
+    p.amount, fd.document_date
   FROM direct_medical_payments p
   JOIN financial_documents fd
     ON fd.company_id=p.company_id AND fd.id=p.financial_document_id
@@ -30,25 +28,34 @@ WITH custody AS (
   SELECT COALESCE(NULLIF(btrim(d.shared_name),''),
            NULLIF(btrim(d.name),''), NULLIF(btrim(e.doctor_main_name),''),
            NULLIF(btrim(e.doctor_name),'')) AS name,
-    COALESCE(d.kind,e.doctor_kind) AS kind, e.amount, e.source
+    COALESCE(d.kind,e.doctor_kind) AS kind, e.amount, e.document_date
   FROM events e
   LEFT JOIN doctors d ON d.company_id=$1 AND d.id=e.doctor_id
-), grouped AS (
-  SELECT min(name) AS name, array_agg(DISTINCT kind ORDER BY kind) AS kinds,
-    COALESCE(sum(amount) FILTER (WHERE source='direct'),0) AS direct_amount,
-    COALESCE(sum(amount) FILTER (WHERE source='custody'),0) AS custody_amount,
-    sum(amount) AS total_amount
+), eligible AS (
+  SELECT regexp_replace(name,'[[:space:]]+',' ','g') AS name,
+    amount, document_date
   FROM named WHERE name IS NOT NULL AND kind IN ('doctor','nurse')
-  GROUP BY lower(regexp_replace(name,'[[:space:]]+',' ','g'))
+)`;
+
+export function medicalPaymentSummarySql(sort: MedicalPaymentSortKey, direction: "asc"|"desc") {
+  const column = sort === "name" ? "name" : "total_amount";
+  return `${medicalPaymentEventsSql}, grouped AS (
+  SELECT min(name) AS name, sum(amount) AS total_amount
+  FROM eligible
+  WHERE translate(name,'ة','ه') ILIKE translate($4::text,'ة','ه') ESCAPE '\\'
+  GROUP BY lower(name)
 )
-SELECT grouped.name, kinds, direct_amount::text AS "directAmount",
-  custody_amount::text AS "custodyAmount", total_amount::text AS "totalAmount",
-  sum(direct_amount) OVER ()::text AS "directTotal",
-  sum(custody_amount) OVER ()::text AS "custodyTotal",
-  sum(total_amount) OVER ()::text AS "periodTotal"
+SELECT grouped.name, total_amount::text AS "totalAmount",
+  CASE WHEN $5::boolean THEN sum(total_amount) OVER ()::text END AS "periodTotal"
 FROM grouped ORDER BY grouped.${column} ${direction === "asc" ? "ASC" : "DESC"}, grouped.name ASC
 `;
 }
+
+export const medicalPaymentDetailSql = `${medicalPaymentEventsSql}
+SELECT document_date::text AS "date", amount::text AS "amount"
+FROM eligible WHERE lower(name)=lower($4::text)
+ORDER BY document_date DESC, amount DESC
+`;
 
 /** Compare date-only values from the validated request and the Aden DB clock. */
 export function validMedicalPaymentRange(from: string, to: string, today: string, minDate: string) {

@@ -11,7 +11,7 @@ import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
 import { sortedDoctorMovementComparisonSql } from "./services/doctor-movement-comparison.ts";
 import { audit } from "./services/audit.ts";
-import { medicalPaymentSortKeys, medicalPaymentSummarySql, validMedicalPaymentRange } from "./services/medical-payment-summary.ts";
+import { medicalPaymentDetailSql, medicalPaymentSortKeys, medicalPaymentSummarySql, validMedicalPaymentRange } from "./services/medical-payment-summary.ts";
 
 const medicalMainName = "COALESCE(NULLIF(btrim(d.shared_name),''),NULLIF(btrim(d.name),''))";
 const visibleMedicalKind = "(d.kind IN ('doctor','nurse') OR d.kind IS NULL)";
@@ -51,6 +51,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
     const input = parse(z.object({
       dateFrom: documentDateSchema.optional(),
       dateTo: documentDateSchema.optional(),
+      q: z.string().trim().max(200).optional().default(""),
+      name: z.string().trim().min(1).max(500).optional(),
       sort: z.enum(medicalPaymentSortKeys).default("total"),
       direction: z.enum(["asc", "desc"]).default("desc"),
     }).strict(), req.query);
@@ -64,26 +66,26 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
 
       const day = await client.query<{today:string; minDate:string}>(
         "SELECT (now() AT TIME ZONE 'Asia/Aden')::date::text AS today," +
-        " ((now() AT TIME ZONE 'Asia/Aden')::date - 10)::text AS \"minDate\"");
+        " ((now() AT TIME ZONE 'Asia/Aden')::date - 5)::text AS \"minDate\"");
       const { today, minDate } = day.rows[0]!;
       const dateFrom = input.dateFrom ?? today;
       const dateTo = input.dateTo ?? today;
       if (!validMedicalPaymentRange(dateFrom, dateTo, today, minDate))
         throw new HttpError(400, "invalid_date_range",
-          "اختر تاريخًا من اليوم أو قبله بعشرة أيام كحد أقصى، على ألا يتجاوز تاريخ البداية تاريخ النهاية");
+          "اختر تاريخًا من اليوم أو قبله بخمسة أيام كحد أقصى، على ألا يتجاوز تاريخ البداية تاريخ النهاية");
+      if (input.name !== undefined) {
+        const detail = await client.query(medicalPaymentDetailSql, [companyId, dateFrom, dateTo, input.name]);
+        return { movements: detail.rows };
+      }
       const { rows } = await client.query(medicalPaymentSummarySql(input.sort, input.direction),
-        [companyId, dateFrom, dateTo]);
-      return {
+        [companyId, dateFrom, dateTo, searchPattern(input.q.replace(/\s+/g, " ")), user.owner]);
+      return { report: {
         dateFrom, dateTo, currencyCode: "YER",
-        totals: {
-          directAmount: rows[0]?.directTotal ?? "0",
-          custodyAmount: rows[0]?.custodyTotal ?? "0",
-          totalAmount: rows[0]?.periodTotal ?? "0",
-        },
-        items: rows.map(({ directTotal, custodyTotal, periodTotal, ...row }) => row),
-      };
+        ...(user.owner ? { totalAmount: rows[0]?.periodTotal ?? "0" } : {}),
+        items: rows.map(({ periodTotal, ...row }) => row),
+      } };
     });
-    res.json({ report });
+    res.json(report);
   }));
 
   router.get("/companies/:companyId/doctor-movement-comparison", handler(async(req,res)=>{
