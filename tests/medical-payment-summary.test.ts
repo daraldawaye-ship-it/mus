@@ -5,8 +5,9 @@ import { pageByKey } from "../packages/contracts/src/pages.ts";
 import { centralPageAllows } from "../apps/api/src/services/central-access-authorization.ts";
 import { medicalPaymentDetailSql, medicalPaymentSummarySql, validMedicalPaymentRange } from "../apps/api/src/services/medical-payment-summary.ts";
 
-test("report defaults to the current day and allows up to five calendar days earlier", () => {
+test("report date window allows yesterday through today and up to five days earlier", () => {
   const today = "2026-11-26", earliest = "2026-11-21";
+  assert.equal(validMedicalPaymentRange("2026-11-25", today, today, earliest), true);
   assert.equal(validMedicalPaymentRange(today, today, today, earliest), true);
   assert.equal(validMedicalPaymentRange(earliest, today, today, earliest), true);
   assert.equal(validMedicalPaymentRange("2026-11-20", today, today, earliest), false);
@@ -29,6 +30,8 @@ test("only posted medical payments aggregate by main name before numeric sorting
   const db = new PGlite();
   try {
     await db.exec(`
+      CREATE TABLE users(id int,display_name text);
+      INSERT INTO users VALUES (11,'سجل العهدة'),(22,'سجل الصندوق');
       CREATE TABLE doctors(company_id int,id int,name text,shared_name text,kind text);
       CREATE TABLE financial_documents(company_id int,id int,status text,document_date date);
       CREATE TABLE administrative_custody_transfers(company_id int,id int,financial_document_id int,
@@ -59,20 +62,24 @@ test("only posted medical payments aggregate by main name before numeric sorting
         (1,11,5,'medical',80,3,'سارة','سارة','nurse'),
         (1,12,6,'medical',500,3,'سارة','سارة','nurse'),
         (1,13,10,'medical',500,3,'سارة','سارة','nurse');
+      ALTER TABLE administrative_custody_transfers ADD COLUMN created_by int DEFAULT 11;
+      ALTER TABLE direct_medical_payments ADD COLUMN created_by int DEFAULT 22;
     `);
-    type Result = {name:string; totalAmount:string; periodTotal:string};
+    type Result = {name:string; movementCount:number; totalAmount:string; periodTotal:string};
     const {rows} = await db.query<Result>(medicalPaymentSummarySql("total", "desc"), [1,"2026-11-21","2026-11-26","%",true]);
     assert.equal(rows.length, 2);
     assert.match(rows[0]!.name, /^فادي +علي$/);
+    assert.equal(rows[0]!.movementCount, 2);
     assert.equal(rows[0]!.totalAmount, "300.20");
     assert.equal(rows[0]!.periodTotal, "380.20");
     assert.equal(rows[1]!.name, "سارة");
-    const asc = await db.query<Result>(medicalPaymentSummarySql("total", "asc"), [1,"2026-11-21","2026-11-26","%",true]);
+    assert.equal(rows[1]!.movementCount, 1);
+    const asc = await db.query<Result>(medicalPaymentSummarySql("count", "asc"), [1,"2026-11-21","2026-11-26","%",true]);
     assert.equal(asc.rows[0]!.name, "سارة");
     const today = await db.query<Result>(medicalPaymentSummarySql("total","desc"), [1,"2026-11-26","2026-11-26","%",true]);
     assert.equal(today.rows[0]!.totalAmount, "200.05");
     const filtered = await db.query<Result>(medicalPaymentSummarySql("name","asc"), [1,"2026-11-21","2026-11-26","%ادي علي%",true]);
-    assert.deepEqual(filtered.rows, [{name:"فادي علي", totalAmount:"300.20", periodTotal:"300.20"}]);
+    assert.deepEqual(filtered.rows, [{name:"فادي علي", movementCount:2, totalAmount:"300.20", periodTotal:"300.20"}]);
     const nurse = await db.query<Result>(medicalPaymentSummarySql("name","asc"), [1,"2026-11-21","2026-11-26","%ساره%",true]);
     assert.equal(nurse.rows[0]!.name, "سارة");
     const employee = await db.query<Result>(medicalPaymentSummarySql("total","desc"), [1,"2026-11-21","2026-11-26","%",false]);
@@ -81,7 +88,7 @@ test("only posted medical payments aggregate by main name before numeric sorting
 
     const detail = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي علي"]);
     assert.deepEqual(detail.rows, [
-      {date:"2026-11-26", amount:"200.05"}, {date:"2026-11-21", amount:"100.15"},
+      {date:"2026-11-26", amount:"200.05", actor:"سجل الصندوق"}, {date:"2026-11-21", amount:"100.15", actor:"سجل العهدة"},
     ]);
     const partial = await db.query(medicalPaymentDetailSql, [1,"2026-11-21","2026-11-26","فادي"]);
     assert.equal(partial.rows.length, 0);

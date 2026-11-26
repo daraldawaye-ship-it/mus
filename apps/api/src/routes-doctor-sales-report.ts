@@ -64,11 +64,12 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       if (!page?.enabled || !page.actionAccess.view || user.suspended)
         throw new HttpError(403, "forbidden", "ليست لديك صلاحية عرض إجمالي سداد الأطباء والممرضين");
 
-      const day = await client.query<{today:string; minDate:string}>(
+      const day = await client.query<{today:string; yesterday:string; minDate:string}>(
         "SELECT (now() AT TIME ZONE 'Asia/Aden')::date::text AS today," +
+        " ((now() AT TIME ZONE 'Asia/Aden')::date - 1)::text AS yesterday," +
         " ((now() AT TIME ZONE 'Asia/Aden')::date - 5)::text AS \"minDate\"");
-      const { today, minDate } = day.rows[0]!;
-      const dateFrom = input.dateFrom ?? today;
+      const { today, yesterday, minDate } = day.rows[0]!;
+      const dateFrom = input.dateFrom ?? yesterday;
       const dateTo = input.dateTo ?? today;
       if (!validMedicalPaymentRange(dateFrom, dateTo, today, minDate))
         throw new HttpError(400, "invalid_date_range",

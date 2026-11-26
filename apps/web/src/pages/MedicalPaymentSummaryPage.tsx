@@ -9,10 +9,10 @@ import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
 const title = "إجمالي سداد الأطباء والممرضين";
-const columns = [["name", "الاسم الرئيسي"], ["total", "الإجمالي"]] as const;
+const columns = [["name", "الاسم الرئيسي"], ["count", "عدد المرات"], ["total", "الإجمالي"]] as const;
 type Sort = typeof columns[number][0];
-type Report = { totalAmount?: string; items: Array<{ name: string; totalAmount: string }> };
-type Movement = { date: string; amount: string };
+type Report = { totalAmount?: string; items: Array<{ name: string; movementCount: number; totalAmount: string }> };
+type Movement = { date: string; amount: string; actor: string };
 
 export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -23,7 +23,7 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
   const now = new Date();
   const today = adenInvoiceToday(now);
   const minDate = adenInvoiceToday(new Date(now.getTime() - 5 * 86_400_000));
-  const [dateFrom, setFrom] = useState(today);
+  const [dateFrom, setFrom] = useState(() => adenInvoiceToday(new Date(now.getTime() - 86_400_000)));
   const [dateTo, setTo] = useState(today);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -89,22 +89,24 @@ export function MedicalPaymentSummaryPage({ context }: { context: CompanyContext
               <tr>
                 <th scope="row"><Button variant="secondary" size="compact" aria-expanded={expanded === row.name}
                   onClick={() => setExpanded(previous => previous === row.name ? "" : row.name)}>{row.name}</Button></th>
+                <td><bdi className="financial-number">{row.movementCount}</bdi></td>
                 <td><bdi className="financial-number">{formatWholeMoney(row.totalAmount)}</bdi></td>
               </tr>
-              {expanded === row.name && <tr><td colSpan={2}>
+              {expanded === row.name && <tr><td colSpan={columns.length}>
                 {detail.isPending && <Notice>جارٍ تحميل كشف الحركة…</Notice>}
                 {detail.error && <Notice tone="error">{errorMessage(detail.error)}</Notice>}
                 {detail.data && (detail.data.movements.length ? <table aria-label={`كشف حركة ${row.name}`}>
-                  <thead><tr><th scope="col">التاريخ</th><th scope="col">المبلغ</th></tr></thead>
+                  <thead><tr><th scope="col">التاريخ</th><th scope="col">المبلغ</th><th scope="col">بواسطة</th></tr></thead>
                   <tbody>{detail.data.movements.map((movement, i) => <tr key={i}>
                     <td><bdi>{movement.date}</bdi></td>
                     <td><bdi className="financial-number">{formatWholeMoney(movement.amount)}</bdi></td>
+                    <td>{movement.actor || "—"}</td>
                   </tr>)}</tbody>
                 </table> : <Notice>لا توجد حركات في الفترة المحددة.</Notice>)}
               </td></tr>}
-            </Fragment>) : <tr><td colSpan={2}>لا توجد مبالغ مطابقة.</td></tr>}</tbody>
+            </Fragment>) : <tr><td colSpan={columns.length}>لا توجد مبالغ مطابقة.</td></tr>}</tbody>
             {user?.owner && !employeePreview && data.totalAmount !== undefined &&
-              <tfoot><tr><th scope="row">{appliedSearch ? "إجمالي نتائج البحث" : "إجمالي الفترة"}</th>
+              <tfoot><tr><th scope="row" colSpan={2}>{appliedSearch ? "إجمالي نتائج البحث" : "إجمالي الفترة"}</th>
                 <td><bdi className="financial-number">{formatWholeMoney(data.totalAmount)}</bdi></td></tr></tfoot>}
           </table>
         </div>
