@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Building2, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
-import { MarketCardIcon, hasMarketCardImage } from "../MarketCardIcon";
+import { ImagePreviewModal } from "../ImagePreviewModal";
+import { MarketCardIcon, hasMarketCardImage, marketCardImageVariant } from "../MarketCardIcon";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -29,8 +30,14 @@ const showCount = (value: number | null) => value == null ? "—" : countFormat.
 function MedicineIcon({row}: {row: Row}) {
   const card = {id:row.id,kind:"medicine" as const,revision:row.revision,data:{image:row.medicineImage}};
   if (!row.hasImage) return <span title="بلا صورة">—</span>;
-  return <span title="صورة الصنف" aria-label="صورة الصنف" role="img">
-    {hasMarketCardImage(card) ? <MarketCardIcon card={card}/> : <ImageIcon size={17}/>}
+  if (!hasMarketCardImage(card) || !row.medicineImage)
+    return <span title="الصورة غير متاحة للمعاينة"><ImageIcon size={17} aria-label="الصورة غير متاحة للمعاينة"/></span>;
+  const src = /^https:\/\//i.test(row.medicineImage)
+    ? marketCardImageVariant(card,"preview") : row.medicineImage;
+  return <span data-scroll-gesture="ignore">
+    <ImagePreviewModal src={src} alt={`صورة ${row.name}`} marketImage>
+      <MarketCardIcon card={card}/>
+    </ImagePreviewModal>
   </span>;
 }
 function AgentCell({row}: {row: Row}) {
