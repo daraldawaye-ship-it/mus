@@ -144,4 +144,39 @@ for (const isolated of [false,true]) test(`market admin list guards access and s
   assert.equal((await (await getPreview()).json()).total,0);
 
 
+  const reverseURL = endpoint.replace("define-agents","define-manufacturer-agents");
+  const reverseOwner = { "x-test-mode":"owner", "content-type":"application/json" };
+  const oneMaker = await add("manufacturer","مصنّع له دليل وكيل واحد");
+  const clashMaker = await add("manufacturer","مصنّع وكلاؤه مختلفون");
+  const invalidMaker = await add("manufacturer","مصنّع وكيله المرجعي غير صالح");
+  const noMakerSource = await add("manufacturer","مصنّع بلا أي دليل");
+  const archivedMaker = await add("manufacturer","مصنّع غير نشط",{},true);
+  const same = await add("medicine","دليل واعتماد",{manufacturerId:oneMaker,agentId});
+  await add("medicine","دليل آخر موافق",{manufacturerId:String(oneMaker),agentId:String(agentId)});
+  const remainsBlank = await add("medicine","صنف لا يتغيّر في العودة",{manufacturerId:oneMaker});
+  await add("medicine","دليل مؤرشف يعارض",{manufacturerId:oneMaker,agentId:manufacturerAgentId},true);
+  await add("medicine","دليل غير منشور يعارض",{manufacturerId:oneMaker,agentId:manufacturerAgentId},false,"pending");
+  await add("medicine","دليل التعارض الأول",{manufacturerId:clashMaker,agentId});
+  await add("medicine","دليل التعارض الثاني",{manufacturerId:clashMaker,agentId:manufacturerAgentId});
+  await add("medicine","دليل معرّف غير صالح",{manufacturerId:invalidMaker,agentId:"malformed"});
+  await add("medicine","دليل مصنّع غير نشط",{manufacturerId:archivedMaker,agentId});
+  const reverseBody=JSON.stringify({after:0,maxId:oneMaker,limit:30});
+  assert.equal((await fetch(reverseURL)).status,403);
+  assert.equal((await fetch(reverseURL,{method:"POST",headers:{...reverseOwner,"x-test-mode":"other"},body:reverseBody})).status,403);
+  const previewReverse=async()=>await (await fetch(reverseURL,{headers:reverseOwner})).json();
+  assert.deepEqual(await previewReverse(),{total:1,maxId:oneMaker,conflicts:1,invalidSources:1});
+  const reverse=await fetch(reverseURL,{method:"POST",headers:reverseOwner,body:reverseBody});
+  const reversed=await reverse.json();
+  assert.equal(reverse.status,200,JSON.stringify(reversed));
+  assert.equal(reversed.items.length,1);
+  assert.equal(reversed.items[0].cardId,oneMaker);
+  assert.equal(reversed.items[0].agentId,agentId);
+  assert.deepEqual(await previewReverse(),{total:0,maxId:0,conflicts:1,invalidSources:1});
+  const guarded = await db.query<{id:number;agent:number|null}>(
+    "SELECT id,data->'agentId' AS agent FROM medicine_market_cards WHERE id=ANY($1::int[])",
+    [[oneMaker,manufacturerId,clashMaker,invalidMaker,noMakerSource,archivedMaker,same,remainsBlank]]);
+  assert.deepEqual([oneMaker,manufacturerId,clashMaker,invalidMaker,noMakerSource,archivedMaker,same,remainsBlank]
+    .map(id=>guarded.rows.find(r=>r.id===id)?.agent),[agentId,manufacturerAgentId,null,null,null,null,agentId,null]);
+  assert.equal((await db.query("SELECT 1 FROM audit_events WHERE target_id=$1 AND action='medicine-market.contribute'",[oneMaker])).rowCount,1);
+
 });
