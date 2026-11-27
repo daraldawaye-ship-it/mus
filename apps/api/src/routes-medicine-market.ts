@@ -843,9 +843,9 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   // similar name, previous transaction, or an archived card.
   const agentDefinitionCandidates = `
     FROM medicine_market_cards c
-    JOIN medicine_market_cards m ON m.id::text=c.data->>'manufacturerId'
+    JOIN medicine_market_cards m ON m.id=CASE WHEN c.data->>'manufacturerId' ~ '^[1-9][0-9]{0,9}$' THEN (c.data->>'manufacturerId')::bigint END
       AND m.kind='manufacturer' AND m.status='published' AND NOT m.archived
-    JOIN medicine_market_cards a ON a.id::text=m.data->>'agentId'
+    JOIN medicine_market_cards a ON a.id=CASE WHEN m.data->>'agentId' ~ '^[1-9][0-9]{0,9}$' THEN (m.data->>'agentId')::bigint END
       AND a.kind='agent' AND a.status='published' AND NOT a.archived
     WHERE c.kind='medicine' AND c.status='published' AND NOT c.archived
       AND c.data->>'agentId' IS NULL`;
@@ -864,6 +864,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       const user = await viewer(db,req,true);
       if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
       await enabled(db,req,"medicine-market",true);
+      await db.query("SET LOCAL statement_timeout='6000ms'");
       type Candidate = { id:number; manufacturer_id:number; agent_id:number };
       const select = "SELECT c.id,m.id AS manufacturer_id,a.id AS agent_id" + agentDefinitionCandidates;
       const {rows:initial} = await db.query<Candidate>(
