@@ -1268,7 +1268,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         u.display_name AS "referredBy"
         FROM market_friend_referrals r JOIN users u ON u.id=r.referred_by
         ${condition} ORDER BY r.created_at DESC,r.id DESC
-        LIMIT ${args.length+1} OFFSET ${args.length+2}`,
+        LIMIT $${args.length+1} OFFSET $${args.length+2}`,
       [...args,limit,offset],
     );
     const count=await pool.query(
