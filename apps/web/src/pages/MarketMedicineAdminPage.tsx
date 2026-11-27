@@ -58,12 +58,18 @@ const columns: InteractiveTableColumn<Row, Column>[] = [
   {key:"updatedAt", label:"آخر تعديل", width:130, sortable:true, cell: row => <bdi>{showDate(row.updatedAt)}</bdi>},
 ];
 const visibleColumns = columns.map(column => column.key);
+const linkFilters = [
+  {key:"agentLink",label:"الوكيل",present:"له وكيل",missing:"بلا وكيل"},
+  {key:"compositionLink",label:"التركيب",present:"له تركيب",missing:"بلا تركيب"},
+  {key:"manufacturerLink",label:"الشركة المصنّعة",present:"له شركة مصنّعة",missing:"بلا شركة مصنّعة"},
+] as const;
+
 
 export default function MarketMedicineAdminPage() {
   const {user} = useSession();
   const [draft, setDraft] = useState("");
   const [filters, setFilters] = useState({
-    q: "", archived: "false", image: "all", page: 1, sort: "updatedAt" as Column, direction: "desc" as "asc" | "desc",
+    q: "", archived: "false", image: "all", agentLink: "all", compositionLink: "all", manufacturerLink: "all", page: 1, sort: "updatedAt" as Column, direction: "desc" as "asc" | "desc",
   });
   useEffect(() => {
     const q = draft.trim();
@@ -109,6 +115,16 @@ export default function MarketMedicineAdminPage() {
           <option value="present">لها صورة</option>
           <option value="missing">بلا صورة</option>
         </Select>
+        {linkFilters.map(({key,label,present,missing}) =>
+          <Select key={key} label={label} value={filters[key]} onChange={event => {
+            const next = event.target.value;
+            setFilters(value => ({...value,[key]:next,page:1}));
+          }}>
+            <option value="all">الكل</option>
+            <option value="present">{present}</option>
+            <option value="missing">{missing}</option>
+          </Select>
+        )}
         <Button size="compact" variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>تحديث</Button>
       </div>
       <p className="muted" aria-live="polite">{query.data ? `النتائج: ${countFormat.format(total)}` : ""}</p>

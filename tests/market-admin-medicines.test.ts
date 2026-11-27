@@ -97,5 +97,13 @@ for (const isolated of [false,true]) test(`market admin list guards access and s
   }
   assert.equal((await (await get("image=missing")).json()).items[0].id,a);
   assert.equal((await (await get("archived=true")).json()).items[0].id,archived);
+  const allLinks = await (await get("agentLink=present&compositionLink=present&manufacturerLink=present&pageSize=1")).json();
+  assert.equal(allLinks.total,1);
+  assert.deepEqual(allLinks.items.map((x:{id:number}) => x.id),[b]);
+  const manufacturerAgentOnly = await (await get("agentLink=missing&compositionLink=present&manufacturerLink=present")).json();
+  assert.deepEqual(manufacturerAgentOnly.items.map((x:{id:number}) => x.id),[a]);
+  const archivedWithoutManufacturer = await (await get("archived=true&manufacturerLink=missing")).json();
+  assert.equal(archivedWithoutManufacturer.items[0].id,archived);
+  assert.equal((await get("agentLink=unexpected")).status,400);
   assert.equal((await get("sort=unexpected")).status,400);
 });

@@ -33,6 +33,9 @@ const marketMedicineAdminQuery = z.object({
   sort: z.enum(["id","name","englishName","dosageForm","composition","agent","manufacturer","hasImage","updatedAt","agentMedicines","agentManufacturers","compositionMedicines","manufacturerAgent"]).default("updatedAt"),
   direction: z.enum(["asc","desc"]).default("desc"),
   image: z.enum(["all","present","missing"]).default("all"),
+  agentLink: z.enum(["all","present","missing"]).default("all"),
+  compositionLink: z.enum(["all","present","missing"]).default("all"),
+  manufacturerLink: z.enum(["all","present","missing"]).default("all"),
 });
 
 const root = "/medicine-market";
@@ -750,8 +753,10 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     await enabled(pool, req);
     const v = pagination(req);
     const archived = parse(z.enum(["true", "false"]), req.query.archived ?? "false") === "true";
-    const { sort, direction, image } = parse(marketMedicineAdminQuery, {
+    const { sort, direction, image, agentLink, compositionLink, manufacturerLink } = parse(marketMedicineAdminQuery, {
       sort: req.query.sort, direction: req.query.direction, image: req.query.image,
+      agentLink: req.query.agentLink, compositionLink: req.query.compositionLink,
+      manufacturerLink: req.query.manufacturerLink,
     });
     const english = "NULLIF(btrim(c.data->>'englishName'),'')";
     const imageRef = (alias: "c" | "a") =>
@@ -796,6 +801,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     if (image !== "all") {
       args.push(image === "present");
       where += ` AND (${hasImage})=$${args.length}`;
+    }
+    // The visible linked cards, not merely stored IDs (which can be stale),
+    // are the source of truth for the three independent filters.
+    for (const [filter, column] of [[agentLink,"a.id"],[compositionLink,"p.id"],[manufacturerLink,"m.id"]] as const) {
+      if (filter !== "all") where += ` AND ${column} IS ${filter === "present" ? "NOT " : ""}NULL`;
     }
     if (patterns.length) {
       args.push(v.q.trim());
