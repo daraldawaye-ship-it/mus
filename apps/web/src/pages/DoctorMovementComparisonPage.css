@@ -2,3 +2,154 @@
 .doctor-comparison-draggable-table .interactive-columns-scroll{max-height:70vh}
 .doctor-comparison-column-choice{display:flex;align-items:center;gap:10px;padding:6px 3px;cursor:pointer}
 .doctor-comparison-column-choice input{flex-shrink:0}
+
+.movement-dashboard {
+  --movement-ink: #142b3a;
+  --movement-muted: #4b6471;
+  --movement-line: #dbe7eb;
+  --movement-teal: #087f7b;
+  --surface: #ffffff;
+  --text: var(--movement-ink);
+  --muted: var(--movement-muted);
+  --border: var(--movement-line);
+  --soft: #e9f4f2;
+  --on-soft: #145d58;
+  --hover: #f0f8f8;
+  --table-head: #eef4f6;
+  --focus: #087f7b;
+  color-scheme: light;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  width: 100%;
+  color: var(--movement-ink);
+}
+
+.movement-hero {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 1.35rem;
+  padding: clamp(1.15rem, 3vw, 2rem);
+  border-radius: 1.1rem;
+  background: linear-gradient(115deg, #122c42, #153f50 64%, #086865);
+  color: #fff;
+}
+
+.movement-company,
+.movement-private,
+.movement-hero-controls .button,
+.movement-metric-label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.movement-company { color: #b8e8e4; font-size: .9rem; font-weight: 650; }
+.movement-hero h1 { color: inherit; margin: .45rem 0 .35rem; font-size: clamp(1.45rem, 3vw, 2.45rem); line-height: 1.25; }
+.movement-hero p { margin: 0; max-width: 42ch; color: #e4f1f4; }
+.movement-hero-controls { display: flex; align-items: flex-start; flex-wrap: wrap; gap: .65rem; }
+.movement-private {
+  min-height: 2.5rem;
+  padding: .45rem .8rem;
+  border: 1px solid #83bcb8;
+  border-radius: .6rem;
+  font-size: .875rem;
+  white-space: nowrap;
+}
+
+.movement-hero-controls .button { min-height: 2.5rem; white-space: nowrap; }
+.movement-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
+.movement-metric {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .45rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--movement-line);
+  border-radius: .85rem;
+  background: #fff;
+}
+
+.movement-metric-current { border-color: #a8d5cf; background: #f0fbf8; }
+.movement-metric-label { font-weight: 650; font-size: .92rem; }
+.movement-period-dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: var(--movement-teal); }
+.movement-period-dot-previous { background: #627f91; }
+.movement-metric strong { font-size: clamp(1.2rem, 2.5vw, 1.95rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; }
+.movement-period-range { display: flex; flex-wrap: wrap; gap: .3rem; color: var(--movement-muted); font-size: .875rem; }
+.movement-metric [data-tone="up"], .movement-details [data-tone="up"] { color: #08614c; }
+.movement-metric [data-tone="down"], .movement-details [data-tone="down"] { color: #a82535; }
+
+.movement-results {
+  display: grid;
+  min-width: 0;
+  gap: .8rem;
+  padding: clamp(.8rem, 2vw, 1.2rem);
+  border: 1px solid var(--movement-line);
+  border-radius: .85rem;
+  background: #fff;
+}
+
+.movement-results-heading, .movement-sort-settings, .movement-search, .movement-pages {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .6rem;
+}
+
+.movement-results-heading { align-items: end; justify-content: space-between; }
+.movement-results h2 { font-size: 1.2rem; margin: 0; }
+.movement-results-heading p { color: var(--movement-muted); margin: .25rem 0 0; }
+.movement-search { max-width: 100%; }
+.movement-search-field {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: 0 .65rem;
+  min-height: 2.6rem;
+  border: 1px solid #aebfc7;
+  border-radius: .55rem;
+  color: var(--movement-muted);
+}
+
+.movement-search-field input { width: 13rem; max-width: 100%; min-width: 0; border: 0; padding: .35rem 0; color: var(--movement-ink); background: #fff; font: inherit; }
+.movement-search-field:focus-within { outline: 2px solid var(--movement-teal); outline-offset: 2px; }
+.movement-search-field input:focus { outline: none; }
+.movement-search .button, .movement-pages .button, .movement-sort-settings select { min-height: 2.6rem; }
+.movement-sort-settings { align-items: end; }
+.movement-sort-settings .field { min-width: 0; }
+.movement-sort-settings .field:first-child { max-width: min(100%, 23rem); }
+.movement-sort-settings select { width: 100%; }
+.movement-results .doctor-comparison-table-actions { margin: 0; }
+.movement-results .doctor-comparison-draggable-table { min-width: 0; }
+.movement-results .interactive-columns-grid th { background: #eef4f6; }
+.movement-results .interactive-columns-grid td { color: var(--movement-ink); font-variant-numeric: tabular-nums; }
+.movement-name { font: inherit; font-weight: 650; color: #066866; border: 0; background: transparent; text-align: start; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+.movement-pages { justify-content: center; }
+.movement-method { padding: .8rem 1rem; border: 1px solid var(--movement-line); border-radius: .7rem; background: #fff; }
+.movement-method summary { cursor: pointer; font-weight: 650; }
+.movement-method p { color: var(--movement-muted); margin-block: .65rem 0; }
+.movement-details { width: min(38rem, calc(100% - 1.5rem)); }
+.movement-details-meta, .movement-details-deltas { display: flex; flex-wrap: wrap; gap: 1.1rem; margin: 0 0 1rem; }
+.movement-details-meta dd { margin: .2rem 0 0; font-weight: 650; overflow-wrap: anywhere; }
+.movement-details-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.movement-details-table th, .movement-details-table td { padding: .55rem .4rem; border-bottom: 1px solid #dbe7eb; overflow-wrap: anywhere; }
+.movement-details-table th { text-align: start; }
+.movement-details-deltas { margin: 1rem 0 0; }
+.movement-details-deltas strong { display: inline-block; margin-inline-start: .3rem; }
+
+@media (max-width: 700px) {
+  .movement-hero { flex-direction: column; gap: .85rem; }
+  .movement-metrics { grid-template-columns: minmax(0, 1fr); gap: .55rem; }
+  .movement-metric { padding: .7rem .85rem; gap: .3rem; }
+  .movement-search { width: 100%; }
+  .movement-search-field { flex: 1; }
+  .movement-results .doctor-comparison-draggable-table .interactive-columns-scroll { max-height: 62vh; }
+  .movement-results .interactive-column-handle { min-height: 2.75rem; }
+}
+
+@media (max-width: 420px) {
+  .movement-sort-settings .field:first-child { flex-basis: 100%; }
+}

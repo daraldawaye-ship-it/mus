@@ -439,6 +439,7 @@ const companySections = [
   "item-statistics-report",
   "doctor-sales-report",
   "doctor-movement-comparison",
+  "private-doctor-movement",
   "doctor-sales-movements",
   "medical-payment-summary",
   "sales-time-report",
@@ -571,6 +572,7 @@ function Navigation({
     "company.doctor-sales-movements": <FileText size={17} />,
     "company.medical-payment-summary": <FileText size={17} />,
     "company.doctor-movement-comparison": <TrendingUp size={17} />,
+    "company.private-doctor-movement": <TrendingUp size={17} />,
     "company.pouch-receipts": <HandCoins size={17} />,
     "company.electronic-receipts": <Wallet size={17} />,
     "company.purchases": <FileText size={17} />,
@@ -753,7 +755,7 @@ function CompanyContent({
   context: CompanyContext;
   section: CompanySection;
 }) {
-  const { user } = useSession();
+  const { user, visitorOnly, employeePreview } = useSession();
   switch (section) {
     case "inquiries":
       return <Suspense fallback={<Notice>جارٍ تحميل الاستفسارات…</Notice>}>
@@ -918,6 +920,12 @@ function CompanyContent({
       return <Suspense fallback={<Notice>جارٍ تحميل مقارنة حركة الأطباء والجهات…</Notice>}>
         <DoctorMovementComparisonPage key={context.company.id} context={context}/>
       </Suspense>;
+    case "private-doctor-movement":
+      return user?.owner && !visitorOnly && !employeePreview
+        ? <Suspense fallback={<Notice>جارٍ تحميل لوحة المقارنة…</Notice>}>
+            <DoctorMovementComparisonPage key={context.company.id} context={context} privateView />
+          </Suspense>
+        : <Notice tone="error">هذه اللوحة لمالك المنصة فقط.</Notice>;
     case "doctor-sales-report":
       return <Suspense fallback={<Notice>جارٍ تحميل مبيعات الأطباء والجهات…</Notice>}>
         <DoctorSalesReportPage key={context.company.id} context={context}/>

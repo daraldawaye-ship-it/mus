@@ -5,7 +5,7 @@ import { documentDateSchema } from "../../../packages/contracts/src/index.ts";
 import { handler, actor, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
-import { companyAccess, currentActor } from "./policies/access.ts";
+import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
@@ -89,7 +89,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
     res.json(report);
   }));
 
-  router.get("/companies/:companyId/doctor-movement-comparison", handler(async(req,res)=>{
+  const comparisonHandler = (privateView: boolean) => handler(async(req,res)=>{
+    const pageKey = privateView ? "company.private-doctor-movement" : "company.doctor-movement-comparison";
     const companyId=id(req.params.companyId);
     const input=parse(z.object({
       q:z.string().trim().max(120).optional().default(""),
@@ -101,13 +102,18 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
     const result=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const user=await currentActor(client,actor(req),false);
+      if (privateView) {
+        ownerOnly(user);
+        if (user.suspended || req.get("X-Alraesy-Employee-Preview"))
+          throw new HttpError(403, "forbidden", "لوحة المقارنة متاحة في جلسة المالك فقط");
+      }
       const context=await companyAccess(client,user,companyId,"commerce.view");
       // Cross-cashbox disbursements are financial data. A commerce-only viewer
       // keeps the sales comparison but cannot read or sort real payouts.
       const canViewPayments=context.general||context.permissions.includes("finance.view");
-      const page=(await directoryEntries(client,user,companyId))
-        .find(entry=>entry.key==="company.doctor-movement-comparison");
-      if(!page?.enabled||!page.actionAccess.view)
+      const directory = await directoryEntries(client, user, companyId);
+      const allowed = (key: string) => directory.some(entry => entry.key === key && entry.enabled && entry.actionAccess.view);
+      if (!allowed(pageKey) || (privateView && !allowed("company.doctor-movement-comparison")))
         throw new HttpError(403,"forbidden","ليست لديك صلاحية مقارنة حركة الأطباء والجهات");
       const rows=await client.query(sortedDoctorMovementComparisonSql(
         !canViewPayments&&["paidCurrent","paidPrevious","slipsCurrent","slipsPrevious"].includes(input.sortKey)
@@ -129,8 +135,11 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         items:rows.rows.map(({totalNames,totalCurrent,totalPrevious,totalDifference,untilAt,...row})=>row),
       };
     });
+    if (privateView) res.setHeader("Cache-Control", "private, no-store");
     res.json({report:result});
-  }));
+  });
+  router.get("/companies/:companyId/doctor-movement-comparison", comparisonHandler(false));
+  router.get("/companies/:companyId/private-doctor-movement", comparisonHandler(true));
 
   router.get("/companies/:companyId/doctor-sales-report", handler(async (req,res) => {
     const companyId = id(req.params.companyId);
