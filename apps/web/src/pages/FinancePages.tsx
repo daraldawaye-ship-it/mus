@@ -2019,7 +2019,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
         )}
         {printQuery.error && <Notice tone="error">{errorMessage(printQuery.error)}</Notice>}
         {result.data && !result.isFetching && result.data.total === 0 && (
-          <Notice>لا توجد حركات مالية مرحلة لهذا الحساب خلال الفترة المحددة. إنشاء الرهن وحده لا ينشئ قيدًا ماليًا.</Notice>
+          <Notice>لا توجد حركات مالية مرحلة لهذا الحساب خلال الفترة المحددة. <span className="ledger-screen-only">إنشاء الرهن وحده لا ينشئ قيدًا ماليًا.</span></Notice>
         )}
         {result.data && (
           <div className="financial-totals">
@@ -2034,6 +2034,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           </div>
         )}
         {accountId > 0 && !invalidRange && (
+          <div style={{display:"contents"}} className={privatePledgePrint ? "ledger-screen-only" : undefined}>
           <DataTable
             columns={columns}
             data={result.data?.items ?? []}
@@ -2060,6 +2061,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
             loading={result.isFetching}
             ariaLabel="حركات كشف الحساب"
           />
+          </div>
         )}
       </Card>
       {preparePrint && printQuery.data && (
