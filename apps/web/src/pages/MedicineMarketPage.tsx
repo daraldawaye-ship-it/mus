@@ -28,6 +28,7 @@ import { recordInterest } from "../InterestTracker";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
 import { MarketCardIcon } from "../MarketCardIcon";
+import { MarketStarRating } from "../MarketStarRating";
 import { MarketFriendReferral } from "../MarketFriendReferral";
 import { PageActionsDropdown, type PageAction } from "../SalesHeaderActionsDropdown";
 import { MarketStagingProgress, MarketImageFilenameStaging } from "./MarketStagingProgress";
@@ -1733,32 +1734,21 @@ export function MedicineMarketPage({
                         : "لم يُقيّم بعد"}
                     </span>}
                     {permissions?.canContribute && (
-                      <Select
-                        label="تقييمك"
-                        value={card.myRating ?? ""}
+                      <MarketStarRating
+                        key={card.id}
+                        value={card.myRating ?? null}
                         disabled={busy || marketOffline}
-                        onChange={(e) =>
+                        onChange={(rating) =>
                           void mutate(
                             () =>
                               api(`${ROOT}/cards/${card.id}/reaction`, {
                                 method: "PUT",
-                                body: {
-                                  rating: e.target.value
-                                    ? Number(e.target.value)
-                                    : null,
-                                },
+                                body: { rating },
                               }),
                             "تم تحديث تقييمك.",
                           )
                         }
-                      >
-                        <option value="">بدون تقييم</option>
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <option key={n} value={n}>
-                            {n} / 5
-                          </option>
-                        ))}
-                      </Select>
+                      />
                     )}
                   </div>
                   {permissions?.canArchive && (

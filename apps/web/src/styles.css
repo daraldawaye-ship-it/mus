@@ -6758,7 +6758,25 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-link { display:inline-flex; align-items:center; gap:3px; color:var(--primary); text-align:start; background:none; border:0; padding:0; font:inherit; cursor:pointer; }
 .medicine-market-engagement { display:flex; align-items:center; flex-wrap:wrap; gap:15px; margin-block:20px; }
 .medicine-market-engagement > span { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); }
-.medicine-market-engagement > .field { min-width:140px; }
+.market-star-rating { min-inline-size:0; margin:0; padding:0; border:0; }
+.market-star-rating legend { padding:0; color:var(--muted); font-size:10px; line-height:12px; }
+.market-star-rating-row, .market-star-rating-stars { display:flex; align-items:center; }
+.market-star-rating-row { gap:2px; }
+.market-star-rating-choice, .market-star-rating-clear {
+  position:relative; display:grid; place-items:center; inline-size:24px; block-size:28px;
+  flex:none; cursor:pointer; border-radius:4px;
+}
+.market-star-rating-choice input { position:absolute; inset:0; inline-size:100%; block-size:100%; margin:0; opacity:0; cursor:inherit; }
+.market-star-rating-choice span { display:grid; justify-items:center; gap:0; color:var(--muted); pointer-events:none; }
+.market-star-rating-choice small { font-size:9px; line-height:9px; }
+.market-star-rating-choice .is-filled svg { color:var(--market-star-gold,#b66b00); }
+.market-star-rating-choice input:checked + span small { font-weight:700; color:var(--text); }
+.market-star-rating-clear { border:0; padding:0; background:none; color:var(--muted); }
+.market-star-rating-choice input:focus-visible + span, .market-star-rating-clear:focus-visible {
+  outline:2px solid currentColor; outline-offset:2px; border-radius:3px;
+}
+.market-star-rating:disabled { opacity:.6; }
+.market-star-rating:disabled :is(.market-star-rating-choice,.market-star-rating-clear) { cursor:default; }
 .medicine-market-admin-action { padding-block:5px 15px; }
 .medicine-market-comments { padding-block-start:20px; border-top:1px solid var(--border); }
 .medicine-market-history { margin-block:12px 20px; border:1px solid var(--border); border-radius:8px; padding:11px 13px; }
