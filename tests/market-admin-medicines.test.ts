@@ -37,8 +37,10 @@ for (const isolated of [false,true]) test(`market admin list guards access and s
   await add("medicine", "صنف معلق", {}, false, "pending");
 
   const app = express();
+  app.use(express.json());
   if (isolated) await db.exec("UPDATE market_card_statistics SET relations=market_relation_counts(card_id)");
-  app.use(medicineMarketRoutes({query:db.query.bind(db)} as unknown as Pool, {
+  const query = db.query.bind(db);
+  app.use(medicineMarketRoutes({query,connect:async()=>({query,release(){}})} as unknown as Pool, {
     async viewer(_db, req) {
       const mode = req.get("x-test-mode");
       if (!mode) return null;
@@ -106,4 +108,27 @@ for (const isolated of [false,true]) test(`market admin list guards access and s
   assert.equal(archivedWithoutManufacturer.items[0].id,archived);
   assert.equal((await get("agentLink=unexpected")).status,400);
   assert.equal((await get("sort=unexpected")).status,400);
+  const blank = await add("medicine","صنف مؤهل لتعريف الوكيل",{manufacturerId});
+  const protectedMedicine = await add("medicine","صنف وكيله موجود",{manufacturerId,agentId});
+  const noSource = await add("medicine","صنف بلا مصدر",{manufacturerId:999999});
+  const archivedBlank = await add("medicine","صنف مؤرشف بلا وكيل",{manufacturerId},true);
+  const endpoint = `http://127.0.0.1:${address.port}/medicine-market/owner/define-agents`;
+  const request ={after:0,maxId:blank,limit:1};
+  const getPreview = () => fetch(endpoint,{headers:{"x-test-mode":"owner"}});
+  const apply = (mode:string) => fetch(endpoint,{method:"POST",
+    headers:{"x-test-mode":mode,"content-type":"application/json"},body:JSON.stringify(request)});
+  assert.equal((await apply("other")).status,403);
+  assert.deepEqual(await (await getPreview()).json(),{total:1,maxId:blank});
+  const response=await apply("owner");const r=await response.json();
+  assert.equal(response.status,200,JSON.stringify(r));
+  assert.equal(r.items.length,1);
+  assert.equal(r.items[0].cardId,blank);
+  assert.equal(r.items[0].agentId,manufacturerAgentId);
+  assert.equal((await (await apply("owner")).json()).items.length,0);
+  assert.deepEqual(await (await getPreview()).json(),{total:0,maxId:0});
+  const after = await db.query<{id:number; agent: number|null}>(
+    "SELECT id,data->'agentId' AS agent FROM medicine_market_cards WHERE id=ANY($1::int[]) ORDER BY id",
+    [[blank,protectedMedicine,noSource,archivedBlank]]);
+  assert.deepEqual(after.rows.map(x=>x.agent),[manufacturerAgentId,agentId,null,null]);
+
 });

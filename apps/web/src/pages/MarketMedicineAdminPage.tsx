@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Building2, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import InteractiveColumnsTable, { type InteractiveTableColumn } from "../InteractiveColumnsTable";
+import { DefineMarketAgentsAction } from "./DefineMarketAgentsAction";
 import { ImagePreviewModal } from "../ImagePreviewModal";
 import { MarketCardIcon, hasMarketCardImage, marketCardImageVariant } from "../MarketCardIcon";
 import { api, useSession } from "../api";
@@ -102,7 +103,7 @@ export default function MarketMedicineAdminPage() {
   }
 
   return <section dir="rtl">
-    <PageHeader title="إدارة أصناف السوق" actions={<Link to={root}>العودة إلى سوق الأدوية</Link>} />
+    <PageHeader title="إدارة أصناف السوق" actions={<><DefineMarketAgentsAction/><Link to={root}>العودة إلى سوق الأدوية</Link></>} />
     <Card>
       <div className="page-actions">
         <Field label="بحث" type="search" maxLength={200} value={draft} placeholder="اسم الصنف أو رقمه أو الوكيل…"

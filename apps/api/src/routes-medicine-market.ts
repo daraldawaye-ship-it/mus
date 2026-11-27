@@ -38,6 +38,12 @@ const marketMedicineAdminQuery = z.object({
   manufacturerLink: z.enum(["all","present","missing"]).default("all"),
 });
 
+const marketDefineAgentsBatchSchema = z.object({
+  after:z.number().int().min(0).max(2147483647),
+  maxId:z.number().int().min(0).max(2147483647),
+  limit:z.number().int().min(1).max(50).default(30),
+}).strict();
+
 const root = "/medicine-market";
 const json = (v: unknown) => JSON.stringify(v ?? null);
 const norm = (s: string) =>
@@ -831,6 +837,60 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     res.set("Cache-Control", "private, no-store").json({
       items: rows.rows, total: count.rows[0].total, page: v.page, pageSize: v.pageSize,
     });
+  }));
+
+  // A stored manufacturer-agent link is the only source. No guess from a
+  // similar name, previous transaction, or an archived card.
+  const agentDefinitionCandidates = `
+    FROM medicine_market_cards c
+    JOIN medicine_market_cards m ON m.id::text=c.data->>'manufacturerId'
+      AND m.kind='manufacturer' AND m.status='published' AND NOT m.archived
+    JOIN medicine_market_cards a ON a.id::text=m.data->>'agentId'
+      AND a.kind='agent' AND a.status='published' AND NOT a.archived
+    WHERE c.kind='medicine' AND c.status='published' AND NOT c.archived
+      AND c.data->>'agentId' IS NULL`;
+  router.get(root + "/owner/define-agents", handler(async (req,res) => {
+    const user = await viewer(pool,req);
+    if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
+    await enabled(pool,req);
+    const {rows:[summary]} = await pool.query(
+      "SELECT count(*)::int AS total,COALESCE(max(c.id),0)::int AS \"maxId\"" + agentDefinitionCandidates,
+    );
+    res.set("Cache-Control","private, no-store").json(summary);
+  }));
+  router.post(root + "/owner/define-agents", handler(async (req,res) => {
+    const input = parse(marketDefineAgentsBatchSchema,req.body);
+    const result = await transaction(pool,async db => {
+      const user = await viewer(db,req,true);
+      if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
+      await enabled(db,req,"medicine-market",true);
+      type Candidate = { id:number; manufacturer_id:number; agent_id:number };
+      const select = "SELECT c.id,m.id AS manufacturer_id,a.id AS agent_id" + agentDefinitionCandidates;
+      const {rows:initial} = await db.query<Candidate>(
+        select + " AND c.id>$1 AND c.id<=$2 ORDER BY c.id LIMIT $3",
+        [input.after,input.maxId,input.limit],
+      );
+      if (!initial.length) return {items:[],nextCursor:null,skipped:0};
+      const nextCursor = initial.at(-1)!.id;
+      const ids = [...new Set(initial.flatMap(r=>[r.id,r.manufacturer_id,r.agent_id]))].sort((l,r)=>l-r);
+      await db.query("SELECT id FROM medicine_market_cards WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE",[ids]);
+      const refreshed = await db.query<Candidate>(select+" AND c.id=ANY($1::int[])",[initial.map(r=>r.id)]);
+      const byId = new Map(refreshed.rows.map(r=>[r.id,r]));
+      const items = [];
+      for (const row of initial) {
+        const latest = byId.get(row.id);
+        if (latest?.manufacturer_id!==row.manufacturer_id || latest.agent_id!==row.agent_id) continue;
+        const saved = await saveContribution(db,req,user,row.id,{
+          fieldKey:"agentId",value:row.agent_id,expectedValue:null,idempotencyKey:randomUUID(),
+          source:`تعريف الوكلاء من الربط الحالي للمصنّع #${row.manufacturer_id}؛ الوكيل #${row.agent_id}.`,
+        });
+        if (!saved.contribution.published || saved.card.data.agentId!==row.agent_id)
+          throw new HttpError(409,"agent_definition_conflict","لم يثبت حفظ الوكيل");
+        items.push({cardId:row.id,manufacturerId:row.manufacturer_id,agentId:row.agent_id,contributionId:saved.contribution.id});
+      }
+      return {items,nextCursor,skipped:initial.length-items.length};
+    });
+    res.json(result);
   }));
 
   // Derivatives share the source card visibility, including private prescriptions.
