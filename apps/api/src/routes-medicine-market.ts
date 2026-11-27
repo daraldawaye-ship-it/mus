@@ -30,7 +30,7 @@ import { currentActor } from "./policies/access.ts";
 import { deny, HttpError, missing } from "./errors.ts";
 
 const marketMedicineAdminQuery = z.object({
-  sort: z.enum(["id","name","englishName","dosageForm","composition","agent","manufacturer","hasImage","updatedAt"]).default("updatedAt"),
+  sort: z.enum(["id","name","englishName","dosageForm","composition","agent","manufacturer","hasImage","updatedAt","agentMedicines","agentManufacturers","compositionMedicines","manufacturerAgent"]).default("updatedAt"),
   direction: z.enum(["asc","desc"]).default("desc"),
   image: z.enum(["all","present","missing"]).default("all"),
 });
@@ -754,23 +754,41 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       sort: req.query.sort, direction: req.query.direction, image: req.query.image,
     });
     const english = "NULLIF(btrim(c.data->>'englishName'),'')";
-    const hasImage = "COALESCE(NULLIF(btrim(c.data->>'image'),''),NULLIF(btrim(c.data->>'imageUrl'),'')) IS NOT NULL";
+    const imageRef = (alias: "c" | "a") =>
+      `COALESCE(NULLIF(btrim(${alias}.data->>'image'),''),NULLIF(btrim(${alias}.data->>'imageUrl'),''))`;
+    const hasImage = `${imageRef("c")} IS NOT NULL`;
+    // Reuse the same relation totals that power the linked market cards.
+    const statistics = stagingIsolated
+      ? " LEFT JOIN market_card_statistics ast ON ast.card_id=a.id LEFT JOIN market_card_statistics pst ON pst.card_id=p.id"
+      : "";
+    const relationTotal = (alias: "a" | "p", key: "medicines" | "manufacturers", kind: "medicine" | "manufacturer", field: "agentId" | "compositionId") => {
+      const statistic = alias === "a" ? "ast" : "pst";
+      const count = stagingIsolated
+        ? `COALESCE((${statistic}.relations->>'${key}')::int,(market_relation_counts(${alias}.id)->>'${key}')::int,0)`
+        : `(SELECT count(*)::int FROM medicine_market_cards counted WHERE counted.kind='${kind}'
+             AND counted.status='published' AND NOT counted.archived AND counted.data->>'${field}'=${alias}.id::text)`;
+      return `CASE WHEN ${alias}.id IS NOT NULL THEN ${count} END`;
+    };
+    const agentMedicines = relationTotal("a","medicines","medicine","agentId");
+    const agentManufacturers = relationTotal("a","manufacturers","manufacturer","agentId");
+    const compositionMedicines = relationTotal("p","medicines","medicine","compositionId");
     const order = {
       id: "c.id", name: "c.normalized_name", englishName: "lower(" + english + ")",
       dosageForm: "f.normalized_name", composition: "p.normalized_name",
       agent: "a.normalized_name", manufacturer: "m.normalized_name",
-      hasImage: hasImage, updatedAt: "c.updated_at",
+      manufacturerAgent: "ma.normalized_name", hasImage, updatedAt: "c.updated_at", agentMedicines, agentManufacturers, compositionMedicines,
     }[sort];
-    const relation = (alias: string, kind: string, key: string) => `
+    const relation = (alias: string, kind: string, key: string, source: "c" | "m" = "c") => `
       LEFT JOIN medicine_market_cards ${alias}
-        ON ${alias}.id=CASE WHEN c.data->>'${key}' ~ '^[0-9]{1,10}$'
-          THEN (c.data->>'${key}')::bigint END
+        ON ${alias}.id=CASE WHEN ${source}.data->>'${key}' ~ '^[0-9]{1,10}$'
+          THEN (${source}.data->>'${key}')::bigint END
         AND ${alias}.kind='${kind}' AND ${alias}.status='published' AND NOT ${alias}.archived`;
     const from = " FROM medicine_market_cards c"
       + relation("f", "dosage-form", "dosageFormId") + relation("p", "composition", "compositionId")
-      + relation("a", "agent", "agentId") + relation("m", "manufacturer", "manufacturerId");
+      + relation("a", "agent", "agentId") + relation("m", "manufacturer", "manufacturerId")
+      + relation("ma", "agent", "agentId", "m");
     const fields = ["c.normalized_name","c.data->>'arabicSearchKey'","lower(" + english + ")",
-      "lower(c.data->>'keywords')","f.normalized_name","p.normalized_name","a.normalized_name","m.normalized_name"];
+      "lower(c.data->>'keywords')","f.normalized_name","p.normalized_name","a.normalized_name","m.normalized_name","ma.normalized_name"];
     const patterns = [...new Set(norm(v.q).split(/\s+/).filter(Boolean))]
       .map(word => `%${word.replace(/[\\%_]/g, "\\$&")}%`);
     const args: (string | boolean | number)[] = [archived];
@@ -790,8 +808,12 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     }
     const [rows, count] = await Promise.all([
       pool.query(`SELECT c.id,c.name,c.archived,${english} AS "englishName",f.name AS "dosageForm",
-        p.name AS composition,a.name AS agent,m.name AS manufacturer,
-        (${hasImage}) AS "hasImage",c.updated_at AS "updatedAt"${from}${where}
+        p.name AS composition,a.name AS agent,m.name AS manufacturer,ma.name AS "manufacturerAgent",
+        (${hasImage}) AS "hasImage",c.updated_at AS "updatedAt",
+        c.revision,${imageRef("c")} AS "medicineImage",
+        a.id AS "agentId",a.revision AS "agentRevision",${imageRef("a")} AS "agentImage",
+        ${agentMedicines} AS "agentMedicines",${agentManufacturers} AS "agentManufacturers",
+        ${compositionMedicines} AS "compositionMedicines"${from}${statistics}${where}
         ORDER BY ${order} ${direction === "asc" ? "ASC" : "DESC"} NULLS LAST,c.id DESC
         LIMIT $${args.length + 1} OFFSET $${args.length + 2}`, [...args,v.pageSize,v.offset]),
       pool.query("SELECT count(*)::int AS total" + from + where, args),
