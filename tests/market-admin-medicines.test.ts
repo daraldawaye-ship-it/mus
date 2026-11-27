@@ -130,5 +130,18 @@ for (const isolated of [false,true]) test(`market admin list guards access and s
     "SELECT id,data->'agentId' AS agent FROM medicine_market_cards WHERE id=ANY($1::int[]) ORDER BY id",
     [[blank,protectedMedicine,noSource,archivedBlank]]);
   assert.deepEqual(after.rows.map(x=>x.agent),[manufacturerAgentId,agentId,null,null]);
+  const ids:number[]=[];
+  for(let n=0;n<30;n++) ids.push(await add("medicine","اختبار دفعة "+n,{manufacturerId}));
+  const batchResponse=await fetch(endpoint,{method:"POST",headers:{"x-test-mode":"owner","content-type":"application/json"},
+    body:JSON.stringify({after:blank,maxId:ids.at(-1),limit:30})});
+  const batch=await batchResponse.json();
+  assert.equal(batchResponse.status,200,JSON.stringify(batch));
+  assert.deepEqual(batch.items.map((item:{cardId:number})=>item.cardId),ids);
+  const result=await db.query<{n:number}>("SELECT count(*)::int n FROM medicine_market_contributions WHERE card_id=ANY($1::int[]) AND field_key='agentId' AND status='approved' AND published",[ids]);
+  assert.equal(result.rows[0]!.n,30);
+  const audit=await db.query<{n:number}>("SELECT count(*)::int n FROM audit_events WHERE target_id=ANY($1::int[]) AND action='medicine-market.contribute'",[ids]);
+  assert.equal(audit.rows[0]!.n,30);
+  assert.equal((await (await getPreview()).json()).total,0);
+
 
 });

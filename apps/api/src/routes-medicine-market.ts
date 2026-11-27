@@ -876,18 +876,38 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       await db.query("SELECT id FROM medicine_market_cards WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE",[ids]);
       const refreshed = await db.query<Candidate>(select+" AND c.id=ANY($1::int[])",[initial.map(r=>r.id)]);
       const byId = new Map(refreshed.rows.map(r=>[r.id,r]));
-      const items = [];
-      for (const row of initial) {
+      const eligible = initial.filter(row => {
         const latest = byId.get(row.id);
-        if (latest?.manufacturer_id!==row.manufacturer_id || latest.agent_id!==row.agent_id) continue;
-        const saved = await saveContribution(db,req,user,row.id,{
-          fieldKey:"agentId",value:row.agent_id,expectedValue:null,idempotencyKey:randomUUID(),
-          source:`تعريف الوكلاء من الربط الحالي للمصنّع #${row.manufacturer_id}؛ الوكيل #${row.agent_id}.`,
-        });
-        if (!saved.contribution.published || saved.card.data.agentId!==row.agent_id)
-          throw new HttpError(409,"agent_definition_conflict","لم يثبت حفظ الوكيل");
-        items.push({cardId:row.id,manufacturerId:row.manufacturer_id,agentId:row.agent_id,contributionId:saved.contribution.id});
-      }
+        return latest?.manufacturer_id===row.manufacturer_id && latest.agent_id===row.agent_id;
+      }).map(row=>({...row, request_id: randomUUID()}));
+      if (!eligible.length) return {items:[],nextCursor,skipped:initial.length};
+      // Same published-field, contribution and audit semantics as a single
+      // owner edit, in set-based statements. The per-card endpoint also
+      // reloads ratings and counters, which is unnecessary for this action.
+      const batch = JSON.stringify(eligible);
+      const mapping = "jsonb_to_recordset($1::jsonb) AS x(id int,manufacturer_id int,agent_id int,request_id uuid)";
+      const changed = await db.query(`UPDATE medicine_market_cards c
+        SET data=jsonb_set(c.data,'{agentId}',to_jsonb(x.agent_id),true),revision=c.revision+1,updated_at=now()
+        FROM ${mapping} WHERE c.id=x.id AND c.kind='medicine' AND c.status='published'
+          AND NOT c.archived AND c.data->>'agentId' IS NULL RETURNING c.id`,[batch]);
+      if (changed.rowCount!==eligible.length) throw new HttpError(409,"agent_definition_conflict","تغيرت بيانات الدفعة");
+      const {rows:contributions} = await db.query<{id:number;card_id:number}>(`
+        INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,
+          author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)
+        SELECT x.id,'agentId','null'::jsonb,to_jsonb(x.agent_id),
+          concat('تعريف الوكلاء من الربط الحالي للمصنّع #',x.manufacturer_id,'؛ الوكيل #',x.agent_id,'.'),
+          $2,x.request_id,true,'approved',$2,now(),'مساهمة المالك معتمدة تلقائيًا'
+        FROM ${mapping} RETURNING id,card_id`,[batch,user.id]);
+      const contributionIds = new Map(contributions.map(r=>[r.card_id,r.id]));
+      const items = eligible.map(r=>({cardId:r.id,manufacturerId:r.manufacturer_id,
+        agentId:r.agent_id,contributionId:contributionIds.get(r.id)!}));
+      await db.query(`
+        INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value)
+        SELECT $2,$3,'public',NULL,'medicine-market.contribute','medicine-market', x."cardId",
+          jsonb_build_object('field','agentId','value',NULL),
+          jsonb_build_object('contributionId',x."contributionId",'field','agentId','value',x."agentId",'published',true)
+        FROM jsonb_to_recordset($1::jsonb) AS x("cardId" int,"contributionId" int,"agentId" int)
+      `,[JSON.stringify(items),user.id,user.displayName]);
       return {items,nextCursor,skipped:initial.length-items.length};
     });
     res.json(result);

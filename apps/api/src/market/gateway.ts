@@ -66,7 +66,10 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
     const abort = new AbortController();
     // Ten sequential source downloads plus transforms exceed the normal read
     // budget. Extend only this owner operation; retain all admission limits.
-    const requestTimeoutMs = ownerImageBatch && marketUser?.owner ? 120000 : timeoutMs;
+    const ownerAgentBatch = req.method==="POST" && /^\/owner\/define-agents\/?$/.test(req.path);
+    const requestTimeoutMs = marketUser?.owner
+      ? ownerImageBatch ? 120000 : ownerAgentBatch ? Math.max(timeoutMs,15000) : timeoutMs
+      : timeoutMs;
     const timer = setTimeout(() => abort.abort(), requestTimeoutMs);
     const disconnect = () => { if (!res.writableEnded) abort.abort(); };
     res.once("close", disconnect);
