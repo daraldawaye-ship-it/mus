@@ -200,8 +200,8 @@ function SalesAverageLine({ points, currency }: { points: SalesAveragePoint[]; c
   return <>
     <p className="muted" aria-live="off">المعدل في <bdi>{selectedPoint.date}</bdi>:{" "}
       <strong dir="ltr">{salesAverageAmount.format(selectedPoint.average)} {currency}</strong></p>
-    <div ref={chartRef} className="sales-average-graph" style={{ overflowX: "auto" }}>
-      <svg role="img" aria-label="خط واحد يوضح المعدل اليومي لصافي آخر سبعة أيام" dir="ltr"
+    <div ref={chartRef} dir="ltr" className="sales-average-graph" style={{ overflowX: "auto" }}>
+      <svg role="img" aria-label="خط واحد يوضح المعدل اليومي لصافي آخر سبعة أيام"
         viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", minWidth: 240 }}
         onPointerMove={event => {
           const rect = event.currentTarget.getBoundingClientRect();
