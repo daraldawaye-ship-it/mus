@@ -17,6 +17,10 @@ const root = "/medicine-market";
 const countFormat = new Intl.NumberFormat("en-US");
 const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Aden", dateStyle: "short" });
 const show = (value: string | null) => value || "—";
+const showDate = (value: string) => {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? dateFormat.format(time) : "—";
+};
 const columns: InteractiveTableColumn<Row, Column>[] = [
   {key:"id", label:"الرقم", width:85, sortable:true, cell: row => row.id},
   {key:"name", label:"اسم الصنف", width:280, sortable:true, cell: row =>
@@ -27,7 +31,7 @@ const columns: InteractiveTableColumn<Row, Column>[] = [
   {key:"agent", label:"الوكيل", width:185, sortable:true, cell: row => show(row.agent)},
   {key:"manufacturer", label:"الشركة المصنّعة", width:190, sortable:true, cell: row => show(row.manufacturer)},
   {key:"hasImage", label:"الصورة", width:102, sortable:true, cell: row => row.hasImage ? "موجودة" : "غير موجودة"},
-  {key:"updatedAt", label:"آخر تعديل", width:130, sortable:true, cell: row => <bdi>{dateFormat.format(new Date(row.updatedAt))}</bdi>},
+  {key:"updatedAt", label:"آخر تعديل", width:130, sortable:true, cell: row => <bdi>{showDate(row.updatedAt)}</bdi>},
 ];
 const visibleColumns = columns.map(column => column.key);
 
@@ -64,29 +68,23 @@ export default function MarketMedicineAdminPage() {
     <PageHeader title="إدارة أصناف السوق" actions={<Link to={root}>العودة إلى سوق الأدوية</Link>} />
     <Card>
       <div className="page-actions">
-        <Field label="بحث">
-          <input type="search" maxLength={200} value={draft} placeholder="اسم الصنف أو رقمه أو الوكيل…"
-            onChange={event => setDraft(event.target.value)} />
-        </Field>
-        <Field label="حالة الكرت">
-          <Select value={filters.archived} onChange={event => {
-            const archived = event.target.value;
-            setFilters(value => ({...value,archived,page:1}));
-          }}>
-            <option value="false">المنشورة غير المؤرشفة</option>
-            <option value="true">المؤرشفة</option>
-          </Select>
-        </Field>
-        <Field label="حالة الصورة">
-          <Select value={filters.image} onChange={event => {
-            const image = event.target.value;
-            setFilters(value => ({...value,image,page:1}));
-          }}>
-            <option value="all">الكل</option>
-            <option value="present">لها صورة</option>
-            <option value="missing">بلا صورة</option>
-          </Select>
-        </Field>
+        <Field label="بحث" type="search" maxLength={200} value={draft} placeholder="اسم الصنف أو رقمه أو الوكيل…"
+          onChange={event => setDraft(event.target.value)} />
+        <Select label="حالة الكرت" value={filters.archived} onChange={event => {
+          const archived = event.target.value;
+          setFilters(value => ({...value,archived,page:1}));
+        }}>
+          <option value="false">المنشورة غير المؤرشفة</option>
+          <option value="true">المؤرشفة</option>
+        </Select>
+        <Select label="حالة الصورة" value={filters.image} onChange={event => {
+          const image = event.target.value;
+          setFilters(value => ({...value,image,page:1}));
+        }}>
+          <option value="all">الكل</option>
+          <option value="present">لها صورة</option>
+          <option value="missing">بلا صورة</option>
+        </Select>
         <Button size="compact" variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>تحديث</Button>
       </div>
       <p className="muted" aria-live="polite">{query.data ? `النتائج: ${countFormat.format(total)}` : ""}</p>
