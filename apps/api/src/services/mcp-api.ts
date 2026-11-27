@@ -1,3 +1,4 @@
+import { ownerPharmacyBatchSchema } from "../routes-medicine-market.ts";
 import { stagingImageAssetsOperation, stagingImageAssetsSchema } from "../market-staging-image-assets.ts";
 import { marketImageLabelBatchSchema } from "../market-image-labels.ts";
 import { imageNameMatchOperation, imageNameMatchSchema } from "../market-image-name-match.ts";
@@ -121,6 +122,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   },
   "GET /system-monitor/main": { source: "routes-system-monitor.ts", queryFields: [] },
   "GET /system-monitor/main/count": { source: "routes-system-monitor.ts", queryFields: ["schema", "table"] },
+  "POST /medicine-market/owner/pharmacies-batch": {
+    source: "routes-medicine-market.ts", queryFields: [],
+    bodyContract: "ownerPharmacyBatchSchema", bodySchema: z.toJSONSchema(ownerPharmacyBatchSchema),
+  },
   "GET /medicine-market/admin/monitor": { source: "market/app.ts", queryFields: [] },
   "GET /companies/:companyId/item-history/:itemId/sales-quantity-corrections": {
     source:"routes-commerce.ts",pathParams:["companyId","itemId"],queryFields:["page","pageSize"],

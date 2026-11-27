@@ -596,6 +596,26 @@ const ownerContributionsBatchSchema = z.object({
   }).strict()).min(1).max(50),
 }).strict();
 
+const pharmacyBatchFields = ["address", "cityCode", "sourceNotes"] as const;
+const pharmacyBatchValues = {
+  address: z.string().trim().min(1).max(5000),
+  cityCode: z.string().trim().min(1).max(100).optional(),
+  sourceNotes: z.string().trim().min(1).max(5000).optional(),
+};
+export const ownerPharmacyBatchSchema = z.object({
+  dryRun: z.boolean(),
+  items: z.array(z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal("create"), name: text.min(1), idempotencyKey: z.string().uuid(),
+      ...pharmacyBatchValues,
+    }).strict(),
+    z.object({
+      action: z.literal("update"), cardId: z.number().int().positive().max(2147483647),
+      expectedRevision: z.number().int().positive(), ...pharmacyBatchValues,
+    }).strict(),
+  ])).min(1).max(50),
+}).strict();
+
 const reviewContributionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),
@@ -1437,79 +1457,80 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       } satisfies MarketRelatedMedicinesPage);
     }),
   );
-  router.post(
-    root + "/cards",
-    handler(async (req, res) => {
-      const input = parse(createCardSchema, req.body);
-      if(input.kind==="prescription")
-        throw new HttpError(400,"use_prescription_upload","الوصفة الطبية تُنشأ من نموذج رفع الصورة وتحديد الأسطر");
-      const result = await transaction(pool, async (db) => {
-        const u = (await viewer(db, req, true))!,
-          p = perms(u);
-        if (isMarketAdministrativeKind(input.kind) && !p.canConfigure)
-          deny("الكروت المرجعية ثابتة؛ لا يمكن إضافتها من واجهة المستخدم");
-        const old = (
-          await db.query(
-            "SELECT * FROM medicine_market_cards WHERE created_by=$1 AND idempotency_key=$2",
-            [u.id, input.idempotencyKey],
-          )
-        ).rows[0];
-        if (old) {
-          const original = (
-            await db.query(
-              "SELECT proposed_value FROM medicine_market_contributions WHERE card_id=$1 AND author_id=$2 AND idempotency_key=$3 AND field_key='name' AND previous_value='null'::jsonb",
-              [old.id, u.id, input.idempotencyKey],
-            )
-          ).rows[0];
-          if (
-            old.kind !== input.kind ||
-            !original ||
-            original.proposed_value !== input.name
-          )
-            throw conflict("مفتاح الطلب مرتبط بكرت مختلف");
-          return { card: cardOutput(await getCard(db, old.id, u), p) };
-        }
-        await enabled(db, req, "medicine-market", true);
-        const duplicate = (
-          await db.query(
-            "SELECT id FROM medicine_market_cards WHERE kind=$1 AND normalized_name=$2 AND status<>'rejected'",
-            [input.kind, norm(input.name)],
-          )
-        ).rows[0];
-        if (duplicate)
-          throw conflict(
-            "يوجد كرت بالاسم نفسه؛ ابحث عنه قبل إنشاء كرت جديد، أو وضّح العبوة في الاسم",
-          );
-        const row = (
-          await db.query(
-            "INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
-            [
-              input.kind,
-              input.name,
-              norm(input.name),
-              trusted(u) ? "published" : "pending",
-              u.id,
-              input.idempotencyKey,
-            ],
-          )
-        ).rows[0];
+  async function createMarketCard(db: Database, req: Request, u: User, input: z.infer<typeof createCardSchema>) {
+    const old = (
+      await db.query(
+        "SELECT * FROM medicine_market_cards WHERE created_by=$1 AND idempotency_key=$2",
+        [u.id, input.idempotencyKey],
+      )
+    ).rows[0];
+    if (old) {
+      const original = (
         await db.query(
-          "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
-          " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5,$6,$7,CASE WHEN $6='approved' THEN now() ELSE NULL END,$8)",
-          [row.id, json(input.name), u.id, input.idempotencyKey, trusted(u),
-           u.owner ? "approved" : "pending",u.owner ? u.id : null,
-           u.owner ? "مساهمة المالك معتمدة تلقائيًا" : ""],
-        );
-        await auditMarket(db, u, "create", row.id, null, {
-          kind: row.kind,
-          name: row.name,
-          status: row.status,
-        });
-        return { card: cardOutput(row, p) };
-      });
-      res.status(201).json(result);
-    }),
-  );
+          "SELECT proposed_value FROM medicine_market_contributions WHERE card_id=$1 AND author_id=$2 AND idempotency_key=$3 AND field_key='name' AND previous_value='null'::jsonb",
+          [old.id, u.id, input.idempotencyKey],
+        )
+      ).rows[0];
+      if (
+        old.kind !== input.kind ||
+        !original ||
+        original.proposed_value !== input.name
+      )
+        throw conflict("مفتاح الطلب مرتبط بكرت مختلف");
+      return { row: old, created: false };
+    }
+    await enabled(db, req, "medicine-market", true);
+    const duplicate = (
+      await db.query(
+        "SELECT id FROM medicine_market_cards WHERE kind=$1 AND normalized_name=$2 AND status<>'rejected'",
+        [input.kind, norm(input.name)],
+      )
+    ).rows[0];
+    if (duplicate)
+      throw conflict(
+        "يوجد كرت بالاسم نفسه؛ ابحث عنه قبل إنشاء كرت جديد، أو وضّح العبوة في الاسم",
+      );
+    const row = (
+      await db.query(
+        "INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
+        [
+          input.kind,
+          input.name,
+          norm(input.name),
+          trusted(u) ? "published" : "pending",
+          u.id,
+          input.idempotencyKey,
+        ],
+      )
+    ).rows[0];
+    await db.query(
+      "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
+      " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5,$6,$7,CASE WHEN $6='approved' THEN now() ELSE NULL END,$8)",
+      [row.id, json(input.name), u.id, input.idempotencyKey, trusted(u),
+       u.owner ? "approved" : "pending",u.owner ? u.id : null,
+       u.owner ? "مساهمة المالك معتمدة تلقائيًا" : ""],
+    );
+    await auditMarket(db, u, "create", row.id, null, {
+      kind: row.kind,
+      name: row.name,
+      status: row.status,
+    });
+    return { row, created: true };
+  }
+
+  router.post(root + "/cards", handler(async (req, res) => {
+    const input = parse(createCardSchema, req.body);
+    if (input.kind === "prescription")
+      throw new HttpError(400, "use_prescription_upload", "الوصفة الطبية تُنشأ من نموذج رفع الصورة وتحديد الأسطر");
+    const result = await transaction(pool, async db => {
+      const u = (await viewer(db, req, true))!, p = perms(u);
+      if (isMarketAdministrativeKind(input.kind) && !p.canConfigure)
+        deny("الكروت المرجعية ثابتة؛ لا يمكن إضافتها من واجهة المستخدم");
+      const { row, created } = await createMarketCard(db, req, u, input);
+      return { card: cardOutput(created ? row : await getCard(db, row.id, u), p) };
+    });
+    res.status(201).json(result);
+  }));
   async function saveContribution(
     db: Database, req: Request, u: User, cardId: number,
     input: z.infer<typeof contributionSchema>,
@@ -1674,6 +1695,83 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       return { items, cards };
     });
     res.status(201).json(result);
+  }));
+
+  router.post(root + "/owner/pharmacies-batch", handler(async (req, res) => {
+    const input = parse(ownerPharmacyBatchSchema, req.body);
+    const result = await transaction(pool, async db => {
+      const u = await viewer(db, req, true);
+      if (!u?.owner || u.suspended || u.archived) deny("هذه العملية لمالك الموقع فقط");
+      await enabled(db, req, "medicine-market", true);
+      const ids = input.items.flatMap(item => item.action === "update" ? [item.cardId] : []);
+      const creates = input.items.filter(item => item.action === "create");
+      const names = creates.map(item => norm(item.name));
+      const keys = creates.map(item => item.idempotencyKey);
+      if ([ids, names, keys].some(values => new Set<string | number>(values).size !== values.length))
+        throw new HttpError(400, "duplicate_batch_item", "ورد الكرت أو مفتاح الإنشاء أكثر من مرة في الدفعة");
+      const existing = await db.query(
+        `SELECT * FROM medicine_market_cards
+         WHERE id=ANY($1::integer[]) OR (created_by=$2 AND idempotency_key=ANY($3::uuid[]))
+         OR (kind='pharmacy' AND status<>'rejected' AND normalized_name=ANY($4::text[]))
+         ORDER BY id ${input.dryRun ? "" : "FOR UPDATE"}`,
+        [ids, u.id, keys, names],
+      );
+      const byId = new Map(existing.rows.map(row => [row.id, row]));
+      const byRequest = new Map(existing.rows.filter(row => row.created_by === u.id)
+        .map(row => [row.idempotency_key, row]));
+      const pharmacyNames = new Set(existing.rows.filter(row => row.kind === "pharmacy" && row.status !== "rejected")
+        .map(row => row.normalized_name));
+      const plannedIds = new Set<number>();
+      const items = [];
+      for (const item of input.items) {
+        const row = item.action === "update" ? byId.get(item.cardId) : byRequest.get(item.idempotencyKey);
+        if (item.action === "update" && !row) missing("كرت الصيدلية غير موجود");
+        if (row) {
+          if (row.kind !== "pharmacy" || row.archived || row.status !== "published")
+            throw conflict("الكرت ليس صيدلية منشورة أو أنه مؤرشف");
+          if (plannedIds.has(row.id))
+            throw conflict("استهدفت الدفعة كرت الصيدلية مرتين");
+          plannedIds.add(row.id);
+        }
+        if (item.action === "create" && !row && pharmacyNames.has(norm(item.name)))
+          throw conflict("يوجد كرت صيدلية بهذا الاسم؛ طابق الفرع قبل إعادة المحاولة");
+        const changes = [];
+        for (const key of pharmacyBatchFields) {
+          if (item[key] === undefined) continue;
+          const field = findField("pharmacy", key);
+          const value = normalizeValue(field, item[key]);
+          const previous = row?.data[key] ?? null;
+          if (same(previous, value)) continue;
+          await validateReferences(db, field, value);
+          changes.push({ key, value, previous });
+        }
+        if (item.action === "update" && changes.length && row?.revision !== item.expectedRevision)
+          throw conflict("تغير كرت الصيدلية منذ المعاينة");
+        if (item.action === "create" && row && (row.name !== item.name || changes.length))
+          throw conflict("مفتاح الإنشاء مستخدم وبيانات الكرت مختلفة؛ راجع الكرت");
+        let cardId = row?.id ?? null;
+        if (!input.dryRun) {
+          if (!cardId && item.action === "create") {
+            const created = await createMarketCard(db, req, u, {
+              kind: "pharmacy", name: item.name, idempotencyKey: item.idempotencyKey,
+            });
+            if (!created.created) throw conflict("حُفظ الطلب بالتزامن؛ أعد قراءة الكرت");
+            cardId = created.row.id;
+          }
+          for (const change of changes) {
+            const saved = await saveContribution(db, req, u, cardId!, {
+              fieldKey: change.key, value: change.value, expectedValue: change.previous,
+              source: "ترحيل صيدليات دليل السوق", idempotencyKey: randomUUID(),
+            });
+            if (!saved.contribution.published) throw conflict("تعذر نشر بيانات كرت الصيدلية");
+          }
+        }
+        items.push({ cardId, name: row?.name ?? (item.action === "create" ? item.name : null),
+          result: !row ? "created" : changes.length ? "updated" : "unchanged" });
+      }
+      return { dryRun: input.dryRun, items };
+    });
+    res.json(result);
   }));
 
   router.get(

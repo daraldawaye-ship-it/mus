@@ -67,20 +67,18 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
   await db.exec(`INSERT INTO users(id,display_name) VALUES(1,'Owner'),(2,'Member');
     CREATE TABLE market_reference_entries(kind text,code text);
     INSERT INTO market_reference_entries VALUES('country','YE');
-    CREATE TABLE market_card_statistics(card_id integer PRIMARY KEY,likes integer DEFAULT 0,opens integer DEFAULT 0,
-      comments integer DEFAULT 0,relations jsonb DEFAULT '{}',rating_average numeric,rating_count integer DEFAULT 0);
-    CREATE FUNCTION market_relation_counts(integer) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
     CREATE TABLE market_image_uploads(id uuid PRIMARY KEY,card_id integer REFERENCES medicine_market_cards(id),
       uploaded_by integer REFERENCES users(id),byte_size integer,image_bytes bytea,width integer,height integer,
       created_at timestamptz DEFAULT now());`);
   await db.exec(await readFile("apps/api/market-migrations/20261112_market_image_variants.sql", "utf8"));
   await db.exec(await readFile("apps/api/market-migrations/20261112_market_images_two_copies.sql", "utf8"));
+  for (const file of ["20261116_card_statistics.sql", "20261117_card_rating_statistics.sql"])
+    await db.exec("BEGIN;\n" + await readFile("apps/api/market-migrations/" + file, "utf8") + "\nCOMMIT;");
   const ids: Record<string, number> = {};
   for (const [key, kind] of [["medicine", "medicine"], ["second", "medicine"], ["composition", "composition"], ["scientific", "scientific-name"], ["form", "dosage-form"], ["agent", "agent"]]) {
     const row = await db.query<{ id: number }>("INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key) VALUES($1,$2,$2,'published',1,$3) RETURNING id", [kind, key, randomUUID()]);
     ids[key!] = row.rows[0]!.id;
   }
-  await db.exec("INSERT INTO market_card_statistics(card_id) SELECT id FROM medicine_market_cards");
   const pool = adapter(db), app = express();
   app.use(express.json({ limit: "768kb" }));
   app.use((req, _res, next) => {
@@ -200,6 +198,42 @@ test("owner enrichment batches preserve atomic contributions and medicine image 
     assert.equal(await count("medicine_market_contributions"), before.contributions + 1);
     assert.equal(await count("audit_events"), before.audit + 1);
   });
+  await t.test("pharmacy import previews, replays, and updates only matching pharmacy cards", async () => {
+    const path = "/owner/pharmacies-batch";
+    const entry = apiCatalog(router, { operation: "POST /medicine-market" + path }).operations[0];
+    assert(entry && "bodySchema" in entry);
+    const address = "شارع الزبيري\nالهاتف 01234567";
+    const create = {
+      action: "create", name: "صيدلية الاختبار", address,
+      sourceNotes: "بيانات تجارية منشورة", idempotencyKey: randomUUID(),
+    };
+    const initial = await snapshot();
+    assert.equal((await call(path, { dryRun: false, items: [create] }, "admin")).status, 403);
+    const preview = await call(path, { dryRun: true, items: [create] });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.data.items[0].result, "created");
+    assert.deepEqual(await snapshot(), initial);
+    const created = await call(path, { dryRun: false, items: [create] });
+    assert.equal(created.status, 200, JSON.stringify(created.data));
+    const cardId = created.data.items[0].cardId;
+    const card = (await db.query<{ data: Record<string, string>; revision: number }>(
+      "SELECT data,revision FROM medicine_market_cards WHERE id=$1", [cardId],
+    )).rows[0]!;
+    assert.equal(card.data.address, address);
+    assert.equal(card.data.sourceNotes, create.sourceNotes);
+    const saved = await snapshot();
+    assert.equal((await call(path, { dryRun: false, items: [create] })).data.items[0].result, "unchanged");
+    assert.deepEqual(await snapshot(), saved);
+    const changed = { action: "update", cardId, expectedRevision: card.revision, address: address + " / 777123456" };
+    const wrongKind = { ...changed, cardId: ids.medicine, expectedRevision: 1 };
+    assert.equal((await call(path, { dryRun: false, items: [changed, wrongKind] })).status, 409);
+    assert.deepEqual(await snapshot(), saved);
+    assert.equal((await call(path, { dryRun: false, items: [changed] })).data.items[0].result, "updated");
+    assert.equal((await call(path, { dryRun: false, items: [changed] })).data.items[0].result, "unchanged");
+    const duplicate = { ...create, idempotencyKey: randomUUID() };
+    assert.equal((await call(path, { dryRun: false, items: [duplicate] })).status, 409);
+  });
+
   await t.test("image storage is atomic, medicine-only and does not link the card image", async () => {
     const before = await snapshot();
     const crossKind = await call("/owner/images-batch", { items: [photo, { ...photo, cardId: ids.agent }] });
