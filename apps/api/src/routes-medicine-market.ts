@@ -29,6 +29,12 @@ import { transaction, type Database } from "./db.ts";
 import { currentActor } from "./policies/access.ts";
 import { deny, HttpError, missing } from "./errors.ts";
 
+const marketMedicineAdminQuery = z.object({
+  sort: z.enum(["id","name","englishName","dosageForm","composition","agent","manufacturer","hasImage","updatedAt"]).default("updatedAt"),
+  direction: z.enum(["asc","desc"]).default("desc"),
+  image: z.enum(["all","present","missing"]).default("all"),
+});
+
 const root = "/medicine-market";
 const json = (v: unknown) => JSON.stringify(v ?? null);
 const norm = (s: string) =>
@@ -736,6 +742,63 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     await enabled(pool, req);
     const kind = parse(z.enum(marketKinds), req.query.kind);
     res.set("Cache-Control", "no-store").json(await marketCardCoverage(pool, kind));
+  }));
+
+  router.get(root + "/owner/medicines", handler(async (req, res) => {
+    const user = await viewer(pool, req);
+    if (!user?.owner || user.suspended || user.archived) deny();
+    await enabled(pool, req);
+    const v = pagination(req);
+    const archived = parse(z.enum(["true", "false"]), req.query.archived ?? "false") === "true";
+    const { sort, direction, image } = parse(marketMedicineAdminQuery, {
+      sort: req.query.sort, direction: req.query.direction, image: req.query.image,
+    });
+    const english = "NULLIF(btrim(c.data->>'englishName'),'')";
+    const hasImage = "COALESCE(NULLIF(btrim(c.data->>'image'),''),NULLIF(btrim(c.data->>'imageUrl'),'')) IS NOT NULL";
+    const order = {
+      id: "c.id", name: "c.normalized_name", englishName: "lower(" + english + ")",
+      dosageForm: "f.normalized_name", composition: "p.normalized_name",
+      agent: "a.normalized_name", manufacturer: "m.normalized_name",
+      hasImage: hasImage, updatedAt: "c.updated_at",
+    }[sort];
+    const relation = (alias: string, kind: string, key: string) => `
+      LEFT JOIN medicine_market_cards ${alias}
+        ON ${alias}.id=CASE WHEN c.data->>'${key}' ~ '^[0-9]{1,10}$'
+          THEN (c.data->>'${key}')::bigint END
+        AND ${alias}.kind='${kind}' AND ${alias}.status='published' AND NOT ${alias}.archived`;
+    const from = " FROM medicine_market_cards c"
+      + relation("f", "dosage-form", "dosageFormId") + relation("p", "composition", "compositionId")
+      + relation("a", "agent", "agentId") + relation("m", "manufacturer", "manufacturerId");
+    const fields = ["c.normalized_name","c.data->>'arabicSearchKey'","lower(" + english + ")",
+      "lower(c.data->>'keywords')","f.normalized_name","p.normalized_name","a.normalized_name","m.normalized_name"];
+    const patterns = [...new Set(norm(v.q).split(/\s+/).filter(Boolean))]
+      .map(word => `%${word.replace(/[\\%_]/g, "\\$&")}%`);
+    const args: (string | boolean | number)[] = [archived];
+    let where = " WHERE c.kind='medicine' AND c.status='published' AND c.archived=$1";
+    if (image !== "all") {
+      args.push(image === "present");
+      where += ` AND (${hasImage})=$${args.length}`;
+    }
+    if (patterns.length) {
+      args.push(v.q.trim());
+      const idParam = args.length;
+      const words = patterns.map(pattern => {
+        args.push(pattern);
+        return "(" + fields.map(field => `(${field}) LIKE $${args.length} ESCAPE '\\'`).join(" OR ") + ")";
+      });
+      where += ` AND (c.id::text=$${idParam} OR (${words.join(" AND ")}))`;
+    }
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT c.id,c.name,c.archived,${english} AS "englishName",f.name AS "dosageForm",
+        p.name AS composition,a.name AS agent,m.name AS manufacturer,
+        (${hasImage}) AS "hasImage",c.updated_at AS "updatedAt"${from}${where}
+        ORDER BY ${order} ${direction === "asc" ? "ASC" : "DESC"} NULLS LAST,c.id DESC
+        LIMIT $${args.length + 1} OFFSET $${args.length + 2}`, [...args,v.pageSize,v.offset]),
+      pool.query("SELECT count(*)::int AS total" + from + where, args),
+    ]);
+    res.set("Cache-Control", "private, no-store").json({
+      items: rows.rows, total: count.rows[0].total, page: v.page, pageSize: v.pageSize,
+    });
   }));
 
   // Derivatives share the source card visibility, including private prescriptions.

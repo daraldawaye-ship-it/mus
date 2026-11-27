@@ -1496,6 +1496,7 @@ export function MedicineMarketPage({
     actions.push({ label: "الدخول للمساهمة", to: "/login" });
   }
   if (user) actions.push({ label: "متابعة تعريف الأصدقاء", to: `${ROOT}/friend-referrals` });
+  if (user?.owner && !visitorOnly) actions.push({ label: "إدارة أصناف السوق", to: `${ROOT}/admin/items` });
   if (user?.owner && !visitorOnly) actions.push({ label: "اكتمال كروت السوق", to: `${ROOT}/card-coverage` });
   if (permissions?.canConfigure) actions.push({ label: "نقاط الحقول", to: `${ROOT}/points` });
   // Keep the medicine layout compatible with cached /meta responses from older builds.
