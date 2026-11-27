@@ -934,17 +934,23 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       AND a.kind='agent' AND a.status='published' AND NOT a.archived
     WHERE m.kind='manufacturer' AND m.status='published' AND NOT m.archived
       AND m.data->>'agentId' IS NULL`;
+  // Confirmed nonexclusive local distributor evidence: Medawee manufacturer
+  // catalogue 64506b6c5f9d103c42e7d641 shows Abu Jareer and Alam Al Musanada
+  // on different Cachet products. The one published local product here would
+  // otherwise incorrectly suggest the sole manufacturer-level link.
+  const reverseKnownConflict = "trim(m.name) IN ('كاشت للأدوية المحدودة')";
   const reverseEligible = "SELECT m.id,m.id AS manufacturer_id,a.id AS agent_id"+reverseSource+
-    " AND src.sources=1 AND a.id IS NOT NULL";
+    " AND src.sources=1 AND a.id IS NOT NULL AND NOT ("+reverseKnownConflict+")";
   router.get(root + "/owner/define-manufacturer-agents", handler(async (req,res) => {
     const user = await viewer(pool,req);
     if (!user?.owner || user.suspended || user.archived) deny("هذه العملية لمالك الموقع فقط");
     await enabled(pool,req);
+    const sourceEligible = `src.sources=1 AND a.id IS NOT NULL AND NOT (${reverseKnownConflict})`;
     const {rows:[summary]} = await pool.query(`SELECT
-      count(*) FILTER(WHERE src.sources=1 AND a.id IS NOT NULL)::int AS total,
-      COALESCE(max(m.id) FILTER(WHERE src.sources=1 AND a.id IS NOT NULL),0)::int AS "maxId",
-      count(*) FILTER(WHERE src.sources>1)::int AS conflicts,
-      count(*) FILTER(WHERE src.sources=1 AND a.id IS NULL)::int AS "invalidSources"`+reverseSource);
+      count(*) FILTER(WHERE ${sourceEligible})::int AS total,
+      COALESCE(max(m.id) FILTER(WHERE ${sourceEligible}),0)::int AS "maxId",
+      count(*) FILTER(WHERE src.sources>1 OR (${reverseKnownConflict}))::int AS conflicts,
+      count(*) FILTER(WHERE src.sources=1 AND a.id IS NULL AND NOT (${reverseKnownConflict}))::int AS "invalidSources"`+reverseSource);
     res.set("Cache-Control","private, no-store").json(summary);
   }));
   router.post(root + "/owner/define-manufacturer-agents", handler(async (req,res) => {
