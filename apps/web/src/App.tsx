@@ -506,6 +506,8 @@ function Navigation({
     "public.users": <Users size={17} />,
     "public.system-monitor": <LayoutDashboard size={17} />,
     "public.page-visit-statistics": <TrendingUp size={17} />,
+    "public.design-library": <Palette size={17} />,
+    "public.interest-statistics": <TrendingUp size={17} />,
     "public.owner-sql-console": <TableProperties size={17} />,
     "public.last-present": <FileClock size={17} />,
     "public.ai-tasks": <TableProperties size={17} />,
@@ -604,7 +606,7 @@ function Navigation({
       .filter(
         (entry) =>
           entry.scope === scope &&
-          (!["public.page-visit-statistics", "public.medicine-market-admin-items"].includes(entry.key) || (!!user?.owner && !visitorOnly && !employeePreview)) &&
+          (!["public.page-visit-statistics", "public.medicine-market-admin-items", "public.interest-statistics"].includes(entry.key) || (!!user?.owner && !visitorOnly && !employeePreview)) &&
           isVisibleNavigationPage(entry,user),
       )
       .map((entry) => (
@@ -628,21 +630,6 @@ function Navigation({
     <nav aria-label="التنقل الرئيسي">
       <div className="nav-label nav-heading">السوق الرئيسي</div>
       {links("public")}
-      {user?.owner && !employeePreview && (
-        <NavLink to="/design-library" onClick={close}
-          className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
-          title="مكتبة التصاميم الخاصة بالمالك">
-          <Palette size={17}/><span className="nav-text">مكتبة التصاميم</span>
-          <ChevronLeft size={13} className="nav-chevron"/>
-        </NavLink>
-      )}
-      {user?.owner && !employeePreview && !visitorOnly && (
-        <NavLink to="/interest-statistics" onClick={close}
-          className={({isActive})=>"nav-link"+(isActive?" active":"")}>
-          <TrendingUp size={17}/><span className="nav-text">إحصاءات اهتمامات الزوار</span>
-          <ChevronLeft size={13} className="nav-chevron"/>
-        </NavLink>
-      )}
       {!user && (
         <NavLink
           to="/login"
@@ -1312,8 +1299,7 @@ function Workspace() {
   const dockCompanyId=navigationContext?.company.id??null;
   const dockPageLabel=currentDockPage
     ? (/^\/companies\/\d+\/item-order-drafts\/?$/.test(location.pathname) ? "متابعة مسودات الطلبيات" : currentDockPage.name)
-    : !ownerDock ? "" : /^\/design-library(?:\/[^/]+)?\/?$/.test(location.pathname) ? "مكتبة التصاميم"
-    : !visitorOnly && /^\/interest-statistics\/?$/.test(location.pathname) ? "إحصاءات اهتمامات الزوار"
+    : !ownerDock ? ""
     : dockCompanyId&&new RegExp(`^/companies/${dockCompanyId}/legacy-sales-import/?$`).test(location.pathname)
       ? "ترحيل مبيعات النظام السابق" : "";
   const dockUser=ownerDock && !!user && canSearchDockUsers(user,dockPages);
@@ -1545,8 +1531,8 @@ function Workspace() {
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route path="/medicine-market" element={marketLanding} />
               <Route path="/owner-phone-preview" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل معاينة الهاتف…</Notice>}><OwnerPhonePreviewPage /></Suspense></Protected>} />
-              <Route path="/design-library" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
-              <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
+              <Route path="/design-library" element={<Protected>{user?.owner && !employeePreview ? <PageRouteGuard pageKey="public.design-library" trackVisit={false}><Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense></PageRouteGuard> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
+              <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <PageRouteGuard pageKey="public.design-library" trackVisit={false}><Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense></PageRouteGuard> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/page-visit-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
                 <PageRouteGuard pageKey="public.page-visit-statistics" trackVisit={false}>
@@ -1554,7 +1540,7 @@ function Workspace() {
                 </PageRouteGuard> :
                 <Notice tone="error">إحصاءات زيارات الصفحات للمالك فقط.</Notice>}</Protected>} />
               <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
-                <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :
+                <PageRouteGuard pageKey="public.interest-statistics" trackVisit={false}><Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense></PageRouteGuard> :
                 <Notice tone="error">إحصاءات الاهتمامات للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/admin/items" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market-admin-items"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketMedicineAdminPage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
               <Route path="/medicine-market/card-coverage" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketCoveragePage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />

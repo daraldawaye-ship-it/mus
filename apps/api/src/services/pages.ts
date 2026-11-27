@@ -280,6 +280,9 @@ export async function directoryEntries(
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
             (!["public.ai-tasks","public.page-visit-statistics"].includes(definition.key) || user.owner) &&
+            // These routes have an explicit owner-only boundary; generic grants
+            // must not give another account discovery or a resolvable page card.
+            (user.owner || !["public.design-library", "public.interest-statistics"].includes(definition.key)) &&
             (definition.key !== "public.explanations-reader" || explanationRead) &&
             (definition.key !== "public.explanations-editor" || explanationEdit) &&
             (user.owner ||

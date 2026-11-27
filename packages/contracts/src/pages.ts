@@ -199,6 +199,24 @@ page(
   { type: "report", keywords: ["زيارة", "زيارات", "دخول الصفحات", "الإحصاءات"] },
 );
 page(
+  "public.design-library",
+  "مكتبة التصاميم",
+  "إدارة المنصة",
+  "/design-library",
+  { view: owner },
+  "مكتبة التصاميم الخاصة بالمالك.",
+  { keywords: ["تصاميم", "واجهة"] },
+);
+page(
+  "public.interest-statistics",
+  "إحصاءات اهتمامات الزوار",
+  "إدارة المنصة",
+  "/interest-statistics",
+  { view: owner },
+  "تقرير اهتمامات الزوار الخاص بالمالك.",
+  { type: "report", keywords: ["الزوار", "الاهتمامات", "الإحصاءات"] },
+);
+page(
   "public.owner-sql-console",
   "تسجيل الخروج",
   "إدارة المنصة",
@@ -1320,6 +1338,7 @@ export function pageKeyForLocation(
   pathname: string,
   search: string,
 ): string | undefined {
+  if (/^\/design-library\/[^/]+\/?$/.test(pathname)) return "public.design-library";
   const params = new URLSearchParams(search);
   return pageDefinitions.find((entry) => {
     const [path, query] = entry.route.split("?");
