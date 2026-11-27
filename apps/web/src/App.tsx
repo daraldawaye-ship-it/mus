@@ -497,6 +497,7 @@ function Navigation({
   const icons: Record<string, React.ReactNode> = {
     "public.home": <Home size={17} />,
     "public.medicine-market": <Package size={17} />,
+    "public.medicine-market-admin-items": <TableProperties size={17} />,
     "public.medicine-market-review": <ShieldCheck size={17} />,
     "public.medicine-market-contributions": <ListChecks size={17} />,
     "public.medicine-market-points": <Coins size={17} />,
@@ -603,7 +604,7 @@ function Navigation({
       .filter(
         (entry) =>
           entry.scope === scope &&
-          (entry.key !== "public.page-visit-statistics" || (!!user?.owner && !visitorOnly && !employeePreview)) &&
+          (!["public.page-visit-statistics", "public.medicine-market-admin-items"].includes(entry.key) || (!!user?.owner && !visitorOnly && !employeePreview)) &&
           isVisibleNavigationPage(entry,user),
       )
       .map((entry) => (
@@ -1555,7 +1556,7 @@ function Workspace() {
               <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
                 <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :
                 <Notice tone="error">إحصاءات الاهتمامات للمالك فقط.</Notice>}</Protected>} />
-              <Route path="/medicine-market/admin/items" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketMedicineAdminPage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
+              <Route path="/medicine-market/admin/items" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market-admin-items"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketMedicineAdminPage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
               <Route path="/medicine-market/card-coverage" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketCoveragePage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />

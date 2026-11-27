@@ -436,6 +436,9 @@ page("public.medicine-market", "سوق الأدوية", "سوق الأدوية",
   { view: rule("public", "متاح للجميع"), create: signed, edit: signed },
   "دليل عام تشاركي للأصناف والتركيبات والجهات؛ مساهمات يدوية على مستوى الحقل.",
   { keywords: ["دواء", "صيدلية", "وكيل", "تركيب", "سعر", "أدوية"] });
+page("public.medicine-market-admin-items", "إدارة أصناف السوق", "سوق الأدوية", "/medicine-market/admin/items",
+  { view: owner }, "عرض أصناف السوق وإدارتها من جدول ض13 للمالك.",
+  { parentKey: "public.medicine-market", keywords: ["أصناف السوق", "ض13"] });
 page("public.medicine-market-review", "مصادقة السوق", "سوق الأدوية", "/medicine-market/review",
   { view: admin, edit: admin }, "مراجعة مساهمات الحقول والتعليقات قبل اعتمادها.",
   { parentKey: "public.medicine-market" });
