@@ -73,6 +73,7 @@ import { DockTableContext } from "./DockTableContext";
 import { canSearchDockUsers } from "./dock-user-search";
 import { isVisibleNavigationPage } from "./work-panel-search-access";
 import { InstallBanner } from "./InstallBanner";
+import { SiteHistoryNavigation } from "./SiteHistoryNavigation";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
 import { InterestTracker } from "./InterestTracker";
@@ -1411,6 +1412,7 @@ function Workspace() {
               >
                 <Menu size={20} />
               </Button>
+              <SiteHistoryNavigation />
               {inCompany && company.data && !company.isError ? (
                 <Link
                   className="scope-title scope-title-link"

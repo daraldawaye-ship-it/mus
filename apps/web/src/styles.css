@@ -346,6 +346,21 @@ legend {
   gap: 10px;
   min-width: 0;
 }
+.site-history-navigation {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.topbar .site-history-navigation .button {
+  width: 26px;
+  min-width: 26px;
+  height: 27px;
+  min-height: 27px;
+  justify-content: center;
+  padding: 0;
+}
+.topbar .site-history-navigation .button:disabled { opacity: .36; }
 /* Explicit offline/online switch is always at the top, not below invoices. */
 .connection-mode-control {
   display: inline-flex;
@@ -6674,7 +6689,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-block-end:8px; }
 .medicine-market-eyebrow { color:var(--muted); font-size:11px; margin:0; }
 .medicine-market-heading-actions { margin-inline-start:auto; }
-.medicine-market-points { display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
 .medicine-market-toolbar { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--card-radius); padding:14px; }
 .medicine-market-toolbar > .field { min-width:180px; }
 .medicine-market-search { position:relative; flex:1; min-width:180px; }

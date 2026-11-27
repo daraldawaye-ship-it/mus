@@ -1519,11 +1519,6 @@ export function MedicineMarketPage({
   return (
     <div className={`medicine-market${tab === "catalog" && !selected ? " medicine-market-directory" : ""}`} dir="rtl">
       <header className="medicine-market-heading">
-        {user && (
-          <span className="medicine-market-points">
-            <Star size={16} /> {meta.data?.userPoints ?? "0"} نقطة معتمدة
-          </span>
-        )}
         {user && !permissions?.canContribute && (
           <span className="medicine-market-muted">المساهمة غير متاحة لحسابك</span>
         )}
