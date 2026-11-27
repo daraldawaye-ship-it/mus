@@ -191,13 +191,13 @@ export function PledgeDialogs({
  return <>
  {printJob && createPortal(
   <PledgeStatementPrint context={context}
-   pledge={printJob.pledge}
+   customerName={printJob.pledge.customerName}
    statement={printJob.statement}
    onLetterheadReady={()=>setPrintReady(true)} />,
   document.body
  )}
  {printJob && <div className="pledge-statement-print-actions" role="status">
-  <span>كشف الرهن {printReady?"جاهز للطباعة":"قيد تجهيز الترويسة…"}</span>
+  <span>كشف الحساب {printReady?"جاهز للطباعة":"قيد تجهيز الترويسة…"}</span>
   <Button variant="secondary" size="compact" disabled={!printReady}
    onClick={()=>window.print()}>طباعة</Button>
   <Button variant="ghost" size="compact"

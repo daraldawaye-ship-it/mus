@@ -1,6 +1,7 @@
 import type { CompanyContext, Invoice, InvoiceKind, InvoiceLine } from "../../../packages/contracts/src/index.ts";
 import { formatMoney } from "./format-money";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
+import { salePrintCustomerName } from "./customer-print";
 
 /** Both committed server invoices and queued device-only receipts share one print layout. */
 export type PrintableInvoice = Pick<Invoice,
@@ -43,6 +44,7 @@ export function InvoicePrintSheet({
   onLetterheadReady?: () => void;
 }) {
   const purchase = invoice.kind === "purchase";
+  const customerName = purchase ? "" : salePrintCustomerName(invoice.saleCustomerName, invoice.counterpartyAccountName);
   const kindLabel = purchase ? "فاتورة مشتريات" : "فاتورة مبيعات";
   const notes = [invoice.description, invoice.purchaseCorrectionNote].filter(Boolean).join(" | ");
   const columns = printedInvoiceColumns(invoice.kind);
@@ -58,12 +60,13 @@ export function InvoicePrintSheet({
           <div><dt>رقم الفاتورة</dt><dd><bdi>{invoice.number}</bdi></dd></div>
         )}
         <div><dt>التاريخ</dt><dd><bdi dir="ltr">{invoice.documentDate}</bdi></dd></div>
-        <div><dt>{purchase ? "المورد / الحساب" : "العميل / الحساب"}</dt>
-          <dd>{invoice.counterpartyAccountName}</dd></div>
         {purchase ? (
-          <div><dt>رقم الحساب</dt><dd><bdi>{invoice.counterpartyAccountCode}</bdi></dd></div>
-        ) : invoice.saleCustomerName?.trim() ? (
-          <div><dt>اسم العميل</dt><dd>{invoice.saleCustomerName}</dd></div>
+          <>
+            <div><dt>المورد / الحساب</dt><dd>{invoice.counterpartyAccountName}</dd></div>
+            <div><dt>رقم الحساب</dt><dd><bdi>{invoice.counterpartyAccountCode}</bdi></dd></div>
+          </>
+        ) : customerName ? (
+          <div><dt>اسم العميل</dt><dd>{customerName}</dd></div>
         ) : null}
         {purchase && (
           <>

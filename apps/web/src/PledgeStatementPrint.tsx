@@ -4,32 +4,25 @@ import { CompanyPrintHeader } from "./CompanyPrintHeader";
 import { formatMoney } from "./format-money";
 import type { PledgeStatementData } from "./pledge-statement-print";
 
-export type PrintablePledge = {
-  accountId: number;
-  customerName: string;
-  collateral: string;
-};
-
 export function PledgeStatementPrint({
   context,
-  pledge,
+  customerName,
   statement,
   onLetterheadReady,
 }: {
   context: CompanyContext;
-  pledge: PrintablePledge;
+  customerName: string;
   statement: PledgeStatementData;
   onLetterheadReady: () => void;
 }) {
   const money = (value: string) => formatMoney(value);
   const { totals, items } = statement;
   return (
-    <div className="pledge-statement-print" dir="rtl" aria-label="كشف الرهن للطباعة">
+    <div className="pledge-statement-print" dir="rtl" aria-label="كشف حساب للطباعة">
       <CompanyPrintHeader context={context} onReady={onLetterheadReady} />
-      <h2>كشف حساب رهن</h2>
+      <h2>كشف حساب</h2>
       <div className="pledge-statement-print-info">
-        <div><strong>صاحب الرهن:</strong> {pledge.customerName}</div>
-        <div><strong>وصف الرهن:</strong> {pledge.collateral}</div>
+        <div><strong>الحساب:</strong> {customerName}</div>
       </div>
       <div className="pledge-statement-print-totals">
         <span><strong>الرصيد الافتتاحي:</strong> {money(totals.openingBalance)}</span>
@@ -53,14 +46,14 @@ export function PledgeStatementPrint({
           {items.map((line, i) => (
             <tr key={`${line.documentId}:${line.id}:${i}`}>
               <td dir="ltr">{line.documentDate}</td>
-              <td>{documentKindLabels[line.kind] ?? line.kind}</td>
-              <td className="pledge-statement-print-description">{line.description}</td>
+              <td>{documentKindLabels[line.kind] ?? "حركة مالية"}</td>
+              <td className="pledge-statement-print-description">{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind] ?? "حركة مالية"}</td>
               <td className="pledge-statement-print-number">{money(line.baseDebit)}</td>
               <td className="pledge-statement-print-number">{money(line.baseCredit)}</td>
               <td className="pledge-statement-print-number">{money(line.runningBalance)}</td>
             </tr>
           ))}
-          {items.length === 0 && <tr><td colSpan={6}>لا توجد حركات مالية لهذا الرهن.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={6}>لا توجد حركات مالية لهذا الحساب.</td></tr>}
         </tbody>
       </table>
     </div>

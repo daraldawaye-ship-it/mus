@@ -1,4 +1,5 @@
 import {accountLedgerStartLimit,applyAccountLedgerStartLimit} from "../../../../packages/contracts/src/account-ledger-date-policy";
+import { isPledgeAccountPrintName, pledgeOwnerFromAccountPrintName } from "../customer-print";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Link,
@@ -1811,10 +1812,17 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
         Page<AccountLedgerLine> & {
           totals: AccountLedgerTotals;
           account: PickAccount;
+          pledgeCustomerName?: string;
         }
       >(`${ledgerUrl}?${query}`, { signal }),
     enabled: accountId > 0 && !invalidRange,
   });
+  const accountPrintName = result.data?.account?.name ?? "";
+  const privatePledgePrint = pledge || isPledgeAccountPrintName(accountPrintName);
+  const statementPrintName = privatePledgePrint
+    ? result.data?.pledgeCustomerName || pledgeOwnerFromAccountPrintName(accountPrintName)
+    : accountPrintName;
+  const printSupplierAccount = showSupplierAccount && !privatePledgePrint;
   const [preparePrint, setPreparePrint] = useState(false);
   const commitDate = (key: "dateFrom" | "dateTo", value: string) => {
     setPreparePrint(false);
@@ -1934,7 +1942,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   );
   return (
     <div className="ledger-page">
-      <div className="ledger-print-heading"><CompanyPrintHeader context={context} /><h2>كشف حساب {result.data?.account?.name ?? ""}</h2></div>
+      <div className="ledger-print-heading"><CompanyPrintHeader context={context} /><h2>كشف حساب {statementPrintName}</h2></div>
       <PageHeader
         title="كشف حساب"
         description={`الأحدث أولًا؛ الرصيد والمدين والدائن بالعملة الأساسية (${result.data?.totals.baseCurrencyCode ?? "عملة الشركة الأساسية"})، ولا يظهر تكرار للمبالغ بعملة المستند.`}
@@ -2057,15 +2065,15 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       {preparePrint && printQuery.data && (
         <div className="ledger-print-all" aria-label="كشف الحساب الكامل للطباعة">
           <table dir="rtl">
-            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{showSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>النوع</th><th>المستند</th><th>العملة</th></tr></thead>
+            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{printSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>النوع</th><th>المستند</th><th>العملة</th></tr></thead>
             <tbody>{printQuery.data.map((line, index) => (
               <tr key={`${line.documentId}-${line.id}-${index}`}>
                 <td>{balanceText(line.runningBalance)}</td>
                 <td>{formatMoney(line.baseDebit)}</td>
                 <td>{formatMoney(line.baseCredit)}</td>
                 <td>{line.documentDate}</td>
-                {showSupplierAccount && <td>{line.supplierAccountName || "—"}</td>}
-                <td>{line.description}</td>
+                {printSupplierAccount && <td>{line.supplierAccountName || "—"}</td>}
+                <td>{privatePledgePrint ? (line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind] ?? "حركة مالية") : line.description}</td>
                 <td>{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}</td>
                 <td>{line.documentNumber}</td>
                 <td>{line.currencyCode}</td>

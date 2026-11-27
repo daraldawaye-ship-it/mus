@@ -6,9 +6,9 @@ const print = readFileSync("apps/web/src/InvoicePrintSheet.tsx", "utf8");
 const styles = readFileSync("apps/web/src/styles.css", "utf8");
 
 test("sales receipt replaces account number with optional customer name", () => {
-  assert.match(print, /\{purchase \? \(\s*<div><dt>رقم الحساب<\/dt>/);
-  assert.match(print, /invoice\.saleCustomerName\?\.trim\(\) \? \(/);
-  assert.match(print, /<div><dt>اسم العميل<\/dt><dd>\{invoice\.saleCustomerName\}<\/dd><\/div>/);
+  assert.match(print, /\{purchase \? \(\s*<>\s*<div><dt>المورد \/ الحساب<\/dt>[^\n]*\n\s*<div><dt>رقم الحساب<\/dt>/);
+  assert.match(print, /salePrintCustomerName\(invoice\.saleCustomerName, invoice\.counterpartyAccountName\)/);
+  assert.match(print, /<div><dt>اسم العميل<\/dt><dd>\{customerName\}<\/dd><\/div>/);
 });
 
 test("only purchase receipts retain branch, location, and currency details", () => {

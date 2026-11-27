@@ -142,12 +142,14 @@ export function pledgeRoutes(pool: Pool): Router {
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const user = await currentActor(client, actor(req), false);
       await companyAccess(client, user, companyId, "commerce.view");
-      const owned = await client.query(
-        "SELECT 1 FROM account_pledges WHERE company_id=$1 AND account_id=$2",
+      const owned = await client.query<{ customer_name: string }>(
+        "SELECT customer_name FROM account_pledges WHERE company_id=$1 AND account_id=$2",
         [companyId, accountId]
       );
-      if (!owned.rowCount) missing("حساب الرهن غير موجود");
-      return readAccountLedger(client, companyId, accountId, req);
+      const customerName = owned.rows[0]?.customer_name;
+      if (customerName === undefined) missing("حساب الرهن غير موجود");
+      const ledger = await readAccountLedger(client, companyId, accountId, req);
+      return { ...ledger, pledgeCustomerName: customerName };
     });
     res.json(result);
   }));
