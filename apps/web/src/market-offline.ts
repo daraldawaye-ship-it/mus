@@ -356,14 +356,18 @@ function savedMarketRank(card: MarketCard, sort: MarketCardSort): number {
 export function searchSavedMarketCards(cards: readonly MarketCard[], path: string) {
   const params = new URLSearchParams(path.split("?", 2)[1] ?? "");
   const kind = params.get("kind") || null, query = normalizedText(params.get("q"));
+  const words = [...new Set(query.split(/\s+/).filter(Boolean))];
   const archived = params.get("archived") === "true";
   const page = Number(params.get("page") ?? 1), pageSize = Number(params.get("pageSize") ?? 20);
   const sort = marketCardSortForKind(params.get("sort"), kind);
   const dateField = sort === "created" ? "createdAt" : "updatedAt";
+  const matchesQuery = (item: MarketCard) => {
+    if (!words.length || String(item.id) === query) return true;
+    const fields = [item.name, item.data.arabicSearchKey, item.data.englishName, item.data.keywords].map(normalizedText);
+    return words.every(word => fields.some(value => value.includes(word)));
+  };
   const filtered = cards.filter(item => item.status === "published" && item.archived === archived &&
-    (kind ? item.kind === kind : item.kind !== "dosage-form") &&
-    (!query || String(item.id) === query || [item.name, item.data.arabicSearchKey, item.data.englishName, item.data.keywords]
-      .some(value => normalizedText(value).includes(query))))
+    (kind ? item.kind === kind : item.kind !== "dosage-form") && matchesQuery(item))
     .sort((a, b) => sort === "updated" && kind === "drug-classification" ? a.id - b.id :
       savedMarketRank(b, sort) - savedMarketRank(a, sort) ||
       (sort === "ratingAverage" ? b.ratingCount - a.ratingCount : 0) ||

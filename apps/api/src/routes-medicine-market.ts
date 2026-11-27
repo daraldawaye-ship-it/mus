@@ -1093,17 +1093,23 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
       const sort = marketCardSortForKind(parse(z.enum(marketCardSortKeys), req.query.sort ?? "updated"), kind);
-      const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
+      const words = [...new Set(norm(v.q).split(/\s+/).filter(Boolean))];
+      const patterns = words.map(word => `%${word.replace(/[\\%_]/g, "\\$&")}%`);
       // Fixed dosage forms stay available by explicit lookup for medicine
       // relations, but are never catalog tiles or user-create choices.
       const referenceFilter = kind === null
         ? " AND c.kind <> 'dosage-form'"
         : "";
+      const wordMatches = patterns.map((_, index) => {
+        const parameter = `$${index + 5}`;
+        return `(c.normalized_name LIKE ${parameter} ESCAPE '\\' OR COALESCE(c.data->>'arabicSearchKey','') LIKE ${parameter} ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE ${parameter} ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE ${parameter} ESCAPE '\\')`;
+      });
+      const searchFilter = wordMatches.length ? ` AND (c.id::text=$4 OR (${wordMatches.join(" AND ")}))` : "";
       const condition =
-        "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR COALESCE(c.data->>'arabicSearchKey','') LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
-      const args = [u?.id ?? null, archived, kind, `%${query}%`, v.q];
+        "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3)" + searchFilter + referenceFilter;
+      const args = [u?.id ?? null, archived, kind, ...(patterns.length ? [v.q, ...patterns] : [])];
       const rows = await pool.query(
-        `${cardSelect} WHERE ${condition} ORDER BY ${marketCardOrder(sort, kind, stagingIsolated)} LIMIT $6 OFFSET $7`,
+        `${cardSelect} WHERE ${condition} ORDER BY ${marketCardOrder(sort, kind, stagingIsolated)} LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
         [...args, v.pageSize, v.offset],
       );
       const count = await pool.query(

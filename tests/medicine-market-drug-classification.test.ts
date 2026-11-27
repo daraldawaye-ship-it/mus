@@ -63,6 +63,22 @@ test("public bilingual classifications support ordered lookup, composition links
   assert.deepEqual(list.items.map((x:{id:number})=>x.id),[a.id,b.id]);
   assert.deepEqual(searchSavedMarketCards(list.items, "/medicine-market/cards?kind=drug-classification").items.map(x=>x.id),[a.id,b.id]);
   assert.equal((await call("GET","/cards?kind=drug-classification&q=antibiotics",undefined,0)).items[0].id,a.id);
+  const razi = await create("agent", "شركة الرازي فارما للأدوية والمستلزمات الطبية");
+  await create("agent", "مستودع الرازي للأدوية");
+  await create("agent", "شركة المستلزمات الطبية");
+  const agents = await call("GET", "/cards?kind=agent", undefined, 0);
+  for (const q of ["الرازي الطبية", "الطبية  الرَّازي", String(razi.id)]) {
+    const path = "/cards?kind=agent&pageSize=1&q=" + encodeURIComponent(q);
+    const online = await call("GET", path, undefined, 0);
+    assert.equal(online.total, 1);
+    assert.deepEqual(online.items.map((x: {id: number}) => x.id), [razi.id]);
+    const offline = searchSavedMarketCards(agents.items, "/medicine-market" + path);
+    assert.equal(offline.total, 1);
+    assert.deepEqual(offline.items.map(x => x.id), [razi.id]);
+  }
+  for (const q of ["الرازي غيرموجود", "%", "_", "\\"]) {
+    assert.equal((await call("GET", "/cards?kind=agent&q=" + encodeURIComponent(q), undefined, 0)).total, 0);
+  }
   const c=await create("composition","Test Composition 10 mg");
   assert.equal(c.data.drugClassificationId,undefined);
   await set(c.id,"drugClassificationId",c.id,null,400);
